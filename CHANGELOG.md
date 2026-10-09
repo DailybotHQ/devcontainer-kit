@@ -25,6 +25,11 @@ Security release; **use it instead of 0.1.0**. Interface stays **1** (additive).
 - The entrypoint keeps the Herdr config owned by the dev user and writes its temp
   file with `O_EXCL|O_NOFOLLOW`; the images workflow passes the tag through `env`.
 
+### Changed
+
+- The agents layer pins coding-agents-kit **v0.1.1** (its v0.1.0 had a symlink-escape
+  issue; ecosystem contract amendment A2).
+
 ### Fixed
 
 - A dck key whose `.pub` was deleted is repaired with `ssh-keygen -y`.

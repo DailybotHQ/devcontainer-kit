@@ -22,7 +22,7 @@ After changing the file, run `dck init` (it shows the diff and asks), then
 ## agents
 
 Installs [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit)
-at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v0.1.0**) into the
+at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v0.1.1**) into the
 dev user's home, following the kit's install contract:
 `git clone --branch <tag> … && ./install.sh`, then `ak install <kind>…` for the
 kinds in `agents.clis`, each through its vendor's official channel.
@@ -103,6 +103,6 @@ with the dispatcher `/usr/local/bin/dck-layer`. They run only during the
 
 The `agents` layer is built against coding-agents-kit's documented interface
 (installer path, `ak install`, `AGENTKIT_*`); its end-to-end run is verified
-in the ecosystem field test once coding-agents-kit `v0.1.0` is public. Until
+in the ecosystem field test once coding-agents-kit `v0.1.1` is public. Until
 then, a build with `agents = true` fails at the clone step, loudly. The
 `dailybot` and `editor` layers are verified end to end.
