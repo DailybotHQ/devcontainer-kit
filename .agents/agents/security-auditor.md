@@ -17,7 +17,7 @@ Use `docs/SECURITY.md` as the threat model and check the boundaries where this t
 - **SSH and Herdr:** dedicated key only, agent forwarding only to loopback, host keys generated at
   runtime, `~/.ssh/config.d/dck` provenance guard, no edits to Herdr's own files.
 - **Supply chain:** `images/versions.env` pins (digest/sha256/commit), `fetch()` in
-  `images/common/install.sh`, `lib/layers/*.sh`, workflows' permissions and SHA-pinned actions.
+  `images/common/install.sh` and `images/common/editor.sh`, `lib/layers/*.sh`, workflows' permissions and SHA-pinned actions.
 - **Public repository:** `scripts/check-public-hygiene.sh` passes; nothing private in docs or tests.
 
 Write findings with severity, file:line, a concrete failure scenario and a fix; a verified

@@ -62,7 +62,7 @@ test_agents_layer_toggles_off_cleanly() {
 test_agents_layer_on_python_flavour() {
   render --flavour python-3.13 --agents --clis "pi"
   assert_contains "$(dockerfile)" "dck-layer agents" "the python flavour gets the same layer (it adds Node)"
-  assert_contains "$(cat "$DCK_REPO/lib/layers/agents.sh")" 'if ! command -v node' "the installer adds Node only when the flavour lacks it"
+  assert_contains "$(cat "$DCK_REPO/lib/layers/agents.sh")" '[ "$node_major" -lt "${NODE_VERSION%%.*}" ]' "the installer adds Node when the flavour lacks a current one"
 }
 
 # run_layer <layer> [args] — run an installer as the current user, offline.
@@ -103,6 +103,15 @@ test_agents_installer_verifies_node() {
   assert_contains "$RUN_ERR" "checksum mismatch" "the reason is a checksum mismatch"
   assert_contains "$(fake_calls curl)" "https://nodejs.org/dist/v$(sed -n 's/^NODE_VERSION=//p' "$DCK_REPO/images/versions.env")/" "Node comes from nodejs.org at the pinned version"
   assert_eq "$(fake_calls install.sh)" "" "nothing else runs after a failed verification"
+}
+
+test_agents_installer_replaces_an_older_node() {
+  # python-3.13 and debian carry Debian's nodejs (an older major) for the editor.
+  EXTRA_PATH="$LFIX/nodebin-old:"
+  run_layer agents claude
+  assert_ne "$RUN_RC" "0" "an older Node triggers the pinned download (the fake one fails its pin)"
+  assert_contains "$(fake_calls curl)" "https://nodejs.org/dist/v$(sed -n 's/^NODE_VERSION=//p' "$DCK_REPO/images/versions.env")/" "the pinned Node is fetched when the present one is older"
+  assert_contains "$RUN_ERR" "checksum mismatch" "and it is verified like any other download"
 }
 
 test_dailybot_layer() {

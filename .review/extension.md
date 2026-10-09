@@ -5,7 +5,8 @@ devcontainer-kit is a bash 3.2 + python3-stdlib launcher (`bin/dck`, `lib/*.sh`,
 other people's repositories (`lib/render.py`, `src/template/`), runs their compose
 configuration (`lib/launcher.sh`, `lib/devc.py`), manages `~/.ssh/config.d/dck` and Herdr
 machines (`lib/sshconf.py`, `lib/herdr.sh`), and builds agent-free base images
-(`images/*/Dockerfile`, `images/common/install.sh`, pins in `images/versions.env`).
+(`images/*/Dockerfile`, `images/common/install.sh`, `images/common/editor.sh`, pins in
+`images/versions.env`).
 `lib/entrypoint.sh` runs **as root** inside containers. The repository a user runs `dck`
 in is untrusted input on the host; the threat model is `docs/SECURITY.md`.
 
@@ -21,7 +22,8 @@ in is untrusted input on the host; the threat model is `docs/SECURITY.md`.
 - **Always `critical`:** a private key or a value of a `*_API_KEY`/`*_TOKEN` variable
   printed, logged, written to a world-readable file, baked into an image, or copied into a
   container. `dck doctor` must report variable NAMES only (`lib/doctor.py`).
-- **Always `critical`:** a download in `images/common/install.sh` or `lib/layers/*.sh`
+- **Always `critical`:** a download in `images/common/install.sh`, `images/common/editor.sh`
+  or `lib/layers/*.sh`
   that is not checked against a SHA-256 pinned in `images/versions.env`, any
   fetch-piped-to-shell, or a coding-agent CLI / Dailybot CLI / Engram / Graphify
   installed in a base image (`images/`).
@@ -65,7 +67,7 @@ in is untrusted input on the host; the threat model is `docs/SECURITY.md`.
   removed or retyped (`docs/schema/*.json` must match `lib/config.py` rules — the
   `config` and `doctor` scopes enforce it).
 - **Pins:** every external input lives in `images/versions.env` with version AND
-  checksum (base images by digest, deepworkplan-vim by tag AND commit).
+  checksum (base images by digest, deepworkplan-vim by tag, commit AND installer SHA-256).
 - **Public repository:** no personal paths, private organisation/repository/tool names or
   secrets — `scripts/check-public-hygiene.sh` runs in CI.
 

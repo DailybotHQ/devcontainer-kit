@@ -40,7 +40,7 @@ apt-get update
 apt-get install -y --no-install-recommends \
   ca-certificates curl git git-lfs sudo build-essential less nano procps \
   openssh-server openssh-client ripgrep fd-find xz-utils unzip bash-completion \
-  locales tzdata "$@"
+  locales tzdata tar gzip lua5.4 fontconfig "$@"
 ln -sf "$(command -v fdfind)" /usr/local/bin/fd
 sed -i 's/^# *\(en_US.UTF-8\)/\1/' /etc/locale.gen && locale-gen >/dev/null
 
@@ -97,13 +97,8 @@ chmod 0700 "$home/.ssh"
   cat "$home/.bashrc"
 } > /tmp/dck-bashrc && mv /tmp/dck-bashrc "$home/.bashrc"
 
-# --- deepworkplan-vim at its pinned tag, verified against the pinned commit --
-# Only the configuration is installed; its plugin manager fetches plugins on
-# the first `nvim` launch (nothing unpinned is baked into the image).
-GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
-  git clone --quiet --depth 1 --branch "$DWP_VIM_TAG" https://github.com/DailybotHQ/deepworkplan-vim.git "$home/.config/nvim"
-got="$(git -C "$home/.config/nvim" rev-parse HEAD)"
-[ "$got" = "$DWP_VIM_COMMIT" ] || { echo "deepworkplan-vim $DWP_VIM_TAG resolved to $got, expected $DWP_VIM_COMMIT" >&2; exit 1; }
+# deepworkplan-vim is installed later, in its own layer (images/common/editor.sh),
+# so an editor bump does not rebuild this one.
 
 # --- Herdr seed config (the entrypoint keeps it current: dck_herdr_config) ---
 install -m 0644 "$BUILD_DIR/herdr-config.toml" "$home/.config/herdr/config.toml"

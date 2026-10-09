@@ -99,17 +99,21 @@ possible only by an explicit edit outside the managed blocks.
 
 - Base images pinned by tag **and** digest; gh, Herdr, Neovim and (for the
   agents layer) Node pinned by version **and SHA-256** per architecture;
-  deepworkplan-vim by tag **and** commit; uv and the Dailybot CLI wheel by
-  version and SHA-256 — all in one file, `images/versions.env`. A single
-  `fetch()` verifies every download before use; nothing is piped into a shell.
+  deepworkplan-vim by tag, commit **and** installer SHA-256; uv and the
+  Dailybot CLI wheel by version and SHA-256 — all in one file,
+  `images/versions.env`. A `fetch()` verifies every download before use (the
+  editor's installer is downloaded, verified, then run — never piped into a
+  shell).
 - Repositories pin the base image by digest in compose (`dck init` resolves
   it); `dck doctor` reports a tag-only pin and a local image that differs from
   the pin.
 - GitHub Actions are pinned by commit SHA. Only the image workflow can write
   packages. Images are built with provenance and an SBOM.
 - Known limits: the Neovim checksums were computed at pin time (the release
-  publishes none); deepworkplan-vim's plugins are fetched by its own plugin
-  manager on first launch (not baked, not pinned by us); coding-agents-kit is
+  publishes none); deepworkplan-vim's plugins are installed at build time by
+  its own installer (`--strict`) at the versions its configuration locks, not
+  pinned by us; Debian's `nodejs`/`npm` in `python-3.13` and `debian` come
+  from the distribution's signed archive; coding-agents-kit is
   pinned by tag (its installer then installs each CLI through the vendor's
   channel); the Dailybot CLI's dependencies are resolved by uv at build time.
 

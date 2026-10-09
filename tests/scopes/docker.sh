@@ -54,6 +54,8 @@ test_build_node_flavour() {
   run_cmd docker run --rm --entrypoint bash "$IT_IMAGE" -c "git -C /home/dev/.config/nvim rev-parse HEAD; python3 -c 'import json; print(json.load(open(\"/home/dev/.config/nvim/addon/surface.json\"))[\"version\"])'"
   assert_eq "$RUN_OUT" "$commit
 $tag" "the editor configuration is deepworkplan-vim $tag at its pinned commit"
+  run_cmd docker run --rm --user dev --entrypoint bash "$IT_IMAGE" -c 'cd && timeout 120 nvim --headless +qa && echo started'
+  assert_eq "$RUN_RC" "0" "nvim starts headless as the dev user with the baked-in plugins"
 }
 
 test_end_to_end() {

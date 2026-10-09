@@ -50,9 +50,12 @@ RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}
   user's `~/.npmrc` (Node's own prefix is root's), so `ak install` of npm-based
   CLIs (codex, pi, cline …) works at build time and later inside the container;
   `~/.local/bin` is on the login PATH.
-- **Node** is added only where the flavour lacks it (`python-3.13`, `debian`):
-  the official nodejs.org tarball at `NODE_VERSION`, checked against its
-  pinned SHA-256 before extraction. `node-24` already has it.
+- **Node** is added where the flavour lacks a current one (`python-3.13` and
+  `debian` carry only Debian's older `nodejs`, installed for the editor's
+  plugins): the official nodejs.org tarball at `NODE_VERSION`, checked against
+  its pinned SHA-256 before extraction into `/usr/local`, ahead of `/usr/bin`
+  on PATH. It is installed when `node` is missing or its major is older than
+  the pinned one. `node-24` already has it.
 - **One named volume per CLI home**, per compose project. At start the
   entrypoint (`dck_layer_persist`, [entrypoint.md](entrypoint.md)) links each
   kind's home onto its volume:
