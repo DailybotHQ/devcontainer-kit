@@ -7,6 +7,10 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.1.5] — 2026-10-09
+
+Interface stays **1**. Editor install through deepworkplan-vim's official installer.
+
 ### Changed
 
 - Base images install deepworkplan-vim **v0.5.0** (commit
@@ -26,7 +30,6 @@ and the interface number).
   two is Debian's `nodejs`/`npm`).
 - The baked-in plugins are **not pinned** by this repository (deepworkplan-vim lists them without
   commits); `docs/SECURITY.md` records it as a known limit.
-
 - Contributor tooling (not shipped): the repository vendors DeepWorkPlan **v7.0.1** and the AI
   Diff Reviewer **v3.3.0** (local review with `.review/extension.md`), adds the `dwp-*` command
   delegators, agent personas and catalogs under `.agents/`, and tracks the addon registry
@@ -139,7 +142,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.5
 [0.1.4]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.4
 [0.1.3]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.3
 [0.1.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.2
