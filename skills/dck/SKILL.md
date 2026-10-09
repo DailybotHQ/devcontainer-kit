@@ -3,7 +3,7 @@ name: dck
 description: Operate a repository's development container with devcontainer-kit (dck) — render the Dev Container template (dck init), start/enter/rebuild it from a terminal (dck setup|up|shell|exec|rebuild|down), SSH in with agent forwarding, register it as a Herdr machine (dck herdr add|status|repair), and diagnose it (dck doctor --json). Use only when the user mentions dck or devcontainer-kit, a dev container / devcontainer / .devcontainer/ or docker/local/ setup they want created or operated, or a container they want as a Herdr machine. Do not use for building or deploying production images, for Kubernetes, or merely because a repository contains a Dockerfile.
 license: MIT
 metadata:
-  version: 0.1.5
+  version: 0.1.6
   interface: 1
   homepage: https://github.com/DailybotHQ/devcontainer-kit
 ---
@@ -27,7 +27,7 @@ tell the user and show the pinned install line — do not install it without
 being asked:
 
 ```bash
-git clone --branch v0.1.5 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.1.6 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh
 ```
 
