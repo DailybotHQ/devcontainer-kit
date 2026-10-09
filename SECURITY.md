@@ -4,12 +4,12 @@
 
 | Version | Supported |
 | --- | --- |
-| 0.1.x — latest patch (`v0.1.2` and later) | yes |
+| `v0.1.3` (latest), `v0.1.2` | yes |
 | `v0.1.1` | no — upgrade (the agents layer cannot install npm-based CLIs) |
 | `v0.1.0` | no — upgrade (security fixes in `v0.1.1`) |
 
-Fixes land on `main` and ship in the next patch release; only the latest release is
-supported while the project is at 0.x.
+Fixes land on `main` and ship in the next patch release; while the project is at 0.x,
+the latest release and the one before it receive security fixes.
 
 ## Reporting a vulnerability
 
