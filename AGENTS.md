@@ -62,6 +62,6 @@ bin/dck --version && bin/dck help     # run the launcher from the checkout (no i
 
 ## Deep Work Plans
 
-Structured work runs through the installed `deepworkplan` skill (`.agents/skills/deepworkplan/`, vendored from `DailybotHQ/deepworkplan-skill@v7.0.0`, pinned in `skills-lock.json`). Short commands are thin delegators in `.agents/commands/` (`/dwp-create`, `/dwp-execute`, `/dwp-refine`, `/dwp-resume`, `/dwp-status`, `/dwp-verify`, `/dwp-upgrade`, `/skill-create`, `/agent-create`; `#<name>` or plain text on hosts without slash commands); `.claude` and `.cursor` are symlinks to `.agents`. Plans live in the gitignored `.dwp/`; only the addon registry `.dwp/config.json` is tracked (no addon is enabled in this repository — the methodology works without any).
+Structured work runs through the installed `deepworkplan` skill (`.agents/skills/deepworkplan/`, vendored from `DailybotHQ/deepworkplan-skill` tag `v7.0.1`, pinned with its `ref` in `skills-lock.json`). Short commands are thin delegators in `.agents/commands/` (`/dwp-create`, `/dwp-execute`, `/dwp-refine`, `/dwp-resume`, `/dwp-status`, `/dwp-verify`, `/dwp-upgrade`, `/skill-create`, `/agent-create`; `#<name>` or plain text on hosts without slash commands); `.claude` and `.cursor` are symlinks to `.agents`. Plans live in the gitignored `.dwp/`; only the addon registry `.dwp/config.json` is tracked. The one enabled addon is the AI Diff Reviewer (`.agents/skills/ai-diff-reviewer/`, tag `v3.3.0`, overrides in `.review/extension.md`), which runs the local review in every Final Review; the methodology itself needs no addon.
 
-DWP standard: 7.0.0 (onboarded 2026-10-08; upgraded 2026-10-09; skill 7.0.0)
+DWP standard: 7.0.0 (onboarded 2026-10-08; upgraded 2026-10-09; skill 7.0.1)
