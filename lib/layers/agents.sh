@@ -47,9 +47,15 @@ as_user bash "$src/coding-agents-kit/install.sh"
 rm -rf "$src"
 layer_log "installed coding-agents-kit ${AGENTKIT_TAG}"
 
-# 3. The CLIs the repository asked for, each through its vendor's official channel.
+# 3. npm installs globals into ~/.local for the dev user: Node's own prefix
+#    (/usr/local) is root's, so `npm install -g` (codex, pi, cline …) would fail
+#    for the dev user, at build time and later inside the container alike.
+#    ~/.local/bin is on the login PATH (/etc/profile.d/00-dck.sh).
+as_user bash -c 'grep -qs "^prefix=" "$HOME/.npmrc" || printf "prefix=%s\n" "$HOME/.local" >> "$HOME/.npmrc"'
+
+# 4. The CLIs the repository asked for, each through its vendor's official channel.
 if [ "$#" -gt 0 ]; then
   ak_bin="$(as_user bash -lc 'command -v ak || echo "$HOME/.local/share/agentkit/bin/ak"')"
-  as_user "$ak_bin" install "$@"
+  as_user bash -c 'NPM_CONFIG_PREFIX="$HOME/.local" exec "$@"' _ "$ak_bin" install "$@"
   layer_log "ak install $*"
 fi

@@ -73,9 +73,11 @@ def runtime_info():
         rc, out = run(["docker", "version", "--format", "{{.Client.Version}}"])
         docker["version"] = (out or "").strip() or None
         rc, out = run(["docker", "info", "--format", "{{.ServerVersion}}|{{.OperatingSystem}}|{{.Name}}"])
-        if rc == 0 and out.strip():
+        parts = ((out or "").strip().split("|") + ["", "", ""])[:3]
+        # Some clients exit 0 with empty fields when the daemon is gone:
+        # only a server version proves the daemon answered.
+        if rc == 0 and parts[0]:
             docker["daemon"] = True
-            parts = (out.strip().split("|") + ["", "", ""])[:3]
             docker["server_version"] = parts[0] or None
             blob = (" ".join(parts[1:]) + " " + (run(["docker", "context", "show"])[1] or "")).lower()
             if "orbstack" in blob:

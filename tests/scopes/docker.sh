@@ -134,3 +134,15 @@ test_devcontainer_cli_backend() {
   run_cmd docker ps --filter "label=com.docker.compose.project=$IT_PROJECT" --format '{{.Names}}'
   assert_eq "$RUN_OUT" "${IT_PROJECT}-app-1" "the devcontainer CLI used the compose project dck init named"
 }
+
+test_agents_layer_installs_the_kit() {
+  require_docker "the agents layer installs coding-agents-kit at its pin" || return 0
+  docker image inspect "$IT_IMAGE" >/dev/null 2>&1 || docker build -q -f "$DCK_REPO/images/node-24/Dockerfile" -t "$IT_IMAGE" "$DCK_REPO" >/dev/null
+  local tag; tag="$(sed -n 's/^AGENTKIT_TAG=//p' "$DCK_REPO/images/versions.env")"
+  # Kit only (no CLI download): the installer, the pin, the default posture.
+  run_cmd docker run --rm --entrypoint bash "$IT_IMAGE" -c 'DCK_USER=dev dck-layer agents >/dev/null 2>&1 || exit 9; runuser -u dev -- bash -lc "ak --version; ak doctor --json | python3 -c \"import json,sys; d=json.load(sys.stdin); print(d[\\\"interface\\\"], d[\\\"permissions\\\"])\"; cat ~/.npmrc"'
+  assert_rc 0 "the agents layer installs coding-agents-kit in a real image"
+  assert_contains "$RUN_OUT" "agentkit ${tag#v}" "the installed kit is the pinned $tag"
+  assert_contains "$RUN_OUT" "1 ask" "ak reports interface 1 and pass-through permissions (no bypass)"
+  assert_contains "$RUN_OUT" "prefix=/home/dev/.local" "npm globals go to the dev user's ~/.local"
+}

@@ -80,7 +80,10 @@ test_agents_installer_follows_the_kit_contract() {
   local tag; tag="$(sed -n 's/^AGENTKIT_TAG=//p' "$DCK_REPO/images/versions.env")"
   assert_contains "$(fake_calls git)" "clone --quiet --depth 1 --branch $tag https://github.com/DailybotHQ/coding-agents-kit.git" "coding-agents-kit is cloned at its pinned tag"
   assert_contains "$(fake_calls install.sh)" "install.sh" "the kit's own install.sh runs"
-  assert_contains "$(fake_calls ak)" "ak install claude codex" "ak installs exactly the requested kinds"
+  assert_contains "$(fake_calls ak)" "ak install claude codex npm_prefix=$HOME/.local" "ak installs exactly the requested kinds, npm globals into ~/.local"
+  assert_eq "$(cat "$HOME/.npmrc")" "prefix=$HOME/.local" "the dev user's npm prefix is ~/.local (Node's prefix is root's)"
+  run_layer agents claude
+  assert_eq "$(grep -c '^prefix=' "$HOME/.npmrc")" "1" "the npm prefix is written once"
   assert_eq "$(fake_calls curl)" "" "Node is not downloaded when present"
   run_layer agents gemini
   assert_rc 2 "an unknown kind is refused"

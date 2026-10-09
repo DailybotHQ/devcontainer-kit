@@ -31,7 +31,7 @@ Requires bash 3.2+ and python3 ≥ 3.11 on a Linux or macOS host; Docker (Deskto
 OrbStack, colima or Engine) with Compose v2 for the container verbs.
 
 ```bash
-git clone --branch v0.1.1 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.1.2 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh          # --no-rc for scripted installs, --uninstall to remove
 dck --version
 ```
@@ -105,7 +105,7 @@ Details and the threat model: [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Images
 
-`ghcr.io/dailybothq/devcontainer-kit-base:<flavour>-v0.1.1` for linux/amd64 and
+`ghcr.io/dailybothq/devcontainer-kit-base:<flavour>-v0.1.2` for linux/amd64 and
 linux/arm64 — see [docs/images.md](docs/images.md). `dck init` pins the digest in
 your compose file.
 

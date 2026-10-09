@@ -212,3 +212,9 @@ test_skill_printed_by_dck() {
   run_cmd "$HOME/.local/share/dck/bin/dck" doctor --json
   valid "an installed dck's doctor matches the schema"
 }
+
+test_empty_docker_info_is_not_a_daemon() {
+  echo "||" > "$DCK_FAKE_STATE/info_out"
+  outside
+  assert_eq "$(j 'd["runtime"]["docker"]["daemon"]')" "false" "docker info with empty fields does not count as a daemon"
+}

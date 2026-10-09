@@ -29,7 +29,7 @@ service = "app"                # compose service the tools attach to
 user = "dev"                   # remoteUser
 workspace = "/workspace"       # workspaceFolder
 flavour = "node-24"            # python-3.13 | node-24 | debian
-image_tag = "v0.1.1"           # devcontainer-kit-base tag (digest pinned in compose)
+image_tag = "v0.1.2"           # devcontainer-kit-base tag (digest pinned in compose)
 ssh_port = 22040               # loopback-only host port for Herdr; 0 = no sshd
 ports = { web = 4321 }         # named loopback ports
 [layers]

@@ -3,6 +3,19 @@
 All notable changes to devcontainer-kit. Versions follow [SemVer](https://semver.org)
 (0.x: a breaking change bumps the minor version and the interface number).
 
+## [0.1.2] — 2026-10-09
+
+Interface stays **1**. Use it instead of 0.1.1 when you enable the agents layer.
+
+### Fixed
+
+- Agents layer: `ak install <cli>` for npm-distributed CLIs (codex, pi, cline …)
+  failed for the dev user because Node's global prefix is root's. The layer now sets
+  the dev user's npm prefix to `~/.local` (`~/.npmrc`, already on the login PATH).
+  Verified in real python-3.13 and node-24 images with coding-agents-kit v0.1.1.
+- `dck doctor` no longer reports the Docker daemon as answering when `docker info`
+  exits 0 with empty fields.
+
 ## [0.1.1] — 2026-10-09
 
 Security release; **use it instead of 0.1.0**. Interface stays **1** (additive).
@@ -68,5 +81,6 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
+[0.1.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.2
 [0.1.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.1
 [0.1.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.0
