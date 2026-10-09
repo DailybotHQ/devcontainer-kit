@@ -1,0 +1,4 @@
+#!/bin/sh
+# A docker CLI whose daemon never answers.
+echo "Cannot connect to the Docker daemon" >&2
+exit 1

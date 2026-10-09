@@ -1,0 +1,45 @@
+name: ci
+
+# Unit scopes on Linux and macOS; the docker integration scope on Linux,
+# where the runner has a daemon. Third-party actions are pinned by commit SHA.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: ubuntu (unit + docker)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: shellcheck
+        run: shellcheck -S warning bin/* lib/*.sh tests/run.sh install.sh
+      - name: test suite (all scopes)
+        run: bash tests/run.sh
+
+  macos:
+    name: macos (unit, bash 3.2)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: test suite (docker reported unavailable)
+        # /bin/bash on macOS is 3.2: the runtime code must stay compatible.
+        run: DCK_TEST_DOCKER=0 /bin/bash tests/run.sh

@@ -3,16 +3,75 @@
 ## Full validation commands
 
 ```bash
-bash tests/run.sh
+bash tests/run.sh                                   # every scope, docker last
+shellcheck -S warning bin/* lib/*.sh tests/run.sh install.sh
 ```
+
+Both run in CI (`.github/workflows/ci.yml`): Ubuntu runs every scope including
+`docker`; macOS runs the unit scopes under the system `/bin/bash` 3.2 with
+`DCK_TEST_DOCKER=0`, so the docker scope reports `unavailable`.
 
 ## Scoped commands
 
-`bash tests/run.sh <scope>` runs one area. Scopes and the source-to-test
-mapping are filled in by the first plan as the harness is built.
+`bash tests/run.sh <scope>...` runs only the named scopes. Other options:
+
+| Option | Effect |
+| --- | --- |
+| `--list` | print the scopes and exit |
+| `-k <text>` | only test functions whose name contains `<text>` |
+| `-v` | print each test's captured output, not only for failures |
+
+## Source-to-scope map
+
+Pick the scope that covers the files you touched; widen to the full run when a
+change touches shared code (`lib/common.sh`, `lib/dckpy.py`, `bin/dck`).
+
+| Scope | Covers | Needs Docker |
+| --- | --- | --- |
+| `harness` | `tests/run.sh`, `tests/lib.sh` | no |
+| `config` | `lib/config.py`, `docs/schema/dck-config-v1.json` | no |
+| `template` | `src/template/`, `lib/render.py`, `dck init` | no |
+| `images` | `images/`, `.github/workflows/images.yml` (static checks) | no |
+| `entrypoint` | `lib/entrypoint.sh` (sandbox root, fake `sshd`) | no |
+| `launcher` | `bin/dck`, `bin/devcontainer-kit`, `lib/*.sh`, `install.sh` (fake `docker`/`devcontainer`) | no |
+| `layers` | the agents/editor/dailybot layers in the template and entrypoint | no |
+| `herdr` | `lib/herdr.sh`, `lib/sshconf.py` (fake `herdr`/`ssh`, sandbox `~/.ssh`) | no |
+| `doctor` | `lib/doctor.py`, `docs/schema/dck-doctor-v1.json`, `skills/dck/` | no |
+| `security` | static posture checks over `src/template/`, `images/`, `lib/` | no |
+| `docker` | integration: build the node flavour, `dck init` a fixture, `up`, `shell`, sshd on loopback, `down` | **yes** |
+
+## How a test is written
+
+A scope is `tests/scopes/<scope>.sh`; every function named `test_*` is one
+test and runs in its own subshell with a **fresh sandbox `HOME`**. The helpers
+live in `tests/lib.sh`:
+
+- `run_cmd <cmd...>` then `assert_rc <code> <desc>`; output in `$RUN_OUT` / `$RUN_ERR`
+- `assert_eq`, `assert_ne`, `assert_contains`, `assert_not_contains`,
+  `assert_match`, `assert_no_match`, `assert_file`, `assert_dir`,
+  `assert_symlink`, `assert_absent`, `assert_mode`
+- `use_fakes` puts `tests/fakes/bin` (fake `docker`, `devcontainer`, `herdr`,
+  `ssh`, `ssh-keyscan`) first on `PATH`; each fake logs its argv to
+  `$DCK_FAKE_LOG` (read with `fake_calls <tool>`) and answers from files in
+  `$DCK_FAKE_STATE`
+- `fixture <name>` copies `tests/fixtures/<name>/` into the sandbox
+- `require_docker <desc> || return 0` emits an `unavailable` line when no
+  daemon answers
+
+Result lines go to file descriptor 3, never stdout, so output of the code under
+test can never be counted as a result. A test that crashes, or makes no
+assertion, is a failure.
 
 ## Posture
 
-Unit-first; tests run in a sandbox `HOME`, without network and without
-installing anything; integration scopes that need Docker or Herdr are marked
-and report "unavailable" honestly instead of passing.
+- **Sandbox, never the real home.** `HOME`, every XDG base directory and git's
+  global/system config point into a per-test temporary directory; `DCK_*`
+  variables from the caller are cleared. Nothing is installed anywhere.
+- **No network** in the unit scopes. The `docker` scope pulls base images and
+  release assets because building an image does.
+- **Honest unavailability.** Without a Docker daemon (or with
+  `DCK_TEST_DOCKER=0`) docker-dependent tests print
+  `unavailable - <test> (<reason>)`; they never pass silently.
+- The summary is always the last line:
+  `summary: scopes: N, passed: P, failed: F, unavailable: U`. Exit status is
+  0 only when `failed` is 0; 2 on a usage error (unknown scope or flag).
