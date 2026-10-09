@@ -1,0 +1,6 @@
+# Build context is the repository root; send only what the image needs.
+*
+!images/versions.env
+!images/common/
+!lib/entrypoint.sh
+!lib/layers/
