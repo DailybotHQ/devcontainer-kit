@@ -7,6 +7,15 @@ and the interface number).
 
 ## [Unreleased]
 
+### Changed
+
+- Base images install deepworkplan-vim **v0.5.1** (commit
+  `04dcbcbdb9760082915f3c17ac28a910983e7b0e`, installer SHA-256 `b0c531f6…`). The release
+  pins every plugin and pckr to a commit in `pckr/lockfile.lua`, and `--strict` now fails the
+  build when a plugin is away from its pin, so two builds of the same pins install the same
+  plugin code. The "plugins come from each default branch" known limit is closed
+  (`docs/SECURITY.md`).
+
 ## [0.1.5] — 2026-10-09
 
 Interface stays **1**. Editor install through deepworkplan-vim's official installer.

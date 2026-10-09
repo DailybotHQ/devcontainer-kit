@@ -111,13 +111,12 @@ possible only by an explicit edit outside the managed blocks.
   packages. Images are built with provenance and an SBOM.
 - Known limits: the Neovim checksums were computed at pin time (the release
   publishes none); deepworkplan-vim's plugins (about 40) are installed at
-  build time by its own installer (`--strict` checks they are present, not
-  their content) from **each plugin's default branch**: deepworkplan-vim pins
-  none of them and this repository cannot, so two builds of the same pins may
-  differ and a compromised plugin branch on build day would land in the
-  published image (the trade-off of an editor that starts ready, open for
-  the owner to accept or reverse;
-  pinning belongs upstream, as a per-plugin commit or a lockfile checked here); Debian's `nodejs`/`npm` in `python-3.13` and `debian` come
+  build time by its own installer, each at the commit the pinned release fixes
+  in `pckr/lockfile.lua` (from v0.5.1; `--strict` fails the build when a plugin
+  or pckr is away from its lock entry), so two builds of the same pins install
+  the same plugin commits; those commits are fetched from each plugin's
+  upstream repository and verified by commit hash, not by a separate checksum
+  or signature; Debian's `nodejs`/`npm` in `python-3.13` and `debian` come
   from the distribution's signed archive; coding-agents-kit is
   pinned by tag (its installer then installs each CLI through the vendor's
   channel); the Dailybot CLI's dependencies are resolved by uv at build time.

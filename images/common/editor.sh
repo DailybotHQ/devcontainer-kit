@@ -12,16 +12,16 @@
 # piped into a shell, as the installer's own help recommends for images:
 #   bash install.sh --version X.Y.Z --skip-packages --strict
 # --skip-packages: the system packages it needs are installed by install.sh.
-# --strict: the build fails if the headless plugin install fails or leaves a
-# required plugin missing or empty.
+# --strict: the build fails if the headless plugin install fails, leaves a
+# required plugin missing or empty, or leaves a plugin (or pckr) away from the
+# commit the release pins in pckr/lockfile.lua (deepworkplan-vim v0.5.1+).
 # --nvim is not used: the image already provides the pinned, checksum-verified
 # Neovim at /usr/local/bin/nvim for every user (install.sh); --nvim would put a
 # second copy in the dev user's ~/.local/bin, which non-login SSH sessions and
 # `docker exec` do not have on PATH.
-# The installed configuration must resolve to the pinned commit. The plugins it
-# installs are NOT pinned by this repository: deepworkplan-vim lists them without a
-# commit, so each comes from its default branch at build time (docs/SECURITY.md,
-# "Known limits").
+# The installed configuration must resolve to the pinned commit, and through it
+# every plugin is pinned too: deepworkplan-vim's pckr/lockfile.lua fixes each plugin
+# and pckr to a commit, and --strict verifies them (docs/SECURITY.md, "Known limits").
 set -euo pipefail
 
 BUILD_DIR="$(cd "$(dirname "$0")" && pwd)"
