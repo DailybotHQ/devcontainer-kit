@@ -46,6 +46,10 @@ RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}
       AGENTKIT_PROFILES_DIR: /home/dev/.dck/volumes/agentkit/profiles
 ```
 
+- **npm globals go to `~/.local`.** The layer writes `prefix=~/.local` to the dev
+  user's `~/.npmrc` (Node's own prefix is root's), so `ak install` of npm-based
+  CLIs (codex, pi, cline …) works at build time and later inside the container;
+  `~/.local/bin` is on the login PATH.
 - **Node** is added only where the flavour lacks it (`python-3.13`, `debian`):
   the official nodejs.org tarball at `NODE_VERSION`, checked against its
   pinned SHA-256 before extraction. `node-24` already has it.
@@ -101,8 +105,8 @@ with the dispatcher `/usr/local/bin/dck-layer`. They run only during the
 
 ## Status in v0.1.x
 
-The `agents` layer is built against coding-agents-kit's documented interface
-(installer path, `ak install`, `AGENTKIT_*`); its end-to-end run is verified
-in the ecosystem field test once coding-agents-kit `v0.1.1` is public. Until
-then, a build with `agents = true` fails at the clone step, loudly. The
-`dailybot` and `editor` layers are verified end to end.
+The `agents` layer is verified end to end with coding-agents-kit `v0.1.1`
+(`ak` interface 1, permissions `ask`; `ak install codex` in real python-3.13 and
+node-24 images; the `docker` test scope installs the kit on every CI run). Each
+vendor CLI's own behaviour belongs to the ecosystem field test. The `dailybot`
+and `editor` layers are verified end to end.

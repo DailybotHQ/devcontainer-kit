@@ -38,7 +38,7 @@ change touches shared code (`lib/common.sh`, `lib/dckpy.py`, `bin/dck`).
 | `herdr` | `lib/herdr.sh`, `lib/sshconf.py` (fake `herdr`/`ssh`/`docker`, sandbox `~/.ssh`) | no |
 | `doctor` | `lib/doctor.py`, `lib/doctor.sh`, `docs/schema/dck-doctor-v1.json` (validated by `tests/py/minischema.py`), `skills/dck/` | no |
 | `security` | static posture checks over `src/template/`, `images/`, `lib/` | no |
-| `docker` | integration: build the node-24 image, `dck init` a fixture, `setup`, `up`, `shell -c`, sshd on loopback only, `ssh` with agent forwarding (throwaway key, sandbox agent), env profile in ssh sessions, host key stable across `up --recreate`, live `doctor --json` against the schema, `down`; the same `up`/`shell` through the real `devcontainer` CLI. Cleans up its containers, volumes and images | **yes** |
+| `docker` | integration: build the node-24 image, `dck init` a fixture, `setup`, `up`, `shell -c`, sshd on loopback only, `ssh` with agent forwarding (throwaway key, sandbox agent), env profile in ssh sessions, host key stable across `up --recreate`, live `doctor --json` against the schema, `down`; the same `up`/`shell` through the real `devcontainer` CLI; the agents layer installing coding-agents-kit at its pin (interface 1, `ask`, npm prefix). Cleans up its containers, volumes and images | **yes** |
 
 ## How a test is written
 
@@ -75,7 +75,9 @@ assertion, is a failure.
   is removed by the test.
 - **Honest unavailability.** Without a Docker daemon (or with
   `DCK_TEST_DOCKER=0`) docker-dependent tests print
-  `unavailable - <test> (<reason>)`; they never pass silently.
+  `unavailable - <test> (<reason>)`; they never pass silently. The probe asks
+  the real docker (never the fakes) and requires a server version number: a
+  stuck engine that exits 0 printing its error counts as not answering.
 - The summary is always the last line:
   `summary: scopes: N, passed: P, failed: F, unavailable: U`. Exit status is
   0 only when `failed` is 0; 2 on a usage error (unknown scope or flag).
