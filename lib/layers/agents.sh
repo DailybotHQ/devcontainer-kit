@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 #
-# lib/layers/agents.sh — the agents layer: coding-agents-kit (`ak`) at its
-# pinned tag, plus the pinned Node when node is missing or older than its major,
-# then `ak install <kind>...`.
+# lib/layers/agents.sh — the agents layer: coding-agents-kit (`ak`) from its
+# release tarball verified against the pinned sha256, plus the pinned Node when
+# node is missing or older than its major, then `ak install <kind>...` (each CLI
+# pinned and verified by ak itself) and the `classic` + `providers` presets.
 #
 #   dck-layer agents [kind...]      (rendered by `dck init` when layers.agents = true)
 #
 # The base images never contain a coding-agent CLI; this runs only in the
-# repository's own image build. It follows coding-agents-kit's documented
-# install contract (`git clone --branch <tag> … && ./install.sh`, `ak install`)
-# and passes no permission-bypass flag: autonomy stays opt-in through `ak`
-# (`--auto` / AGENTKIT_PERMISSIONS=auto), never a default of this layer.
+# repository's own image build. Autonomy is coding-agents-kit's default: every
+# CLI launched through `ak` gets its own autonomy flag, because the container is
+# the sandbox. This layer spells no such flag; the opt-out
+# (AGENTKIT_PERMISSIONS=ask, or `ak <kind> --ask`) always wins.
 # shellcheck source=lib/layers/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
@@ -42,15 +43,17 @@ if [ -z "$node_major" ] || [ "$node_major" -lt "${NODE_VERSION%%.*}" ]; then
   layer_log "installed Node ${NODE_VERSION}"
 fi
 
-# 2. coding-agents-kit at its pinned tag, installed for the dev user.
+# 2. coding-agents-kit from its release tarball, verified before it is unpacked,
+#    installed for the dev user without touching shell rc files (--no-rc).
 src="$(mktemp -d /tmp/agentkit.XXXXXX)"
-# The clone runs as the dev user, so the directory must be theirs.
-if [ "$(id -u)" = "0" ]; then chown "$DCK_USER" "$src"; fi
-as_user env GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
-  git clone --quiet --depth 1 --branch "$AGENTKIT_TAG" https://github.com/DailybotHQ/coding-agents-kit.git "$src/coding-agents-kit"
-as_user bash "$src/coding-agents-kit/install.sh"
+layer_fetch "https://github.com/DailybotHQ/coding-agents-kit/releases/download/${AGENTKIT_TAG}/coding-agents-kit-${AGENTKIT_TAG}.tar.gz" \
+  "$AGENTKIT_SHA256" "$src/agentkit.tar.gz"
+tar -xzf "$src/agentkit.tar.gz" -C "$src"
+# The install runs as the dev user, so the directory must be theirs.
+if [ "$(id -u)" = "0" ]; then chown -R "$DCK_USER" "$src"; fi
+as_user bash "$src/coding-agents-kit-${AGENTKIT_TAG}/install.sh" --no-rc
 rm -rf "$src"
-layer_log "installed coding-agents-kit ${AGENTKIT_TAG}"
+layer_log "installed coding-agents-kit ${AGENTKIT_TAG} (verified)"
 
 # 3. npm installs globals into ~/.local for the dev user: Node's own prefix
 #    (/usr/local) is root's, so `npm install -g` (codex, pi, cline …) would fail
@@ -58,9 +61,20 @@ layer_log "installed coding-agents-kit ${AGENTKIT_TAG}"
 #    ~/.local/bin is on the login PATH (/etc/profile.d/00-dck.sh).
 as_user bash -c 'grep -qs "^prefix=" "$HOME/.npmrc" || printf "prefix=%s\n" "$HOME/.local" >> "$HOME/.npmrc"'
 
-# 4. The CLIs the repository asked for, each through its vendor's official channel.
+ak_bin="$(as_user bash -lc 'command -v ak || echo "$HOME/.local/share/agentkit/bin/ak"')"
+
+# 4. The CLIs the repository asked for: ak installs each pinned and verified.
 if [ "$#" -gt 0 ]; then
-  ak_bin="$(as_user bash -lc 'command -v ak || echo "$HOME/.local/share/agentkit/bin/ak"')"
   as_user bash -c 'NPM_CONFIG_PREFIX="$HOME/.local" exec "$@"' _ "$ak_bin" install "$@"
   layer_log "ak install $*"
 fi
+
+# 5. The wrapper names developers type: the classic preset (claudex, codexx, …)
+#    and the providers preset (claude-glm, codex-glm, …), loaded by every bash
+#    the dev user starts (interactive, login, Herdr panes, ssh).
+as_user "$ak_bin" alias preset classic --on >/dev/null
+as_user "$ak_bin" alias preset providers --on >/dev/null
+# shellcheck disable=SC2016  # expanded by the dev user's shell, not here
+as_user bash -c 'line="[ -r \"\$HOME/.local/share/agentkit/aliases.sh\" ] && . \"\$HOME/.local/share/agentkit/aliases.sh\""
+  grep -qxF "$line" "$HOME/.bashrc" 2>/dev/null || printf "%s\n" "$line" >> "$HOME/.bashrc"'
+layer_log "presets classic and providers on"

@@ -74,12 +74,16 @@ RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}
   and `AGENTKIT_PROFILES_DIR` points ak's profiles there, so logins survive
   rebuilds. A volume copy always wins over a rebuilt image's copy; to start a
   CLI from scratch, remove its volume (`docker volume rm <project>_<kind>`).
-- **No permission bypass.** The layer passes no autonomy flag. `ak` is
-  pass-through by default; autonomy is the explicit opt-in of the kit
-  (`ak <kind> --auto`, or `AGENTKIT_PERMISSIONS=auto` in
-  `docker/local/<service>/.env`). That opt-in is reasonable precisely when the
-  container is your sandbox — Codex's bubblewrap sandbox cannot create user
-  namespaces inside a container, for example — and it stays your decision.
+- **Autonomy by default, with an opt-out.** coding-agents-kit (v0.3.0+)
+  launches every CLI in autonomy; the container is the sandbox (Codex's
+  bubblewrap sandbox cannot create user namespaces inside a container, for
+  example). The layer itself spells no autonomy flag. To have agents ask,
+  set `AGENTKIT_PERMISSIONS=ask` in `docker/local/<service>/.env` or
+  uncomment it in compose; `ak <kind> --ask` opts out for one launch.
+- **The wrapper names.** The layer turns on ak's `classic` preset (`claudex`,
+  `codexx`, `cursorx`, `opencodex`, `pix`, `clinex`, `grokx`) and `providers`
+  preset (`claude-glm`, `codex-glm`, `codex-azure`, `codex-xai`, …), loaded by
+  every bash the dev user starts.
 
 ## dailybot
 

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Fake curl: writes content that can never match a pinned checksum.
+# Fake curl: writes content that can never match a pinned checksum, or the
+# file FAKE_CURL_FILE names (a fixture whose digest the test pinned).
 printf 'curl %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
 out=""
 while [ $# -gt 0 ]; do [ "$1" = -o ] && { out="$2"; shift; }; shift; done
-[ -n "$out" ] && echo "tampered download" > "$out"
+if [ -n "$out" ] && [ -n "${FAKE_CURL_FILE:-}" ] && [ -f "$FAKE_CURL_FILE" ]; then cp "$FAKE_CURL_FILE" "$out"
+elif [ -n "$out" ]; then echo "tampered download" > "$out"; fi
 exit 0

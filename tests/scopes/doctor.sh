@@ -190,7 +190,8 @@ test_skill_rules() {
   local s; s="$(cat "$SKILL")"
   assert_match "$s" '^## Trust boundary \(write scope\)$' "the skill has a Trust boundary (write scope) section"
   assert_no_match "$s" '(curl|wget)[^|]*\|[[:space:]]*(sudo[[:space:]]+)?(ba|z)?sh' "no fetch-piped-to-shell line (E005)"
-  assert_no_match "$s" '--dangerously|--yolo|--always-approve|AGENTKIT_PERMISSIONS=auto' "no permission-bypass flag (E006)"
+  assert_no_match "$s" '--dangerously|--yolo|--always-approve' "no CLI autonomy flag is spelled (E006: they live in coding-agents-kit)"
+  assert_contains "$s" "AGENTKIT_PERMISSIONS=ask" "the skill documents the opt-out (E006)"
   assert_contains "$s" "git clone --branch v$VERSION https://github.com/DailybotHQ/devcontainer-kit" "the install line is pinned to this version (W012)"
   assert_no_match "$s" '@main|--branch main|:latest' "no floating reference"
   local v

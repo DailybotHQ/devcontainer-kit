@@ -71,8 +71,8 @@ host.
   the exposure (see the project's `docs/SECURITY.md`) and let them make that
   edit as their own decision.
 - Coding agents inside the container run through coding-agents-kit (`ak`),
-  which is permission pass-through by default. Never enable an autonomy or
-  bypass mode on the user's behalf.
+  whose agents run in autonomy by default inside the container. The opt-out
+  is `AGENTKIT_PERMISSIONS=ask`; never remove it once the user has set it.
 - Prefer `dck shell -c` / `dck exec` over raw `docker compose`: dck applies the
   right project, user, workspace and overlay, and never `--remove-orphans`.
 

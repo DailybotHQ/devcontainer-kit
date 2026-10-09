@@ -158,7 +158,7 @@ test_agents_layer_installs_the_kit() {
   run_cmd docker run --rm --entrypoint bash "$IT_IMAGE" -c 'DCK_USER=dev dck-layer agents >/dev/null 2>&1 || exit 9; runuser -u dev -- bash -lc "ak --version; ak doctor --json | python3 -c \"import json,sys; d=json.load(sys.stdin); print(d[\\\"interface\\\"], d[\\\"permissions\\\"])\"; cat ~/.npmrc"'
   assert_rc 0 "the agents layer installs coding-agents-kit in a real image"
   assert_contains "$RUN_OUT" "agentkit ${tag#v}" "the installed kit is the pinned $tag"
-  assert_contains "$RUN_OUT" "1 ask" "ak reports interface 1 and pass-through permissions (no bypass)"
+  assert_contains "$RUN_OUT" "1 auto" "ak reports interface 1 and autonomy by default (the container is the sandbox)"
   assert_contains "$RUN_OUT" "prefix=/home/dev/.local" "npm globals go to the dev user's ~/.local"
 }
 

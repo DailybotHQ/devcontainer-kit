@@ -42,7 +42,9 @@ test_agents_layer_enabled() {
     assert_contains "$c" "  $v: {}" "volume $v is declared (per compose project)"
   done
   assert_not_contains "$c" "  cursor: {}" "kinds not requested get no volume"
-  assert_no_match "$d$c" '--auto|AGENTKIT_PERMISSIONS: *auto|--dangerously|--yolo|--always-approve|--force' "no permission bypass is enabled by the layer"
+  assert_no_match "$d$c" '--dangerously|--yolo|--always-approve|--force' "the template spells no CLI autonomy flag (they live in coding-agents-kit)"
+  assert_contains "$c" "# AGENTKIT_PERMISSIONS=ask   # opt-out: agents ask before acting" "compose documents the opt-out"
+  assert_no_match "$c" '^[[:space:]]+AGENTKIT_PERMISSIONS:' "compose sets no permission posture (ak's default, autonomy)"
   local t; t="$(cat "$REPO/.devcontainer/dck.toml")"
   assert_contains "$t" "agents = true" "dck.toml records the layer on"
   assert_contains "$t" 'clis = ["claude", "codex"]' "dck.toml records the kinds"
@@ -73,20 +75,51 @@ run_layer() {
     PATH="$LFIX/bin:$EXTRA_PATH$PATH" bash "$DCK_REPO/lib/layers/$layer.sh" "$@"
 }
 
+# agentkit_fixture — a fake coding-agents-kit release tarball and a versions.env
+# whose AGENTKIT_SHA256 is that tarball's digest; the fake curl serves it.
+agentkit_fixture() {
+  local tag dir
+  tag="$(sed -n 's/^AGENTKIT_TAG=//p' "$DCK_REPO/images/versions.env")"
+  dir="$SANDBOX/akrel/coding-agents-kit-$tag"
+  mkdir -p "$dir"
+  cat > "$dir/install.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'install.sh %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
+mkdir -p "$HOME/.local/share/agentkit/bin"
+printf '#!/usr/bin/env bash\nprintf "ak %%s npm_prefix=%%s\\n" "$*" "${NPM_CONFIG_PREFIX:-}" >> "${DCK_FAKE_LOG:-/dev/null}"\n' > "$HOME/.local/share/agentkit/bin/ak"
+chmod +x "$HOME/.local/share/agentkit/bin/ak"
+SH
+  tar -czf "$SANDBOX/akrel/agentkit.tar.gz" -C "$SANDBOX/akrel" "coding-agents-kit-$tag"
+  sed "s/^AGENTKIT_SHA256=.*/AGENTKIT_SHA256=$(shasum -a 256 "$SANDBOX/akrel/agentkit.tar.gz" | cut -d' ' -f1)/" \
+    "$DCK_REPO/images/versions.env" > "$SANDBOX/akrel/versions.env"
+}
+
 test_agents_installer_follows_the_kit_contract() {
   EXTRA_PATH="$LFIX/nodebin:"
-  run_layer agents claude codex
+  agentkit_fixture
+  run_cmd env DCK_VERSIONS="$SANDBOX/akrel/versions.env" DCK_USER="$(id -un)" FAKE_CURL_FILE="$SANDBOX/akrel/agentkit.tar.gz" \
+    DCK_LAYER_PREFIX="$SANDBOX/prefix" PATH="$LFIX/bin:$EXTRA_PATH$PATH" bash "$DCK_REPO/lib/layers/agents.sh" claude codex
   assert_rc 0 "the agents installer runs"
   local tag; tag="$(sed -n 's/^AGENTKIT_TAG=//p' "$DCK_REPO/images/versions.env")"
-  assert_contains "$(fake_calls git)" "clone --quiet --depth 1 --branch $tag https://github.com/DailybotHQ/coding-agents-kit.git" "coding-agents-kit is cloned at its pinned tag"
-  assert_contains "$(fake_calls install.sh)" "install.sh" "the kit's own install.sh runs"
+  assert_contains "$(fake_calls curl)" "https://github.com/DailybotHQ/coding-agents-kit/releases/download/$tag/coding-agents-kit-$tag.tar.gz" "coding-agents-kit comes from its pinned release tarball"
+  assert_eq "$(fake_calls git)" "" "nothing is cloned"
+  assert_contains "$(fake_calls install.sh)" "install.sh --no-rc" "the kit's own install.sh runs without touching rc files"
+  assert_contains "$(fake_calls ak)" "ak alias preset classic --on" "the classic preset is on"
+  assert_contains "$(fake_calls ak)" "ak alias preset providers --on" "the providers preset is on"
+  assert_contains "$(cat "$HOME/.bashrc")" '.local/share/agentkit/aliases.sh' "bash loads the presets"
   assert_contains "$(fake_calls ak)" "ak install claude codex npm_prefix=$HOME/.local" "ak installs exactly the requested kinds, npm globals into ~/.local"
   assert_eq "$(cat "$HOME/.npmrc")" "prefix=$HOME/.local" "the dev user's npm prefix is ~/.local (Node's prefix is root's)"
-  run_layer agents claude
+  : > "$DCK_FAKE_LOG"
+  run_cmd env DCK_VERSIONS="$SANDBOX/akrel/versions.env" DCK_USER="$(id -un)" FAKE_CURL_FILE="$SANDBOX/akrel/agentkit.tar.gz" \
+    DCK_LAYER_PREFIX="$SANDBOX/prefix" PATH="$LFIX/bin:$EXTRA_PATH$PATH" bash "$DCK_REPO/lib/layers/agents.sh" claude
   assert_eq "$(grep -c '^prefix=' "$HOME/.npmrc")" "1" "the npm prefix is written once"
-  assert_eq "$(fake_calls curl)" "" "Node is not downloaded when present"
+  assert_eq "$(grep -c 'agentkit/aliases.sh' "$HOME/.bashrc")" "1" "the presets line is written once"
+  assert_not_contains "$(fake_calls curl)" "nodejs.org" "Node is not downloaded when present"
   run_layer agents gemini
   assert_rc 2 "an unknown kind is refused"
+  run_layer agents claude
+  assert_ne "$RUN_RC" "0" "a coding-agents-kit tarball that does not match its pin fails the build"
+  assert_contains "$RUN_ERR" "checksum mismatch" "the kit tarball is verified before it is unpacked"
 }
 
 test_agents_installer_verifies_node() {

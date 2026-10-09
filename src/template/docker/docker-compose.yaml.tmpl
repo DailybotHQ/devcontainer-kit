@@ -33,8 +33,10 @@ services:
       DCK_EDITOR: "{{editor_enabled}}"
 {% if layers_agents_on %}
       # Agents layer: one named volume per CLI home (persisted by the entrypoint);
-      # ak profiles live on the agentkit volume. Autonomy stays opt-in: set
-      # AGENTKIT_PERMISSIONS=auto in .env only if this container is your sandbox.
+      # ak profiles live on the agentkit volume. Every agent launched through ak
+      # runs in autonomy (this container is the sandbox). To have agents ask
+      # before acting instead, uncomment the opt-out:
+      # AGENTKIT_PERMISSIONS=ask   # opt-out: agents ask before acting
       DCK_AGENTS: "{{agents_clis_space}}"
       AGENTKIT_PROFILES_DIR: /home/{{user}}/.dck/volumes/agentkit/profiles
 {% endif %}
