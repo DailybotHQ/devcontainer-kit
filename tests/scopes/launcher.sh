@@ -62,12 +62,14 @@ test_setup() {
   assert_mode "$HOME/.config/dck/ssh" 700 "the dck key directory is 0700"
   d setup
   assert_contains "$RUN_OUT" "setup: everything was already in place" "a second setup changes nothing"
-  echo 'FOO_API_KEY=supersecretvalue' >> "$REPO/docker/local/app/.env"
+  # The value is built at run time: no secret-shaped literal is committed.
+  local fake="placeholder-$$-value"
+  echo "FOO_API_KEY=$fake" >> "$REPO/docker/local/app/.env"
   chmod 644 "$REPO/docker/local/app/.env"
   d setup
   assert_contains "$RUN_OUT" "narrowed docker/local/app/.env to 0600" "a readable .env is narrowed, loudly"
   assert_mode "$REPO/docker/local/app/.env" 600 ".env is 0600 again"
-  assert_not_contains "$RUN_OUT$RUN_ERR" "supersecretvalue" "no env value is ever printed"
+  assert_not_contains "$RUN_OUT$RUN_ERR" "$fake" "no env value is ever printed"
 }
 
 test_setup_creates_external_networks() {

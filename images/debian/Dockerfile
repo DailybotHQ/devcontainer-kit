@@ -21,7 +21,12 @@ RUN /tmp/dck-build/install.sh debian python3
 # Entrypoint library and the default entrypoint (docs/entrypoint.md).
 COPY lib/entrypoint.sh /usr/local/lib/dck/entrypoint.sh
 COPY images/common/dck-entrypoint /usr/local/bin/dck-entrypoint
-RUN chmod 0644 /usr/local/lib/dck/entrypoint.sh && chmod 0755 /usr/local/bin/dck-entrypoint
+# Opt-in layer installers (agents, dailybot): only scripts here, run by the
+# repository's own image build when dck.toml enables them (docs/layers.md).
+COPY lib/layers/ /usr/local/lib/dck/layers/
+COPY images/common/dck-layer /usr/local/bin/dck-layer
+RUN chmod 0644 /usr/local/lib/dck/entrypoint.sh /usr/local/lib/dck/layers/*.sh \
+    && chmod 0755 /usr/local/bin/dck-entrypoint /usr/local/bin/dck-layer
 
 ENV LANG=en_US.UTF-8 \
     EDITOR=nvim \

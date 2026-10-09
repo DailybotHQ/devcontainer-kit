@@ -19,6 +19,7 @@
 #   dck_authorize_keys [--add]               the dck block of authorized_keys
 #   dck_herdr_config                         Herdr config defaults, in place
 #   dck_repo_hook                            docker/local/dev-setup-hook.sh, if present
+#   dck_layer_persist                        per-CLI volumes of the agents layer
 #   dck_start                                the standard sequence of the above
 #
 # Inputs (environment; the compose file rendered by `dck init` sets them):
@@ -395,6 +396,53 @@ dck_repo_hook() {
 }
 
 # --------------------------------------------------------------------------
+# dck_layer_persist — homes of the opt-in layers
+# --------------------------------------------------------------------------
+# For each kind in DCK_AGENTS, the CLI's home directories go on the named
+# volume of the same name (one volume per CLI, declared by the template);
+# coding-agents-kit's config (~/.config/agentkit, env file mode 600) goes on
+# the agentkit volume (its profiles directory is set there through
+# AGENTKIT_PROFILES_DIR). With DCK_DAILYBOT=1 the Dailybot CLI's config goes
+# on the state volume. Unknown kinds are logged and skipped.
+
+dck_agent_homes() {
+  case "$1" in
+    claude)   printf '%s\n' ".claude dir" ".claude.json file" ;;
+    codex)    printf '%s\n' ".codex dir" ;;
+    cursor)   printf '%s\n' ".cursor dir" ".config/cursor dir" ;;
+    opencode) printf '%s\n' ".config/opencode dir" ".local/share/opencode dir" ;;
+    pi)       printf '%s\n' ".pi dir" ;;
+    cline)    printf '%s\n' ".cline dir" ;;
+    grok)     printf '%s\n' ".grok dir" ;;
+    *) return 1 ;;
+  esac
+}
+
+dck_layer_persist() {
+  _dck_env
+  local kind rel k
+  if [ -n "${DCK_AGENTS:-}" ]; then
+    dck_persist agentkit "$DCK_HOME/.config/agentkit" dir || true
+    mkdir -p "$DCK_PERSIST_ROOT/agentkit/profiles"
+    _dck_chown "$DCK_USER:$(_dck_group)" "$DCK_PERSIST_ROOT/agentkit/profiles"
+    for kind in $DCK_AGENTS; do
+      if ! dck_agent_homes "$kind" >/dev/null; then
+        dck_log "agents: unknown kind '$kind' skipped"
+        continue
+      fi
+      while read -r rel k; do
+        dck_persist "$kind" "$DCK_HOME/$rel" "$k" || true
+      done <<HOMES
+$(dck_agent_homes "$kind")
+HOMES
+    done
+  fi
+  if [ "${DCK_DAILYBOT:-0}" = "1" ]; then
+    dck_persist state "$DCK_HOME/.config/dailybot" dir || true
+  fi
+}
+
+# --------------------------------------------------------------------------
 # dck_start — the standard sequence (what /usr/local/bin/dck-entrypoint runs)
 # --------------------------------------------------------------------------
 
@@ -409,9 +457,7 @@ dck_start() {
   dck_persist state "$DCK_HOME/.config/gh" dir || true
   dck_persist state "$DCK_HOME/.config/herdr" dir || true
   dck_persist state "$DCK_HOME/.bash_history" file || true
-  if declare -F dck_layer_persist >/dev/null 2>&1; then
-    dck_layer_persist || true
-  fi
+  dck_layer_persist || true
   dck_herdr_config || true
   dck_env_profile || true
   dck_sshd || true

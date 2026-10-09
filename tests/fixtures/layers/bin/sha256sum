@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# sha256sum for hosts that only have shasum (macOS).
+exec shasum -a 256 "$@"

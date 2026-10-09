@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Fake git for the layers scope: `clone ... <url> <dest>` creates a fake
+# coding-agents-kit whose install.sh installs a fake `ak` that logs its argv.
+printf 'git %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
+if [ "$1" = clone ]; then
+  dest="${!#}"
+  mkdir -p "$dest"
+  cat > "$dest/install.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'install.sh %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
+mkdir -p "$HOME/.local/share/agentkit/bin"
+printf '#!/usr/bin/env bash\nprintf "ak %%s\\n" "$*" >> "${DCK_FAKE_LOG:-/dev/null}"\n' > "$HOME/.local/share/agentkit/bin/ak"
+chmod +x "$HOME/.local/share/agentkit/bin/ak"
+SH
+fi
+exit 0

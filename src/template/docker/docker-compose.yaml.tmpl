@@ -34,7 +34,14 @@ services:
       DCK_SSH: "{{ssh_enabled}}"
       DCK_EDITOR: "{{editor_enabled}}"
 {% if layers_agents_on %}
+      # Agents layer: one named volume per CLI home (persisted by the entrypoint);
+      # ak profiles live on the agentkit volume. Autonomy stays opt-in: set
+      # AGENTKIT_PERMISSIONS=auto in .env only if this container is your sandbox.
       DCK_AGENTS: "{{agents_clis_space}}"
+      AGENTKIT_PROFILES_DIR: /home/{{user}}/.dck/volumes/agentkit/profiles
+{% endif %}
+{% if layers_dailybot_on %}
+      DCK_DAILYBOT: "1"
 {% endif %}
       # Public key(s) dck authorizes for sshd; set by `dck up`, empty otherwise.
       DCK_AUTHORIZED_KEYS: "${DCK_AUTHORIZED_KEYS:-}"

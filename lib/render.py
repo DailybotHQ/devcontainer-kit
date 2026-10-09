@@ -277,16 +277,18 @@ def existing_base_image(repo):
 def layers_block(values):
     """Dockerfile lines for the opt-in layers (see docs/layers.md)."""
     lines = []
+    user = values["user"]
     if values["layers.agents"]:
         lines += [
-            "# Agents layer (layers.agents = true): coding-agents-kit at its pinned tag.",
+            "# Agents layer (layers.agents = true): coding-agents-kit (ak) at its pinned",
+            "# tag, Node when the flavour lacks it, then `ak install` for agents.clis.",
             "ARG DCK_AGENT_CLIS=\"%s\"" % " ".join(values["agents.clis"]),
-            "RUN dck-layer agents ${DCK_AGENT_CLIS}",
+            "RUN DCK_USER=%s dck-layer agents ${DCK_AGENT_CLIS}" % user,
         ]
     if values["layers.dailybot"]:
         lines += [
             "# Dailybot layer (layers.dailybot = true): requested by the dailybot addon.",
-            "RUN dck-layer dailybot",
+            "RUN DCK_USER=%s dck-layer dailybot" % user,
         ]
     if not values["layers.editor"]:
         lines += [
@@ -336,6 +338,7 @@ def context(values, repo_name, project, network, base_image, dck_tag):
         "network": network,
         "layers_agents": toml_value(values["layers.agents"]),
         "layers_agents_on": values["layers.agents"],
+        "layers_dailybot_on": values["layers.dailybot"],
         "layers_dailybot": toml_value(values["layers.dailybot"]),
         "layers_editor": toml_value(values["layers.editor"]),
         "agents_clis_toml": ", ".join(json.dumps(c) for c in values["agents.clis"]),

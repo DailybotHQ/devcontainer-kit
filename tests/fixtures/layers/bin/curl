@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Fake curl: writes content that can never match a pinned checksum.
+printf 'curl %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
+out=""
+while [ $# -gt 0 ]; do [ "$1" = -o ] && { out="$2"; shift; }; shift; done
+[ -n "$out" ] && echo "tampered download" > "$out"
+exit 0
