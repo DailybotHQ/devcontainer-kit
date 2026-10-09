@@ -23,7 +23,7 @@ HEADER = [
 ]
 INCLUDE_MARK = "# Added by devcontainer-kit (dck): Herdr machine aliases"
 RE_ALIAS = r"^[a-z0-9][a-z0-9._-]{0,63}$"
-RE_HOST = r"^[0-9.]+$|^localhost$"
+RE_HOST = r"^127\.0\.0\.1$"  # agent forwarding never leaves this machine
 RE_USER = r"^[a-z_][a-z0-9_-]{0,31}$"
 
 

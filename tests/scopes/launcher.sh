@@ -204,11 +204,14 @@ PY
   local tmpd="$SANDBOX/tmp"
   mkdir -p "$tmpd"
   denv TMPDIR="$tmpd" "$DCK" up
+  assert_rc 5 "a host bind mount in devcontainer.json needs --trust"
+  assert_contains "$RUN_ERR" "a host path outside the repository (/opt/data)" "the preflight names it"
+  denv TMPDIR="$tmpd" "$DCK" --trust up
   local ov="$tmpd/dck-$(id -u)/proj-overlay.yml"
   assert_file "$ov" "an overlay is written for mounts/containerEnv"
   assert_mode "$ov" 600 "the overlay is private"
   assert_contains "$(cat "$ov")" 'APP_MODE: "dev"' "containerEnv is reproduced"
-  assert_contains "$(cat "$ov")" '"/opt/data":/data:ro' "a read-only bind mount is reproduced"
+  assert_contains "$(cat "$ov")" '- "/opt/data:/data:ro"' "a read-only bind mount is reproduced (quoted)"
   assert_contains "$(cat "$ov")" "    name: proj_shared" "an already-qualified volume is external by name"
   assert_contains "$(cat "$ov")" "  cache: {}" "a short volume is declared normally"
   assert_contains "$(fake_calls docker)" "-f $ov up -d" "compose is given the overlay"

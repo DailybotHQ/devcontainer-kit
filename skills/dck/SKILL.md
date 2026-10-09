@@ -3,7 +3,7 @@ name: dck
 description: Operate a repository's development container with devcontainer-kit (dck) — render the Dev Container template (dck init), start/enter/rebuild it from a terminal (dck setup|up|shell|exec|rebuild|down), SSH in with agent forwarding, register it as a Herdr machine (dck herdr add|status|repair), and diagnose it (dck doctor --json). Use only when the user mentions dck or devcontainer-kit, a dev container / devcontainer / .devcontainer/ or docker/local/ setup they want created or operated, or a container they want as a Herdr machine. Do not use for building or deploying production images, for Kubernetes, or merely because a repository contains a Dockerfile.
 license: MIT
 metadata:
-  version: 0.1.0
+  version: 0.1.1
   interface: 1
   homepage: https://github.com/DailybotHQ/devcontainer-kit
 ---
@@ -27,7 +27,7 @@ tell the user and show the pinned install line — do not install it without
 being asked:
 
 ```bash
-git clone --branch v0.1.0 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.1.1 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh
 ```
 
@@ -53,7 +53,10 @@ Configuration lives in `.devcontainer/dck.toml` (per repo, committed) and
 Exit codes: 0 ok, 1 failed, 2 usage, 3 configuration, 4 environment
 (docker/python missing), 5 refused by a safety rule. On 5, read the message:
 it names the rule (e.g. clobbering a file, the directory-default compose
-project) — do not work around it, ask the user.
+project, a configuration that reaches the host) — do not work around it, ask
+the user. Never add `--trust` / `DCK_TRUST=1` yourself: it means the user has
+read the repository's container configuration and accepts what it does on the
+host.
 
 ## Rules for agents
 

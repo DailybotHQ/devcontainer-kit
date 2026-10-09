@@ -72,9 +72,13 @@ jobs:
             DCK_VERSION=${{ steps.tag.outputs.version }}
           tags: ${{ env.IMAGE }}:${{ matrix.flavour }}-${{ steps.tag.outputs.suffix }}
       - name: record digest
+        env:
+          FLAVOUR: ${{ matrix.flavour }}
+          SUFFIX: ${{ steps.tag.outputs.suffix }}
+          DIGEST: ${{ steps.push.outputs.digest }}
         run: |
-          line="${IMAGE}:${{ matrix.flavour }}-${{ steps.tag.outputs.suffix }}@${{ steps.push.outputs.digest }}"
-          echo "$line" > "digest-${{ matrix.flavour }}.txt"
+          line="${IMAGE}:${FLAVOUR}-${SUFFIX}@${DIGEST}"
+          echo "$line" > "digest-${FLAVOUR}.txt"
           echo "- \`$line\`" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

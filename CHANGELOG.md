@@ -3,7 +3,35 @@
 All notable changes to devcontainer-kit. Versions follow [SemVer](https://semver.org)
 (0.x: a breaking change bumps the minor version and the interface number).
 
+## [0.1.1] — 2026-10-09
+
+Security release; **use it instead of 0.1.0**. Interface stays **1** (additive).
+
+### Security
+
+- `dck ssh` and Herdr machines connect (and forward your SSH agent) only to
+  127.0.0.1; a repository-chosen `bind` can no longer redirect the agent. The SSH
+  include accepts only `HostName 127.0.0.1`.
+- `up`/`start`/`build`/`rebuild` refuse a repository configuration that reaches the
+  host (`initializeCommand`, `privileged`, `cap_add`, host namespaces, devices, the
+  Docker socket, bind mounts or compose files outside the repository) unless you pass
+  `--trust` / `DCK_TRUST=1`.
+- `dck init` backups are created with `O_EXCL|O_NOFOLLOW` (never through a planted link).
+- The compose overlay quotes values and escapes `$` (no YAML injection, no host
+  variable interpolation into the container).
+- `.env` handling acts only on regular files inside the repository; symlinked
+  `.env`/compose/devcontainer files are ignored or refused; a compose project not
+  named after the repository is announced.
+- The entrypoint keeps the Herdr config owned by the dev user and writes its temp
+  file with `O_EXCL|O_NOFOLLOW`; the images workflow passes the tag through `env`.
+
+### Fixed
+
+- A dck key whose `.pub` was deleted is repaired with `ssh-keygen -y`.
+
 ## [0.1.0] — 2026-10-09
+
+Superseded by 0.1.1 (security fixes).
 
 First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`).
 
@@ -35,4 +63,5 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
+[0.1.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.1
 [0.1.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.0

@@ -29,7 +29,7 @@ service = "app"                # compose service the tools attach to
 user = "dev"                   # remoteUser
 workspace = "/workspace"       # workspaceFolder
 flavour = "node-24"            # python-3.13 | node-24 | debian
-image_tag = "v0.1.0"           # devcontainer-kit-base tag (digest pinned in compose)
+image_tag = "v0.1.1"           # devcontainer-kit-base tag (digest pinned in compose)
 ssh_port = 22040               # loopback-only host port for Herdr; 0 = no sshd
 ports = { web = 4321 }         # named loopback ports
 [layers]
@@ -52,7 +52,7 @@ label = "{repo}"
 | `flavour` | string | **required** | `python-3.13`, `node-24` or `debian` |
 | `image_tag` | string | the installed dck's tag | `vX.Y.Z[-pre]` |
 | `ssh_port` | integer | `0` | `0` (no sshd) or 1024–65535; published on `bind` only |
-| `bind` | string | `127.0.0.1` | IPv4 address every published port binds to. Changing it exposes the container's ports beyond this machine — see [SECURITY.md](SECURITY.md) |
+| `bind` | string | `127.0.0.1` | IPv4 address every published port binds to. Changing it exposes the container's ports beyond this machine — see [SECURITY.md](SECURITY.md). `dck ssh` and Herdr still connect only to 127.0.0.1 and refuse a `bind` that is neither loopback nor `0.0.0.0` |
 | `ports` | table | `{}` | `name = port`; names `^[a-z][a-z0-9_-]{0,31}$`; ports unique and different from `ssh_port` |
 | `layers.agents` | boolean | `false` | see [layers.md](layers.md) |
 | `layers.dailybot` | boolean | `false` | see [layers.md](layers.md) |

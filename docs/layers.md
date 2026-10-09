@@ -99,7 +99,7 @@ with the dispatcher `/usr/local/bin/dck-layer`. They run only during the
 **repository's** image build. Every download goes through one verified
 `fetch`; nothing is piped into a shell.
 
-## Status in v0.1.0
+## Status in v0.1.x
 
 The `agents` layer is built against coding-agents-kit's documented interface
 (installer path, `ak install`, `AGENTKIT_*`); its end-to-end run is verified

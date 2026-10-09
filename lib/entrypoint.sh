@@ -362,13 +362,16 @@ for t in order:
     out.extend(body)
 new = "\n".join(out).lstrip("\n") + "\n"
 if new != text:
-    tmp = path + ".tmp"
-    with open(tmp, "w") as fh:
+    tmp = "%s.tmp-%d" % (path, os.getpid())
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(fd, "w") as fh:
         fh.write(new)
     os.replace(tmp, path)
     sys.stderr.write("dck-entrypoint: herdr config: updated\n")
 PY
-  _dck_chown -R "$DCK_USER:$(_dck_group)" "$(dirname "$cfg")"
+  # The real directory (it is usually a symlink onto the state volume, and
+  # chown -R does not traverse a symlink given as its operand).
+  _dck_chown -R "$DCK_USER:$(_dck_group)" "$(cd -P "$(dirname "$cfg")" && pwd)"
 }
 
 # --------------------------------------------------------------------------

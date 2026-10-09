@@ -266,6 +266,8 @@ def resolve_digest(ref, timeout=30):
 
 def existing_base_image(repo):
     path = os.path.join(repo, "docker", "local", "docker-compose.yaml")
+    if os.path.islink(path):
+        return None
     try:
         text = open(path).read()
     except OSError:
@@ -520,12 +522,15 @@ def backup(path):
     stamp = time.strftime("%Y%m%d%H%M%S", time.gmtime())
     dest = "%s.dck-bak-%s" % (path, stamp)
     n = 1
-    while os.path.exists(dest):
+    while os.path.lexists(dest):
         n += 1
         dest = "%s.dck-bak-%s-%d" % (path, stamp, n)
-    with open(path, "rb") as src, open(dest, "wb") as out:
+    mode = os.stat(path).st_mode & 0o777
+    # O_EXCL|O_NOFOLLOW: a name planted by the repository (even a dangling
+    # symlink) is never written through.
+    fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
+    with open(path, "rb") as src, os.fdopen(fd, "wb") as out:
         out.write(src.read())
-    os.chmod(dest, os.stat(path).st_mode & 0o777)
     return dest
 
 

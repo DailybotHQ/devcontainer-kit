@@ -88,6 +88,8 @@ test_end_to_end() {
   assert_match "$RUN_OUT" '^0$' "no file in the container contains the forwarded key"
   assert_contains "$RUN_OUT" "from-env-file" "ssh sessions see the container environment (env profile)"
   assert_not_contains "$RUN_ERR" "from-env-file" "dck never prints env values itself"
+  d shell -c 'stat -c %U "$(readlink -f ~/.config/herdr/config.toml)"'
+  assert_eq "$RUN_OUT" "dev" "the root entrypoint leaves the Herdr config owned by the dev user"
 
   d up --recreate
   wait_port "$port" || fail "sshd answers again after a recreate"

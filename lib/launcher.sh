@@ -24,7 +24,10 @@ dck_usage() {
   cat <<'EOF'
 dck — devcontainer-kit: a repository's dev container from a plain terminal
 
-usage: dck [--repo DIR] [--profile NAME] [--project NAME] <verb> [args]
+usage: dck [--repo DIR] [--profile NAME] [--project NAME] [--trust] <verb> [args]
+
+  --trust               start a repository whose own config reaches the host
+                        (initializeCommand, privileged, Docker socket, host mounts)
 
   init [flags]          render the Dev Container template into this repository
   setup                 .env files from their examples (0600), external networks,
@@ -145,7 +148,7 @@ resolve_project() {
     PROJECT="$COMPOSE_PROJECT_NAME"; PROJECT_FROM="COMPOSE_PROJECT_NAME in the environment"
   else
     local v=""
-    if [ -f "$COMPOSE_DIR/.env" ]; then
+    if [ -f "$COMPOSE_DIR/.env" ] && [ ! -L "$COMPOSE_DIR/.env" ]; then
       v="$(sed -n 's/^[[:space:]]*COMPOSE_PROJECT_NAME[[:space:]]*=[[:space:]]*\(.*\)$/\1/p' "$COMPOSE_DIR/.env" | tail -1)"
       v="${v%\"}"; v="${v#\"}"
     fi
@@ -158,6 +161,15 @@ resolve_project() {
   [ -n "$PROJECT" ] || die "$DCK_EXIT_REFUSED" "refusing the directory-name default compose project — add a top-level 'name:' to ${DC_COMPOSE#"$DC_REPO"/} (dck init does), set COMPOSE_PROJECT_NAME, or pass --project"
   case "$PROJECT" in
     *[!a-z0-9_-]*|[!a-z0-9]*) die "$DCK_EXIT_CONFIG" "invalid compose project name '$PROJECT' (lower-case letters, digits, - and _)" ;;
+  esac
+  case "$PROJECT_FROM" in
+    --project) ;;
+    *)
+      case "$PROJECT" in
+        *"$(basename "$DC_REPO" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9_\n-' '-')"*) ;;
+        *) warn "note: compose project '$PROJECT' (from $PROJECT_FROM) is not named after this repository; down/stop act on its services in that project" ;;
+      esac
+      ;;
   esac
 }
 
@@ -249,9 +261,11 @@ group_or_other_readable() {
   [ "$(( 8#$m & 8#077 ))" -ne 0 ]
 }
 
+# Regular .env*.example files inside the repository, never through a link and
+# never with a control character in the name (see lib/devc.py env_examples).
 env_examples() {
   [ -d "$COMPOSE_DIR" ] || return 0
-  find "$COMPOSE_DIR" -type f -name '.env*.example' 2>/dev/null | LC_ALL=C sort
+  dckpy devc env-examples --dir "$COMPOSE_DIR" --repo "$DC_REPO"
 }
 
 # .env files are created from their example at 0600, so a key pasted later is
@@ -312,6 +326,16 @@ pretty_path() {
   esac
 }
 
+# dck forwards your SSH agent only to 127.0.0.1. A dck.toml `bind` other than
+# loopback or 0.0.0.0 means the port is not on loopback: refuse rather than
+# follow a repository-chosen address with your agent.
+ssh_bind_reachable_on_loopback() {
+  case "$DCK_BIND" in
+    127.0.0.1|0.0.0.0) return 0 ;;
+    *) die "$DCK_EXIT_REFUSED" "dck.toml binds ports to $DCK_BIND; dck connects with your forwarded agent only to 127.0.0.1 — use bind = \"127.0.0.1\" (or 0.0.0.0) to ssh or register a Herdr machine" ;;
+  esac
+}
+
 ssh_enabled() { [ "$DCK_HAS_TOML" = "1" ] && [ "${DCK_SSH_PORT:-0}" != "0" ]; }
 
 # The dedicated key dck authorizes inside containers. It is generated once,
@@ -322,6 +346,11 @@ dck_identity_ensure() {
   [ -n "$id" ] || return 0
   [ -f "$id" ] && [ -f "$id.pub" ] && return 0
   command -v ssh-keygen >/dev/null 2>&1 || die "$DCK_EXIT_ENV" "ssh-keygen is not on PATH"
+  if [ -f "$id" ]; then
+    (umask 022 && ssh-keygen -y -f "$id" > "$id.pub") </dev/null || die "could not derive $id.pub from $id"
+    note "restored the public half of the dck SSH key"
+    return 0
+  fi
   (umask 077 && mkdir -p "$(dirname "$id")") || die "could not create $(dirname "$id")"
   chmod 700 "$(dirname "$id")"
   ssh-keygen -q -t ed25519 -N '' -C "dck@$(hostname 2>/dev/null || echo host)" -f "$id" </dev/null >/dev/null \
@@ -336,8 +365,23 @@ export_authorized_keys() {
   fi
 }
 
+# The repository's devcontainer.json and compose file run on YOUR Docker
+# daemon. dck-rendered setups contain nothing that reaches the host; a hand-
+# written one may (initializeCommand, privileged, the Docker socket, host
+# mounts). Those need an explicit --trust (or DCK_TRUST=1) once you have read them.
+preflight_check() {
+  [ "${DCK_TRUST:-0}" = "1" ] && return 0
+  local found
+  if found="$(dckpy devc preflight --repo "$DC_REPO")"; then return 0; fi
+  [ -n "$found" ] || exit "$DCK_EXIT_CONFIG"
+  printf 'dck: this repository'"'"'s container configuration reaches the host:\n' >&2
+  printf '%s\n' "$found" | sed 's/^/  - /' >&2
+  die "$DCK_EXIT_REFUSED" "review it, then re-run with --trust (or DCK_TRUST=1) to start it anyway"
+}
+
 # Everything `up`, `start`, `build` need before compose runs.
 fast_check() {
+  preflight_check
   ENV_CREATED=0
   ensure_env_from_examples
   ensure_external_networks
@@ -631,8 +675,8 @@ cmd_ssh() {
   require_docker
   container_running || die "$DC_SERVICE is not running — run: dck up"
   [ -f "$DCK_SSH_IDENTITY" ] || die "$DCK_EXIT_CONFIG" "the dck SSH key $(pretty_path "$DCK_SSH_IDENTITY") is missing — run: dck setup && dck up"
-  local host="$DCK_BIND" kh
-  [ "$host" = "0.0.0.0" ] && host="127.0.0.1"
+  ssh_bind_reachable_on_loopback
+  local host="127.0.0.1" kh
   kh="$(dck_config_home)/ssh/known_hosts"
   (umask 077 && mkdir -p "$(dirname "$kh")")
   # Agent forwarding, never key copies. accept-new: a fresh container is
@@ -669,6 +713,7 @@ dck_main() {
         if declare -F dck_print_skill >/dev/null 2>&1; then dck_print_skill; return $?; fi
         die "$DCK_EXIT_FAIL" "--skill is not available in this build" ;;
       --profile) [ $# -ge 2 ] || die "$DCK_EXIT_USAGE" "--profile needs a name"; DCK_PROFILE_NAME="$2"; shift 2 ;;
+      --trust) DCK_TRUST=1; export DCK_TRUST; shift ;;
       --project) [ $# -ge 2 ] || die "$DCK_EXIT_USAGE" "--project needs a name"; DCK_PROJECT_OVERRIDE="$2"; shift 2 ;;
       --repo) [ $# -ge 2 ] || die "$DCK_EXIT_USAGE" "--repo needs a directory"; DCK_REPO_ARG="$2"; shift 2 ;;
       -h|--help) verb="help"; shift ;;

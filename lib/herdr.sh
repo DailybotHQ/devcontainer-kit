@@ -19,8 +19,10 @@ herdr_paths() {
   HERDR_INCLUDE="$HOME/.ssh/config.d/dck"
   HERDR_SSH_CONFIG="$HOME/.ssh/config"
   HERDR_KNOWN_HOSTS="$(dck_config_home)/ssh/known_hosts"
-  HERDR_HOST="$DCK_BIND"
-  [ "$HERDR_HOST" = "0.0.0.0" ] && HERDR_HOST="127.0.0.1"
+  # Always loopback: the agent is forwarded on this connection, so its address
+  # never comes from the (repository-controlled) bind setting.
+  HERDR_HOST="127.0.0.1"
+  ssh_bind_reachable_on_loopback
   HERDR_WAIT="${DCK_HERDR_WAIT:-30}"
   case "$HERDR_WAIT" in ''|*[!0-9]*) HERDR_WAIT=30 ;; esac
 }

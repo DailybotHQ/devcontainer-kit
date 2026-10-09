@@ -192,6 +192,15 @@ def cmd_devc(args):
                 return usage("devc overlay --repo DIR --project NAME --out FILE")
             print("written" if devc.write_overlay(repo, project, out) else "none")
             return EXIT_OK
+        if sub == "env-examples":
+            for p in devc.env_examples(opt(args, "--dir"), opt(args, "--repo")):
+                print(p)
+            return EXIT_OK
+        if sub == "preflight":
+            found = devc.preflight(opt(args, "--repo"))
+            for f in found:
+                print(f)
+            return EXIT_REFUSED if found else EXIT_OK
         if sub == "networks":
             for name in devc.external_networks(opt(args, "--file")):
                 print(name)

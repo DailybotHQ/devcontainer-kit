@@ -17,11 +17,12 @@ in your images, and your Herdr machines.
 | From → to | Trusted? | Consequence |
 | --- | --- | --- |
 | you → dck on your host | yes | dck acts with your permissions, inside the write scope below |
-| the repository's files → dck | **no** — you may run dck on a repository you just cloned | dck parses them (JSONC, TOML, compose) but never executes them on the host, never follows a symlink they plant, never imports a module from them |
+| the repository's files → dck | **no** — you may run dck on a repository you just cloned | dck parses them (JSONC, TOML, compose); never writes or reads secrets through a symlink they plant; never imports a module from them; never forwards your agent to an address they choose |
+| the repository's container configuration → your Docker daemon | **only after review** | `up`/`start`/`build`/`rebuild` hand the repository's compose file and `devcontainer.json` to Docker (and the devcontainer CLI). Anything in them that reaches the host — `initializeCommand`, `privileged`, `cap_add`, host namespaces, devices, the Docker socket, bind mounts outside the repository, a compose file outside it — is refused until you pass `--trust` (or `DCK_TRUST=1`). dck-rendered setups contain none of these. Treat `--trust` like "trust this folder" in an editor |
 | the repository → its own container | yes, by design | the container exists to run the repository's code; its hook and its Dockerfile run there, with the dev user's sudo |
 | the container → your host | **no** | the container reaches the host only through what you publish (loopback ports) and what you forward (your SSH agent, for the session you open) |
 | other machines on your network → the container | **no** | nothing listens beyond 127.0.0.1 unless `bind` says so |
-| the network → the image build | **no** | every download is pinned and checksum-verified |
+| the network → the image build | **no** | every base-image download is pinned and checksum-verified; the opt-in layers pin coding-agents-kit by tag and resolve the Dailybot CLI's dependencies with uv (see Supply chain) |
 
 **Out of scope.** A malicious repository *inside its own container* (it owns
 that container by design), a compromised Docker daemon or kernel, a host
@@ -34,7 +35,11 @@ projects whose releases we pin (we pin, we do not audit them).
 
 Every port the template publishes binds `127.0.0.1` (`"127.0.0.1:<port>:<port>"`,
 sshd as `"127.0.0.1:<ssh_port>:22"`). Only an explicit `bind = "<address>"` in
-`dck.toml` widens it, and `dck doctor` then lists it as a problem. Inside the
+`dck.toml` widens it, and `dck doctor` then lists it as a problem. Whatever
+`bind` says, `dck ssh` and Herdr machines connect **only to 127.0.0.1**: your
+agent is forwarded on that connection, so its destination never comes from
+repository-controlled configuration (a `bind` that is neither loopback nor
+`0.0.0.0` makes them refuse, exit 5). Inside the
 container sshd listens on the container network: other containers on the same
 compose network can reach port 22, where only public-key login for the dev
 user is accepted.
@@ -116,7 +121,18 @@ possible only by an explicit edit outside the managed blocks.
   repository mount.
 - `dck init` refuses symlinked targets and any target that resolves outside
   the repository; it changes existing files only after showing the diff and
-  getting consent, keeping a backup.
+  getting consent, keeping a backup created with `O_EXCL|O_NOFOLLOW` (a
+  planted backup name is never written through).
+- `.env` handling (`setup`, `up`, `doctor`) acts only on regular files inside
+  the repository: symlinked files or directories and names with control
+  characters are skipped; a symlinked `devcontainer.json` or compose file is
+  refused.
+- The compose overlay quotes every value and escapes `$`, so a repository
+  cannot inject compose keys or pull host variables (e.g. a token) into the
+  container through `containerEnv` or `mounts`.
+- A compose project not named after the repository (from `COMPOSE_PROJECT_NAME`
+  or `name:`) is announced on every verb, since `down`/`stop` act on that
+  project's services.
 - No `eval` of command output in the shell code; values from the python side
   are read line by line into an allow-listed set of variables.
 - The compose overlay lives in a 0700 directory dck must own (a planted or
@@ -135,6 +151,7 @@ possible only by an explicit edit outside the managed blocks.
 | Herdr config forces `allow_nested = true` | the container's Herdr runs inside the host's |
 | The repository hook runs at every start | it is the repository's own code in its own container |
 | `--remove-orphans` is never passed | protecting shared projects outweighs orphan cleanup |
+| `--trust` is per invocation | an explicit, reviewable decision each time a host-reaching configuration is started |
 
 ## Coding agents
 

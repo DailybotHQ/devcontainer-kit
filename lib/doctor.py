@@ -51,6 +51,8 @@ def first_version(text):
 
 def read_env_file(path):
     out = {}
+    if os.path.islink(path):
+        return out
     try:
         for line in open(path).read().splitlines():
             line = line.strip()
@@ -135,6 +137,9 @@ def repo_info(repo, dck_tag, profile, rt, problems):
             for f in sorted(files):
                 if f.startswith(".env") and f.endswith(".example"):
                     target = os.path.join(root, f[:-len(".example")])
+                    if os.path.islink(target) or os.path.islink(os.path.join(root, f)):
+                        problems.append("%s is a symlink; dck ignores it" % os.path.relpath(target, repo))
+                        continue
                     entry = {"path": os.path.relpath(target, repo), "present": os.path.isfile(target),
                              "mode": None, "private": None, "keys_set": []}
                     if entry["present"]:

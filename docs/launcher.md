@@ -57,6 +57,15 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
   `docker/local/.env`) or the compose file's top-level `name:` (which
   `dck init` writes). Otherwise dck refuses (exit 5): compose would otherwise
   build a second, parallel stack next to the editor's.
+- **The repository's container configuration is reviewed before it runs.**
+  `up`, `start`, `build` and `rebuild` refuse (exit 5) a configuration that
+  reaches the host — `initializeCommand`, `privileged`, `cap_add`, host
+  namespaces, devices, the Docker socket, bind mounts or compose files outside
+  the repository — and list what they found. Re-run with `--trust` (or
+  `DCK_TRUST=1`) after reading it. dck-rendered setups never trigger it.
+- **Your agent only goes to loopback.** `dck ssh` (and Herdr) connect to
+  `127.0.0.1` whatever `bind` says, and refuse a `bind` that is not loopback or
+  `0.0.0.0`.
 - **Secrets stay put.** `.env` files are created 0600 and their values are
   never printed; `doctor` reports variable *names* only.
 
@@ -98,12 +107,13 @@ entrypoint). `dck ssh` connects to `127.0.0.1:<ssh_port>` with:
 | `DCK_NO_DIGEST=1` | `dck init` skips the digest lookup |
 | `DCK_NONINTERACTIVE=1` | never prompt (as if stdin were not a terminal) |
 | `COMPOSE_PROJECT_NAME` | project name (see above) |
+| `DCK_TRUST=1` | same as `--trust` (start a configuration that reaches the host) |
 | `DCK_SSH_CONFIG` | `dck ssh` passes `-F <file>` (e.g. `/dev/null` to ignore `~/.ssh/config`) |
 
 ## Install
 
 ```bash
-git clone --branch v0.1.0 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.1.1 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh            # or --no-rc for scripted installs
 ```
 
