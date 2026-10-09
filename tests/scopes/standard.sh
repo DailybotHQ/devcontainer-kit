@@ -79,9 +79,14 @@ test_agents_entry_point() {
 test_gitignore() {
   local g; g="$(cat "$R/.gitignore")"
   local p
-  for p in ".dwp/" "tmp/" ".env" ".env.*" "!.env.example" ".DS_Store" "Thumbs.db"; do
+  for p in "tmp/" ".env" ".env.*" "!.env.example" ".DS_Store" "Thumbs.db"; do
     assert_match "$g" "^$(printf '%s' "$p" | sed 's/[.*]/\\&/g')$" ".gitignore has $p"
   done
+  # DeepWorkPlan v7 (spec/CONFIG.md): plans stay ignored, the addon registry is tracked.
+  run_cmd git -C "$R" check-ignore -q .dwp/plans/PLAN_000_example/README.md
+  assert_rc 0 ".dwp/ plans are ignored"
+  run_cmd git -C "$R" check-ignore -q .dwp/config.json
+  assert_rc 1 "the .dwp/config.json addon registry is tracked"
 }
 
 test_github_community_files() {

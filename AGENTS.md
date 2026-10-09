@@ -25,6 +25,7 @@ devcontainer-kit (alias dck); skill dck
 | `install.sh` | user install into `~/.local/share/dck` |
 | `scripts/` | `check-public-hygiene.sh` (CI hygiene gate), `release-sums.sh` (release `SHA256SUMS`) |
 | `.github/` | CI, image and release workflows; issue/PR templates; CODEOWNERS; Dependabot |
+| `.agents/` | vendored `deepworkplan` skill and the `dwp-*` command delegators (`.claude`, `.cursor` → `.agents`) |
 | `tests/` | `run.sh` (scopes), `lib.sh`, `scopes/`, `fakes/`, `fixtures/`, `py/minischema.py` |
 
 ## Validation
@@ -37,6 +38,16 @@ devcontainer-kit (alias dck); skill dck
 | Lint | `shellcheck -S warning bin/* lib/*.sh scripts/*.sh tests/run.sh install.sh` |
 
 The test map lives in [`docs/TESTING_GUIDE.md`](docs/TESTING_GUIDE.md).
+
+## Quick Commands
+
+```bash
+bash tests/run.sh                     # full gate (13 scopes; docker last, "unavailable" without a daemon)
+bash tests/run.sh <scope>             # one area (map: docs/TESTING_GUIDE.md)
+bash scripts/check-public-hygiene.sh  # no private names, personal paths or secrets
+shellcheck -S warning bin/* lib/*.sh scripts/*.sh tests/run.sh install.sh
+bin/dck --version && bin/dck help     # run the launcher from the checkout (no install needed)
+```
 
 ## Rules
 
@@ -51,6 +62,6 @@ The test map lives in [`docs/TESTING_GUIDE.md`](docs/TESTING_GUIDE.md).
 
 ## Deep Work Plans
 
-Structured work runs through the installed `deepworkplan` skill (`.agents/skills/deepworkplan/`); plans live in the gitignored `.dwp/`.
+Structured work runs through the installed `deepworkplan` skill (`.agents/skills/deepworkplan/`, vendored from `DailybotHQ/deepworkplan-skill` tag `v7.0.1`, pinned with its `ref` in `skills-lock.json`). Short commands are thin delegators in `.agents/commands/` (`/dwp-create`, `/dwp-execute`, `/dwp-refine`, `/dwp-resume`, `/dwp-status`, `/dwp-verify`, `/dwp-upgrade`, `/skill-create`, `/agent-create`; `#<name>` or plain text on hosts without slash commands); `.claude` and `.cursor` are symlinks to `.agents`. Plans live in the gitignored `.dwp/`; only the addon registry `.dwp/config.json` is tracked. The one enabled addon is the AI Diff Reviewer (`.agents/skills/ai-diff-reviewer/`, tag `v3.3.0`, overrides in `.review/extension.md`), which runs the local review in every Final Review; the methodology itself needs no addon.
 
-DWP standard: 6.0.0 (onboarded 2026-10-08; skill 6.1.0)
+DWP standard: 7.0.0 (onboarded 2026-10-08; upgraded 2026-10-09; skill 7.0.1)

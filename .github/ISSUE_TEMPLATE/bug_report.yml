@@ -12,7 +12,7 @@ body:
     attributes:
       label: Version
       description: Output of `dck --version`.
-      placeholder: devcontainer-kit 0.1.2
+      placeholder: devcontainer-kit X.Y.Z
     validations:
       required: true
   - type: textarea

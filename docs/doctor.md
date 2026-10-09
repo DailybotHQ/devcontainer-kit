@@ -22,11 +22,11 @@ retyped.
 | Key | Content |
 | --- | --- |
 | `interface` | `1` |
-| `version` | the installed dck version (`0.1.0`) |
-| `runtime` | `docker` {`cli`, `version`, `daemon`, `server_version`, `reason`}, `provider` (`docker-desktop`, `orbstack`, `colima`, `podman`, `docker-engine` or null), `compose.version`, `devcontainer_cli` {`installed`, `version`} |
+| `version` | the installed dck version (the `VERSION` file of the install) |
+| `runtime` | `docker` {`cli`, `version`, `daemon` (true only when `docker info` returns a server version — a stuck engine that exits 0 printing its error counts as not answering), `server_version`, `reason`}, `provider` (`docker-desktop`, `orbstack`, `colima`, `podman`, `docker-engine` or null), `compose.version`, `devcontainer_cli` {`installed`, `version`} |
 | `repo` | `path`, `devcontainer`, `config_valid`, `errors`, `warnings`, `flavour`, `image_tag`, `base_image` (as pinned in compose), `digest_pinned`, `digest_match` (null until the image is pulled locally), `project`, `service`, `container` {`name`, `state`}, `env_files` [{`path`, `present`, `mode`, `private`, `keys_set`}] |
 | `layers` | `agents`, `clis`, `dailybot`, `editor` |
-| `ssh` | `enabled`, `port`, `bind`, `identity`, `identity_present`, `answering` (a TCP connect to the published port, only when the container runs), `banner` |
+| `ssh` | `enabled`, `port`, `bind`, `identity`, `identity_present`, `answering` (true only when sshd sends its `SSH-` banner on the published port — a bare TCP accept can be Docker's userland proxy; probed only when the container runs), `banner` |
 | `herdr` | `installed`, `version`, `machine` (dck.toml), `alias`, `include_present`, `registered`, `enabled`, `server_answering` |
 | `drift` | [{`name`, `pinned`, `installed`, `status` (`ok`/`drift`/`unknown`), `note`}]: the repository's `image_tag` vs the installed dck; the host's Herdr client vs the image pin (informative: they need not match); inside a running container built from a dck image, gh/herdr/nvim/deepworkplan-vim vs `images/versions.env` |
 | `os`, `python`, `profile` | host system/arch; python version and whether it is ≥ 3.11; the host profile in use and whether it is valid |

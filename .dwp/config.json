@@ -1,0 +1,9 @@
+{
+  "addons": {
+    "ai-diff-reviewer": {
+      "enabled": true,
+      "version": "v3.3.0"
+    }
+  },
+  "schema": "https://deepworkplan.com/schema/dwp-config/v1.json"
+}
