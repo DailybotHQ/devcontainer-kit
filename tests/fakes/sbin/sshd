@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Fake sshd for the entrypoint scope (pointed to by DCK_SSHD_BIN, never on PATH).
+#   $DCK_FAKE_STATE/sshd_test_fail   makes `sshd -t` fail
+printf 'sshd %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
+if [ "${1:-}" = "-t" ]; then
+  if [ -f "${DCK_FAKE_STATE:-/nonexistent}/sshd_test_fail" ]; then
+    echo "/etc/ssh/sshd_config line 1: Bad configuration option: Nope" >&2
+    exit 255
+  fi
+  exit 0
+fi
+touch "${DCK_FAKE_STATE:-/tmp}/sshd_started"
+exit 0
