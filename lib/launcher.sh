@@ -45,6 +45,8 @@ usage: dck [--repo DIR] [--profile NAME] [--project NAME] <verb> [args]
   ports                 the published loopback ports
   ssh [cmd...]          ssh into the container with agent forwarding
   herdr add|status|repair|remove   the container as a Herdr machine
+  doctor [--json] [--strict]   environment and repository health (interface 1)
+  --skill               print the bundled agent skill
   help [verb]           this text, or one verb's details
   --version             print the version
 

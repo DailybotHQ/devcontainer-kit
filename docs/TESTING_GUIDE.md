@@ -35,8 +35,8 @@ change touches shared code (`lib/common.sh`, `lib/dckpy.py`, `bin/dck`).
 | `entrypoint` | `lib/entrypoint.sh` (sandbox root, fake `sshd`) | no |
 | `launcher` | `bin/dck`, `bin/devcontainer-kit`, `lib/*.sh`, `install.sh` (fake `docker`/`devcontainer`) | no |
 | `layers` | the agents/editor/dailybot layers in the template and entrypoint | no |
-| `herdr` | `lib/herdr.sh`, `lib/sshconf.py` (fake `herdr`/`ssh`, sandbox `~/.ssh`) | no |
-| `doctor` | `lib/doctor.py`, `docs/schema/dck-doctor-v1.json`, `skills/dck/` | no |
+| `herdr` | `lib/herdr.sh`, `lib/sshconf.py` (fake `herdr`/`ssh`/`docker`, sandbox `~/.ssh`) | no |
+| `doctor` | `lib/doctor.py`, `lib/doctor.sh`, `docs/schema/dck-doctor-v1.json` (validated by `tests/py/minischema.py`), `skills/dck/` | no |
 | `security` | static posture checks over `src/template/`, `images/`, `lib/` | no |
 | `docker` | integration: build the node flavour, `dck init` a fixture, `up`, `shell`, sshd on loopback, `down` | **yes** |
 

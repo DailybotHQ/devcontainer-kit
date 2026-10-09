@@ -26,5 +26,7 @@ export DCK_ROOT DCK_LIB
 . "$DCK_LIB/launcher.sh"
 # shellcheck source=lib/herdr.sh
 . "$DCK_LIB/herdr.sh"
+# shellcheck source=lib/doctor.sh
+. "$DCK_LIB/doctor.sh"
 
 dck_main "$@"

@@ -8,6 +8,9 @@
 #   net_<name>           an existing network
 #   inspect_out          stdout of `docker inspect ...`
 #   volumes              stdout of `docker volume ls ...`
+#   info_out             stdout of `docker info` ("version|os|name")
+#   image_inspect_out    stdout of `docker image inspect` (RepoDigests JSON)
+#   container_image_env  /etc/dck/image.env as `docker exec` would print it
 st="${DCK_FAKE_STATE:-/nonexistent}"
 printf 'docker %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
 # Record stdin for exec calls that pipe data in (e.g. authorized keys).
@@ -15,7 +18,17 @@ case " $* " in *" exec "*" -i "*|*" exec -i "*) cat > "$st/exec_stdin" 2>/dev/nu
 case "$1" in
   info)
     [ -f "$st/daemon_down" ] && { echo "Cannot connect to the Docker daemon" >&2; exit 1; }
-    echo "29.0.0"; exit 0 ;;
+    if [ -f "$st/info_out" ]; then cat "$st/info_out"; else echo "29.0.0|Ubuntu 24.04|host"; fi
+    exit 0 ;;
+  version) echo "29.0.0"; exit 0 ;;
+  image)
+    # docker image inspect ... -> $st/image_inspect_out (RepoDigests JSON)
+    [ -f "$st/image_inspect_out" ] || { echo "No such image" >&2; exit 1; }
+    cat "$st/image_inspect_out"; exit 0 ;;
+  exec)
+    # docker exec <container> cat /etc/dck/image.env -> $st/container_image_env
+    [ -f "$st/container_image_env" ] || exit 1
+    cat "$st/container_image_env"; exit 0 ;;
   buildx)
     if [ "$2 $3" = "imagetools inspect" ]; then
       [ -f "$st/digest" ] || { echo "not found" >&2; exit 1; }

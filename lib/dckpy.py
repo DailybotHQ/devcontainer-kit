@@ -256,7 +256,12 @@ def cmd_herdr(args):
     return EXIT_FAIL
 
 
-GROUPS = {"config": cmd_config, "init": cmd_init, "devc": cmd_devc, "sshconf": cmd_sshconf, "herdr": cmd_herdr}
+def cmd_doctor(args):
+    import doctor
+    return doctor.main(args)
+
+
+GROUPS = {"doctor": cmd_doctor, "config": cmd_config, "init": cmd_init, "devc": cmd_devc, "sshconf": cmd_sshconf, "herdr": cmd_herdr}
 
 
 def main(argv):
