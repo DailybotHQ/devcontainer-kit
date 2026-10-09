@@ -1,0 +1,10 @@
+interface = 1
+name = "acme"
+compose_project_prefix = "acme-"
+network = "acme-dev"
+alias_prefix = "acme-"
+host_machine = false
+[labels]
+machine = "{project} · {repo}"
+[ssh]
+identity = "~/.config/dck/ssh/acme_ed25519"
