@@ -24,7 +24,7 @@ chosen by the **project's** runtime, identical otherwise.
   `~/.config/herdr/config.toml` (login shell, `new_cwd = /workspace`,
   `allow_nested = true`);
 - Neovim **0.12.5** (`/opt/nvim-0.12.5`, `/usr/local/bin/nvim`) and the
-  deepworkplan-vim configuration at tag **v0.3.1** (commit-verified) in
+  deepworkplan-vim configuration at tag **v0.4.1** (commit-verified) in
   `~/.config/nvim`. Only the configuration is baked in; deepworkplan-vim's own
   plugin manager fetches its plugins on the first `nvim` launch, so nothing
   unpinned ends up in the image. `EDITOR`/`VISUAL`/`GIT_EDITOR` are `nvim`

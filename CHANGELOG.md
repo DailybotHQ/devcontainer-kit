@@ -7,6 +7,15 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-10-09
+
+Interface stays **1**. Editor pin only.
+
+### Changed
+
+- Base images install deepworkplan-vim **v0.4.1** (was v0.3.1), verified against commit
+  `13db97c9691a864dadebf649fb656a55e6273f91`, matching the ecosystem's editor pin.
+
 ## [0.1.3] — 2026-10-09
 
 Interface stays **1**. Repository standard and a doctor fix; no behaviour change for
@@ -105,7 +114,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.4
 [0.1.3]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.3
 [0.1.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.2
 [0.1.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.1
