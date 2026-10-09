@@ -72,8 +72,8 @@ See `dck help init`. Values given as flags override `dck.toml` and are written
 into it. On a repository without `dck.toml`, defaults are: flavour detected
 (`package.json` → `node-24`; `pyproject.toml`, `requirements.txt`, `setup.py`,
 `Pipfile` → `python-3.13`; otherwise `debian`), service `app`, an SSH port
-derived from the repository name (22100–22999), and `herdr.machine = true` only
-when `herdr` is on the host's `PATH`.
+derived from the repository name (22100–22999), and `herdr.machine = true` only when sshd is on and
+`herdr` is on the host's `PATH`.
 
 `--dry-run` prints the plan and diffs and writes nothing.
 
@@ -88,7 +88,8 @@ earlier run if there is one, and `dck doctor` reports the pin. `--no-digest`
 
 ## Safety
 
-- `dck init` refuses `$HOME` and `/` as the repository.
+- `dck init` refuses `$HOME` and `/` as the repository, symlinked target files,
+  and any target that resolves outside the repository (exit 5).
 - The rendered template never mounts the host's `~/.ssh`, the Docker socket
   or `~/.gitconfig`, adds no `cap_add` and no `privileged`; see
   [SECURITY.md](SECURITY.md).

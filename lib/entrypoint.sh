@@ -153,7 +153,7 @@ dck_env_profile() {
   _dck_env
   local out="$DCK_HOME/.dck/env.sh" count
   mkdir -p "$DCK_HOME/.dck"
-  count="$(python3 - "$out" <<'PY'
+  count="$(python3 -I - "$out" <<'PY'
 import os, shlex, sys
 out = sys.argv[1]
 SKIP = {"PATH", "HOME", "HOSTNAME", "PWD", "OLDPWD", "SHLVL", "SHELL", "USER",
@@ -210,7 +210,7 @@ dck_authorize_keys() {
   mkdir -p "$DCK_HOME/.ssh"
   chmod 0700 "$DCK_HOME/.ssh"
   [ -e "$ak" ] || : > "$ak"
-  python3 - "$ak" "$mode" "$keys" <<'PY'
+  python3 -I - "$ak" "$mode" "$keys" <<'PY'
 import os, sys
 path, mode, keys = sys.argv[1], sys.argv[2], sys.argv[3].splitlines()
 BEGIN, END = "# >>> dck >>>", "# <<< dck <<<"
@@ -308,7 +308,7 @@ dck_herdr_config() {
   local cfg="$DCK_HOME/.config/herdr/config.toml"
   mkdir -p "$(dirname "$cfg")"
   [ -e "$cfg" ] || : > "$cfg"
-  python3 - "$cfg" "$DCK_WORKSPACE" <<'PY' || { dck_log "herdr config: could not update $cfg"; return 1; }
+  python3 -I - "$cfg" "$DCK_WORKSPACE" <<'PY' || { dck_log "herdr config: could not update $cfg"; return 1; }
 import os, re, sys
 path, workspace = sys.argv[1], sys.argv[2]
 text = open(path).read()

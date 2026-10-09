@@ -404,6 +404,8 @@ class Change(object):
 
 
 def _read(path):
+    if os.path.islink(path):
+        return None  # check_paths refuses it before anything is shown or written
     try:
         with open(path) as fh:
             return fh.read()
@@ -475,6 +477,25 @@ def plan(repo, values, ctx, toml_overrides, toml_exists):
             changes.append(Change(rel, "append", old + sep + ("\n" if old.strip() else "") + block, old,
                                   "secrets guard appended"))
     return changes
+
+
+def check_paths(repo, changes):
+    """Refuse symlinked targets and any target that resolves outside the repo.
+    A repository could otherwise point docker/local/docker-compose.yaml at
+    ~/.ssh/id_ed25519 (its content would be shown in a diff) or make
+    docker/local a link out of the tree (dck would write there)."""
+    root = os.path.realpath(repo)
+    for c in changes:
+        path = os.path.join(repo, c.rel)
+        if os.path.islink(path):
+            raise RefusedError("%s is a symlink; dck init never reads or writes through one" % c.rel)
+        parent = os.path.realpath(os.path.dirname(path))
+        if parent != root and not parent.startswith(root + os.sep):
+            raise RefusedError("%s resolves outside the repository (%s)" % (c.rel, parent))
+
+
+class RefusedError(Exception):
+    pass
 
 
 def unified(change):
@@ -590,13 +611,15 @@ def init(opts, dck_tag, env=None, out=sys.stdout, err=sys.stderr):
     if not toml_exists:
         doc.update({"interface": config.INTERFACE, "service": "app", "flavour": detect_flavour(repo),
                     "ssh_port": default_ssh_port(rslug)})
-        doc["herdr"] = {"machine": which("herdr") is not None}
     for dotted, value in overrides:
         table, _, key = dotted.rpartition(".")
         if table:
             doc.setdefault(table, {})[key] = value
         else:
             doc[key] = value
+    if not toml_exists and opts.get("herdr_machine") is None:
+        # Default: a Herdr machine when Herdr is installed and sshd is on.
+        doc.setdefault("herdr", {})["machine"] = which("herdr") is not None and doc.get("ssh_port", 0) != 0
     try:
         values, warnings = config.validate(doc, "repo", toml_path)
     except config.ConfigError as exc:
@@ -635,6 +658,11 @@ def init(opts, dck_tag, env=None, out=sys.stdout, err=sys.stderr):
         err.write("dck: template error: %s\n" % exc)
         return EXIT_FAIL
 
+    try:
+        check_paths(repo, changes)
+    except RefusedError as exc:
+        err.write("dck: refusing: %s\n" % exc)
+        return EXIT_REFUSED
     out.write("dck init: %s (flavour %s, service %s, project %s)\n"
               % (repo, values["flavour"], values["service"], project))
     for c in changes:

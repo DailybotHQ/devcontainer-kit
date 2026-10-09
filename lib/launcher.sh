@@ -261,6 +261,10 @@ ensure_env_from_examples() {
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     target="${f%.example}"
+    if [ -L "$target" ] || [ -L "$f" ]; then
+      warn "${target#"$DC_REPO"/}: a symlink is involved; not created (dck never writes .env files through a link)"
+      continue
+    fi
     [ -f "$target" ] && continue
     (umask 077 && cat "$f" > "$target") || die "could not create $target"
     note "created ${target#"$DC_REPO"/} from ${f#"$DC_REPO"/} (0600)"
@@ -365,7 +369,7 @@ cmd_setup() {
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     target="${f%.example}"
-    if [ -f "$target" ] && group_or_other_readable "$target"; then
+    if [ -f "$target" ] && [ ! -L "$target" ] && group_or_other_readable "$target"; then
       # Narrowing cannot un-expose a secret already readable, but leaving it
       # open guarantees the next one is exposed too. Announced, never silent.
       chmod 600 "$target" || die "could not restrict $target to 0600"
