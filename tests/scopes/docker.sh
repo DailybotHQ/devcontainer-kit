@@ -28,7 +28,9 @@ it_cleanup() {
 wait_port() {
   local i=0
   while [ "$i" -lt 30 ]; do
-    python3 -c 'import socket,sys; socket.create_connection(("127.0.0.1", int(sys.argv[1])), 1).close()' "$1" 2>/dev/null && return 0
+    # The banner, not the TCP accept: on Linux the userland proxy accepts
+    # before sshd in the container listens.
+    python3 -c 'import socket,sys; s=socket.create_connection(("127.0.0.1", int(sys.argv[1])), 2); s.settimeout(2); sys.exit(0 if s.recv(4).startswith(b"SSH-") else 1)' "$1" 2>/dev/null && return 0
     i=$((i + 1)); sleep 1
   done
   return 1
@@ -88,7 +90,7 @@ test_end_to_end() {
   assert_not_contains "$RUN_ERR" "from-env-file" "dck never prints env values itself"
 
   d up --recreate
-  wait_port "$port"
+  wait_port "$port" || fail "sshd answers again after a recreate"
   d ssh true
   assert_rc 0 "after a recreate the same host key is accepted (strict checking)"
 

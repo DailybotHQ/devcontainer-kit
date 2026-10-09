@@ -106,7 +106,10 @@ def port_answers(host, port, timeout=2.0):
                 banner = s.recv(64)
             except OSError:
                 banner = b""
-            return True, banner.decode("ascii", "replace").strip() or None
+            text = banner.decode("ascii", "replace").strip() or None
+            # A TCP accept alone can be Docker's userland proxy with nothing
+            # behind it yet: only an SSH banner proves sshd answers.
+            return bool(text and text.startswith("SSH-")), text
     except OSError:
         return False, None
 

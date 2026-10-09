@@ -67,13 +67,14 @@ test_env_files_names_only() {
 }
 
 test_docker_missing_or_down() {
-  local bin="$SANDBOX/nodocker" f
+  local bin="$SANDBOX/nodocker" f t
   mkdir -p "$bin"
   for f in "$TESTS_DIR"/fakes/bin/*; do [ "$(basename "$f")" = docker ] || ln -s "$f" "$bin/"; done
-  local p
-  p="$(printf '%s' "${PATH#"$TESTS_DIR/fakes/bin:"}" | tr ':' '\n' | while IFS= read -r dir; do [ -x "$dir/docker" ] || printf '%s:' "$dir"; done)"
+  for t in bash sh env python3 sed grep cat dirname basename readlink pwd tr id uname cut head tail sort awk mkdir; do
+    command -v "$t" >/dev/null 2>&1 && [ ! -e "$bin/$t" ] && ln -s "$(command -v "$t")" "$bin/$t"
+  done
   mkdir -p "$SANDBOX/nowhere"
-  run_cmd env PATH="$bin:${p%:}" bash -c 'cd "$1" && "$2" doctor --json' _ "$SANDBOX/nowhere" "$DCK"
+  run_cmd env PATH="$bin" bash -c 'cd "$1" && "$2" doctor --json' _ "$SANDBOX/nowhere" "$DCK"
   assert_rc 0 "doctor answers without docker"
   valid "the no-docker report matches the schema"
   assert_eq "$(j '[d["runtime"]["docker"]["cli"], d["runtime"]["docker"]["reason"]]')" '[false, "docker CLI not found"]' "a missing docker CLI is reported"
