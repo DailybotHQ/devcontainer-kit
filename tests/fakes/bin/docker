@@ -33,6 +33,7 @@ case "$1" in
     esac
     exit 0 ;;
   compose)
+    printf '%s' "${DCK_AUTHORIZED_KEYS:-}" > "$st/last_authorized_keys" 2>/dev/null
     shift
     while [ $# -gt 0 ]; do
       case "$1" in

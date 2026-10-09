@@ -167,7 +167,45 @@ def cmd_init(args):
         return EXIT_CONFIG
 
 
-GROUPS = {"config": cmd_config, "init": cmd_init}
+def cmd_devc(args):
+    import devc
+    if not args:
+        return usage("devc needs a command: find | read | overlay | networks")
+    sub = args.pop(0)
+    try:
+        if sub == "find":
+            repo = devc.find_repo(opt(args, "--start", os.getcwd()))
+            if not repo:
+                sys.stderr.write("dck: no .devcontainer/ found here or in any parent directory — run: dck init\n")
+                return EXIT_CONFIG
+            print(repo)
+            return EXIT_OK
+        if sub == "read":
+            lines, warnings = devc.env_lines(opt(args, "--repo", "."), default_tag(), opt(args, "--profile"))
+            warn_all(warnings)
+            for k, v in lines:
+                print("%s=%s" % (k, v))
+            return EXIT_OK
+        if sub == "overlay":
+            repo, project, out = opt(args, "--repo"), opt(args, "--project"), opt(args, "--out")
+            if not (repo and project and out):
+                return usage("devc overlay --repo DIR --project NAME --out FILE")
+            print("written" if devc.write_overlay(repo, project, out) else "none")
+            return EXIT_OK
+        if sub == "networks":
+            for name in devc.external_networks(opt(args, "--file")):
+                print(name)
+            return EXIT_OK
+    except devc.DevcError as exc:
+        sys.stderr.write("dck: %s\n" % exc)
+        return EXIT_CONFIG
+    except config.ConfigError as exc:
+        sys.stderr.write("dck: invalid configuration\n%s\n" % exc)
+        return EXIT_CONFIG
+    return usage("unknown devc command %r" % sub)
+
+
+GROUPS = {"config": cmd_config, "init": cmd_init, "devc": cmd_devc}
 
 
 def main(argv):

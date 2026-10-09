@@ -7,10 +7,14 @@
 # Exit codes (also documented in docs/launcher.md):
 #   0 ok · 1 operation failed · 2 usage · 3 configuration · 4 environment
 #   (docker/python/herdr missing or not answering) · 5 refused (safety)
+# shellcheck disable=SC2034  # used by the other lib/*.sh modules
 DCK_EXIT_FAIL=1
+# shellcheck disable=SC2034
 DCK_EXIT_USAGE=2
+# shellcheck disable=SC2034
 DCK_EXIT_CONFIG=3
 DCK_EXIT_ENV=4
+# shellcheck disable=SC2034
 DCK_EXIT_REFUSED=5
 
 die() {

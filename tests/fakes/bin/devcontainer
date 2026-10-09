@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Fake @devcontainers/cli. Logs argv; $DCK_FAKE_STATE/devcontainer_rc sets the status.
+printf 'devcontainer %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
+printf '%s' "${DCK_AUTHORIZED_KEYS:-}" > "${DCK_FAKE_STATE:-/tmp}/last_authorized_keys" 2>/dev/null
+exit "$(cat "${DCK_FAKE_STATE:-/nonexistent}/devcontainer_rc" 2>/dev/null || echo 0)"
