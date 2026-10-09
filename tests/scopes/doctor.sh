@@ -164,9 +164,12 @@ test_non_loopback_bind_is_flagged() {
 SKILL="$DCK_REPO/skills/dck/SKILL.md"
 
 test_skill_frontmatter() {
-  run_cmd python3 - "$SKILL" "$VERSION" <<'PY'
-import re, sys
+  local f
+  for f in "$DCK_REPO"/skills/*/SKILL.md; do
+  run_cmd python3 - "$f" "$VERSION" <<'PY'
+import os, re, sys
 text = open(sys.argv[1]).read()
+want_name = os.path.basename(os.path.dirname(sys.argv[1]))
 m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
 assert m, "no frontmatter"
 fm = m.group(1)
@@ -174,20 +177,41 @@ def field(k):
     mm = re.search(r"^%s:\s*(.+)$" % k, fm, re.M)
     return mm.group(1).strip() if mm else None
 errors = []
-if field("name") != "dck": errors.append("name must be dck")
+if field("name") != want_name: errors.append("name must be %s" % want_name)
 desc = field("description") or ""
 if not (50 <= len(desc) <= 1024): errors.append("description length %d" % len(desc))
 if "Use only when" not in desc or "Do not use" not in desc: errors.append("description lacks strict triggers")
-if not re.search(r"^  interface: 1$", fm, re.M): errors.append("metadata.interface must be 1")
+if not re.search(r"^  interface: 2$", fm, re.M): errors.append("metadata.interface must be 2")
 if not re.search(r"^  version: %s$" % re.escape(sys.argv[2]), fm, re.M): errors.append("metadata.version must equal VERSION")
 if field("license") != "MIT": errors.append("license must be MIT")
 print("\n".join(errors)); sys.exit(1 if errors else 0)
 PY
-  assert_rc 0 "the skill frontmatter is valid (name, strict description, interface 1, version, license)"
+  assert_rc 0 "$(basename "$(dirname "$f")"): the skill frontmatter is valid (name, strict description, interface 2, version, license)"
+  done
 }
 
 test_skill_rules() {
-  local s; s="$(cat "$SKILL")"
+  local f s
+  for f in "$DCK_REPO"/skills/*/SKILL.md; do
+    s="$(cat "$f")"
+    assert_match "$s" '^## Trust boundary \(write scope\)$' "$(basename "$(dirname "$f")"): a Trust boundary (write scope) section"
+    assert_no_match "$s" '(curl|wget)[^|]*\|[[:space:]]*(sudo[[:space:]]+)?(ba|z)?sh' "$(basename "$(dirname "$f")"): no fetch-piped-to-shell line (E005)"
+    assert_no_match "$s" '--dangerously|--yolo|--always-approve' "$(basename "$(dirname "$f")"): no CLI autonomy flag (E006)"
+    assert_contains "$s" "AGENTKIT_PERMISSIONS=ask" "$(basename "$(dirname "$f")"): documents the opt-out (E006)"
+    assert_contains "$s" "git clone --branch v$VERSION https://github.com/DailybotHQ/devcontainer-kit" "$(basename "$(dirname "$f")"): the install line is pinned (W012)"
+    assert_no_match "$s" '@main|--branch main|:latest' "$(basename "$(dirname "$f")"): no floating reference"
+  done
+  s="$(cat "$DCK_REPO/skills/dck-dockerfile/SKILL.md")"
+  local step
+  for step in "## 1. Detect, then ask only what is missing" "## 2. Render" "## 3. Validate with a real build" "## 4. Report"; do
+    assert_contains "$s" "$step" "dck-dockerfile has the step: $step"
+  done
+  run_cmd "$DCK" --skill dck-dockerfile
+  assert_rc 0 "dck --skill dck-dockerfile prints the skill"
+  assert_contains "$RUN_OUT" "name: dck-dockerfile" "it is the dck-dockerfile skill"
+  run_cmd "$DCK" --skill "../x"
+  assert_rc 2 "an invalid skill name is a usage error"
+  s="$(cat "$SKILL")"
   assert_match "$s" '^## Trust boundary \(write scope\)$' "the skill has a Trust boundary (write scope) section"
   assert_no_match "$s" '(curl|wget)[^|]*\|[[:space:]]*(sudo[[:space:]]+)?(ba|z)?sh' "no fetch-piped-to-shell line (E005)"
   assert_no_match "$s" '--dangerously|--yolo|--always-approve' "no CLI autonomy flag is spelled (E006: they live in coding-agents-kit)"

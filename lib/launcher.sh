@@ -753,7 +753,10 @@ dck_main() {
     case "$1" in
       --version|-V) note "devcontainer-kit $(dck_version)"; return 0 ;;
       --skill)
-        if declare -F dck_print_skill >/dev/null 2>&1; then dck_print_skill; return $?; fi
+        if declare -F dck_print_skill >/dev/null 2>&1; then
+          if [ $# -ge 2 ] && [ "${2#-}" = "$2" ]; then dck_print_skill "$2"; else dck_print_skill; fi
+          return $?
+        fi
         die "$DCK_EXIT_FAIL" "--skill is not available in this build" ;;
       --profile) [ $# -ge 2 ] || die "$DCK_EXIT_USAGE" "--profile needs a name"; DCK_PROFILE_NAME="$2"; shift 2 ;;
       --trust) DCK_TRUST=1; export DCK_TRUST; shift ;;
