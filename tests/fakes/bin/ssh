@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# Fake ssh. Logs argv; $DCK_FAKE_STATE/ssh_rc sets the status, ssh_out the output.
+# Fake ssh. Logs argv. $DCK_FAKE_STATE/ssh_rc sets the status (default 0),
+# ssh_server_rc the status of `... herdr status server`, ssh_out the output.
+st="${DCK_FAKE_STATE:-/nonexistent}"
 printf 'ssh %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
-cat "${DCK_FAKE_STATE:-/nonexistent}/ssh_out" 2>/dev/null
-exit "$(cat "${DCK_FAKE_STATE:-/nonexistent}/ssh_rc" 2>/dev/null || echo 0)"
+cat "$st/ssh_out" 2>/dev/null
+case " $* " in
+  *" herdr status server "*) exit "$(cat "$st/ssh_server_rc" 2>/dev/null || echo 0)" ;;
+esac
+exit "$(cat "$st/ssh_rc" 2>/dev/null || echo 0)"

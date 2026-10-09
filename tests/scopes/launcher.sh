@@ -260,6 +260,7 @@ test_ssh() {
   assert_contains "$call" "-i $HOME/.config/dck/ssh/id_ed25519 -o IdentitiesOnly=yes" "ssh uses only the dedicated key"
   assert_contains "$call" "-o ForwardAgent=yes" "ssh forwards the agent (keys stay on the host)"
   assert_contains "$call" "-o StrictHostKeyChecking=accept-new" "a changed host key is refused"
+  assert_contains "$call" "-o HostKeyAlias=dck-proj" "host keys are recorded per repository alias"
   assert_contains "$call" "-o UserKnownHostsFile=$HOME/.config/dck/ssh/known_hosts" "known hosts go to dck's own file"
   assert_contains "$call" "dev@127.0.0.1 uname -a" "the command is passed through"
   sed -i.orig 's/^ssh_port = 22040$/ssh_port = 0/' "$REPO/.devcontainer/dck.toml" && rm -f "$REPO/.devcontainer/dck.toml.orig"

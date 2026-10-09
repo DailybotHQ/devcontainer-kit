@@ -205,7 +205,58 @@ def cmd_devc(args):
     return usage("unknown devc command %r" % sub)
 
 
-GROUPS = {"config": cmd_config, "init": cmd_init, "devc": cmd_devc}
+def cmd_sshconf(args):
+    import sshconf
+    if not args:
+        return usage("sshconf needs a command: upsert | remove | has | include")
+    sub = args.pop(0)
+    try:
+        if sub == "upsert":
+            print(sshconf.upsert(opt(args, "--file"), opt(args, "--alias"), opt(args, "--host"),
+                                 opt(args, "--port"), opt(args, "--user"), opt(args, "--identity"),
+                                 opt(args, "--known-hosts")))
+            return EXIT_OK
+        if sub == "remove":
+            print(sshconf.remove(opt(args, "--file"), opt(args, "--alias")))
+            return EXIT_OK
+        if sub == "has":
+            return EXIT_OK if sshconf.has_alias(opt(args, "--file"), opt(args, "--alias")) else EXIT_FAIL
+        if sub == "include":
+            print(sshconf.ensure_include(opt(args, "--config")))
+            return EXIT_OK
+    except sshconf.SshConfError as exc:
+        sys.stderr.write("dck: %s\n" % exc)
+        return exc.code
+    except (TypeError, ValueError) as exc:
+        return usage("sshconf %s: %s" % (sub, exc))
+    return usage("unknown sshconf command %r" % sub)
+
+
+def cmd_herdr(args):
+    """`herdr machine list --json` on stdin -> the machine whose target is the alias:
+    one line "id<TAB>label<TAB>enabled", or nothing (exit 1)."""
+    if not args or args[0] != "find":
+        return usage("herdr find --target ALIAS")
+    target = opt(args[1:], "--target")
+    raw = sys.stdin.read()
+    start = min([i for i in (raw.find("["), raw.find("{")) if i >= 0] or [-1])
+    if start < 0:
+        return EXIT_FAIL
+    try:
+        data = json.loads(raw[start:])
+    except ValueError:
+        return EXIT_FAIL
+    if isinstance(data, dict):
+        data = (data.get("result") or {}).get("machines") or data.get("machines") or []
+    for m in data if isinstance(data, list) else []:
+        if isinstance(m, dict) and m.get("target") == target:
+            print("%s\t%s\t%s" % (m.get("id", ""), m.get("label", ""),
+                                    "1" if m.get("enabled", True) else "0"))
+            return EXIT_OK
+    return EXIT_FAIL
+
+
+GROUPS = {"config": cmd_config, "init": cmd_init, "devc": cmd_devc, "sshconf": cmd_sshconf, "herdr": cmd_herdr}
 
 
 def main(argv):

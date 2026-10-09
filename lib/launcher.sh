@@ -44,6 +44,7 @@ usage: dck [--repo DIR] [--profile NAME] [--project NAME] <verb> [args]
   config                what dck resolved for this repository
   ports                 the published loopback ports
   ssh [cmd...]          ssh into the container with agent forwarding
+  herdr add|status|repair|remove   the container as a Herdr machine
   help [verb]           this text, or one verb's details
   --version             print the version
 
@@ -629,12 +630,16 @@ cmd_ssh() {
   (umask 077 && mkdir -p "$(dirname "$kh")")
   # Agent forwarding, never key copies. accept-new: a fresh container is
   # trusted on first use, but a host key that CHANGES is refused (the key is
-  # meant to survive rebuilds on the state volume). dck's own known_hosts file
-  # keeps ~/.ssh/known_hosts from growing a line per container.
+  # meant to survive rebuilds on the state volume). Entries are keyed by the
+  # repository's alias, not host:port, so a port reused by another repository
+  # never collides; dck's own known_hosts keeps ~/.ssh/known_hosts unchanged.
+  # After deleting the state volume on purpose:
+  #   ssh-keygen -R <alias> -f ~/.config/dck/ssh/known_hosts
   ssh -p "$DCK_SSH_PORT" \
       -i "$DCK_SSH_IDENTITY" -o IdentitiesOnly=yes \
       -o ForwardAgent=yes \
       -o StrictHostKeyChecking=accept-new \
+      -o HostKeyAlias="${DCK_ALIAS:-dck}" \
       -o UserKnownHostsFile="$kh" -o GlobalKnownHostsFile=/dev/null \
       "${DCK_TOML_USER:-${DC_USER:-dev}}@$host" "$@"
 }

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Fake herdr CLI. Logs argv; machines live in $DCK_FAKE_STATE/herdr_machines
+# (the JSON array `herdr machine list --json` prints).
+printf 'herdr %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
+exec python3 - "${DCK_FAKE_STATE:-/tmp}/herdr_machines" "$@" <<'PY'
+import hashlib, json, os, sys
+db, args = sys.argv[1], sys.argv[2:]
+machines = json.load(open(db)) if os.path.exists(db) else []
+def save():
+    json.dump(machines, open(db, "w"), indent=2)
+def find(mid):
+    for m in machines:
+        if m["id"] == mid:
+            return m
+    sys.stderr.write("machine %s not found\n" % mid); sys.exit(1)
+if args[:1] == ["--version"]:
+    print("herdr 0.9.3"); sys.exit(0)
+if args[:1] != ["machine"]:
+    sys.exit(0)
+cmd, rest = args[1], args[2:]
+if cmd == "list":
+    print(json.dumps(machines, indent=2)); sys.exit(0)
+if cmd == "add":
+    label = rest[rest.index("--label") + 1]
+    target = [a for i, a in enumerate(rest) if a != "--label" and (i == 0 or rest[i - 1] != "--label")][0]
+    if any(m["target"] == target for m in machines):
+        sys.stderr.write("machine already saved\n"); sys.exit(1)
+    mid = hashlib.md5(target.encode()).hexdigest()
+    machines.append({"id": mid, "label": label, "target": target, "session": "default",
+                     "enabled": True, "selected": False})
+    save(); print("saved machine %s" % mid); sys.exit(0)
+if cmd == "rename":
+    label = rest[rest.index("--label") + 1]
+    find(rest[-1])["label"] = label; save(); sys.exit(0)
+if cmd in ("enable", "disable"):
+    find(rest[0])["enabled"] = cmd == "enable"; save(); sys.exit(0)
+if cmd == "remove":
+    m = find(rest[0]); machines.remove(m); save(); sys.exit(0)
+sys.exit(2)
+PY
