@@ -158,19 +158,26 @@ fake_calls() {
 # Prints "available" or the reason it is not. Computed once per run.
 docker_status() {
   local cache="$DCK_TEST_RUN_DIR/docker_status"
+  # Always probe the REAL docker: the result is cached for the whole run, so a
+  # test with the fakes on PATH must not decide it for everyone.
+  local real_path
+  real_path="$(printf '%s' "$PATH" | sed "s#$TESTS_DIR/fakes/bin:##g")"
   if [ ! -f "$cache" ]; then
     if [ "${DCK_TEST_DOCKER:-}" = "0" ]; then
       echo "disabled by DCK_TEST_DOCKER=0" > "$cache"
-    elif ! command -v docker >/dev/null 2>&1; then
+    elif ! PATH="$real_path" command -v docker >/dev/null 2>&1; then
       echo "docker CLI not found" > "$cache"
-    elif python3 - <<'PY' >/dev/null 2>&1
+    elif PATH="$real_path" python3 - <<'PY' >/dev/null 2>&1
 import subprocess, sys
 try:
     r = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30, text=True)
 except Exception:
     sys.exit(1)
-sys.exit(r.returncode)
+# A stuck engine can exit 0 printing nothing, or its error text, on stdout:
+# only a version number proves the daemon answered.
+import re
+sys.exit(0 if r.returncode == 0 and re.match(r"^\d+\.\d+", r.stdout.strip()) else 1)
 PY
     then
       echo "available" > "$cache"

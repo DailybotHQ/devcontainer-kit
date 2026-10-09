@@ -74,9 +74,9 @@ def runtime_info():
         docker["version"] = (out or "").strip() or None
         rc, out = run(["docker", "info", "--format", "{{.ServerVersion}}|{{.OperatingSystem}}|{{.Name}}"])
         parts = ((out or "").strip().split("|") + ["", "", ""])[:3]
-        # Some clients exit 0 with empty fields when the daemon is gone:
-        # only a server version proves the daemon answered.
-        if rc == 0 and parts[0]:
+        # A stuck engine can exit 0 with empty fields or its error text on
+        # stdout: only a server version number proves the daemon answered.
+        if rc == 0 and re.match(r"^\d+\.\d+", parts[0]):
             docker["daemon"] = True
             docker["server_version"] = parts[0] or None
             blob = (" ".join(parts[1:]) + " " + (run(["docker", "context", "show"])[1] or "")).lower()

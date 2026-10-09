@@ -99,3 +99,14 @@ test_runner_is_bash32_clean() {
   done
   assert_eq "$bad" "" "runner and helpers avoid bash 4-only features"
 }
+
+test_docker_empty_info_reports_unavailable() {
+  run_cmd env -u DCK_TEST_DOCKER PATH="$FIX/fake-docker-empty:$PATH" DCK_TEST_SCOPES_DIR="$FIX/scopes-pass" bash "$TESTS_DIR/run.sh" sample
+  assert_match "$RUN_OUT" '^unavailable - docker-dependent check \(docker daemon not answering\)$' "docker info exiting 0 without a server version is reported as not answering"
+}
+
+test_docker_probe_ignores_the_fakes() {
+  # With the fake docker first on PATH, the probe must still ask the real one.
+  run_cmd env -u DCK_TEST_DOCKER PATH="$TESTS_DIR/fakes/bin:$FIX/fake-docker-empty:$PATH" bash -c '. "$1"; DCK_TEST_RUN_DIR="$2"; TESTS_DIR="$3"; PATH="$TESTS_DIR/fakes/bin:$4"; docker_status' _ "$TESTS_DIR/lib.sh" "$SANDBOX" "$TESTS_DIR" "$FIX/fake-docker-empty:$PATH"
+  assert_eq "$RUN_OUT" "docker daemon not answering" "the cached docker status is never decided by the fake docker"
+}

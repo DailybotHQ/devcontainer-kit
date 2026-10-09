@@ -1,0 +1,4 @@
+#!/bin/sh
+# A docker CLI whose engine is stuck: exit 0, error text on stdout, no version.
+echo "Cannot connect to the Docker daemon at unix:///nonexistent/docker.sock. Is the docker daemon running?"
+exit 0
