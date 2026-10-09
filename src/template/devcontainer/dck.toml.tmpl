@@ -39,3 +39,6 @@ clis = [{{agents_clis_toml}}]
 # Register the container as a Herdr machine on `dck up` (needs ssh_port).
 machine = {{herdr_machine}}
 label = "{{herdr_label_fmt}}"
+# The sidebar `dck up` creates inside the container: "standard" (Home · Editor ·
+# Development · Agents) or "none".
+layout = "{{herdr_layout}}"

@@ -135,6 +135,14 @@
           "maxLength": 64,
           "description": "Placeholders: {repo} {service} {project} {user}",
           "default": "{repo}"
+        },
+        "layout": {
+          "enum": [
+            "standard",
+            "none"
+          ],
+          "default": "standard",
+          "description": "the Herdr sidebar dck up creates inside the container"
         }
       }
     },

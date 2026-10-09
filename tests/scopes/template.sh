@@ -387,3 +387,12 @@ test_devsh() {
   init_repo "$r" --no-herdr --yes
   assert_eq "$(cat "$r/dev.sh")" "$(printf '#!/usr/bin/env bash\necho mine')" "a repository's own dev.sh is kept"
 }
+
+test_herdr_layout_in_the_template() {
+  local r
+  r="$(new_repo hlayout)"
+  init_repo "$r" --no-herdr --yes
+  assert_contains "$(cat "$r/.devcontainer/dck.toml")" 'layout = "standard"' "dck.toml defaults to the standard layout"
+  assert_contains "$(cat "$r/docker/local/app/Dockerfile")" "COPY dck/herdr-layout.sh /usr/local/bin/dck-herdr-layout" "the image carries the layout script"
+  assert_contains "$(cat "$r/dev.sh")" "herdr-layout) exec dck herdr layout" "dev.sh herdr-layout maps to dck herdr layout"
+}

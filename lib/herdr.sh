@@ -11,6 +11,8 @@
 #   dck herdr mesh      push the peer list into the container: every other dck
 #                       container (and the host, when the profile sets
 #                       host_machine) becomes reachable from inside
+#   dck herdr layout [--keep|--reset]   the standard sidebar inside the container
+#                       (Home · Editor · Development · Agents); dck up runs --keep
 #   dck agents          herdr-peers list: the live agents on every machine
 #   dck ask <machine>:<pane>|<#> "<prompt>"   herdr-peers ask, with the reply grant
 #
@@ -148,6 +150,17 @@ herdr_mesh() {
   note "mesh: $n peer(s) reachable from inside $DC_SERVICE"
 }
 
+# herdr_layout [--keep|--reset] — create the standard sidebar inside the container,
+# as the container user, against the container's own Herdr server.
+herdr_layout() {
+  require_docker
+  container_running || die "$DC_SERVICE is not running — run: dck up"
+  local user="${DC_USER:-dev}"
+  dc exec -T --user "$user" -e "HOME=/home/$user" -e "USER=$user" -e "LOGNAME=$user" \
+    -e "DCK_LAYOUT_CWD=${DC_WORKSPACE:-/workspace}" "$DC_SERVICE" dck-herdr-layout "$@" \
+    || die "the Herdr layout could not be created inside $DC_SERVICE (is the host Herdr attached? run: dck herdr status)"
+}
+
 herdr_peers_cli() {
   command -v herdr-peers >/dev/null 2>&1 && return 0
   die "$DCK_EXIT_ENV" "herdr-peers is not installed on this host. Install the skill, pinned:
@@ -259,13 +272,15 @@ herdr_remove() {
 dck_cmd_herdr() {
   local sub="${1:-}"
   [ $# -gt 0 ] && shift
-  [ $# -eq 0 ] || die "$DCK_EXIT_USAGE" "herdr $sub takes no arguments"
   case "$sub" in
-    add|status|repair|remove|mesh) ;;
-    *) die "$DCK_EXIT_USAGE" "usage: dck herdr add|status|repair|remove|mesh" ;;
+    add|status|repair|remove|mesh) [ $# -eq 0 ] || die "$DCK_EXIT_USAGE" "herdr $sub takes no arguments" ;;
+    layout)
+      case "${1:-}" in ''|--keep|--reset) ;; *) die "$DCK_EXIT_USAGE" "usage: dck herdr layout [--keep|--reset]" ;; esac
+      [ $# -le 1 ] || die "$DCK_EXIT_USAGE" "usage: dck herdr layout [--keep|--reset]" ;;
+    *) die "$DCK_EXIT_USAGE" "usage: dck herdr add|status|repair|remove|mesh|layout" ;;
   esac
   load_context
-  "herdr_$sub"
+  "herdr_$sub" "$@"
 }
 
 # Called by `dck up` when dck.toml sets [herdr] machine = true.
@@ -274,5 +289,9 @@ dck_herdr_after_up() {
     note "herdr: not installed on this host; skipping machine registration"
     return 0
   fi
-  ( herdr_add ) && ( herdr_mesh ) || true
+  ( herdr_add ) || return 0
+  ( herdr_mesh ) || true
+  if [ "${DCK_HERDR_LAYOUT:-standard}" = "standard" ]; then
+    ( herdr_layout --keep ) || warn "herdr: the standard layout was not created (run: dck herdr layout)"
+  fi
 }

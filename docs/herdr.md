@@ -149,3 +149,38 @@ dck ask dck-other:w1:p2 "Which test covers the parser?"   # herdr-peers ask, wit
 - **When the container's Herdr server is not running yet**, the Herdr
   machines are registered on the next `dck herdr mesh`. The ssh side is
   always written.
+
+## The standard sidebar inside (`dck herdr layout`)
+
+When the host Herdr attaches a container, the container opens with the
+standard sidebar:
+
+| Workspace | Content |
+| --- | --- |
+| **Home** | one shell (pane `home`), focused at the end |
+| **Editor** | one shell (pane `editor`) |
+| **Development** | tab `Development`, split `server` \| `tests` |
+| **Agents** | tabs `Agent 1` … `Agent 4` |
+
+Every pane is a plain shell in the workspace directory. The layout starts no
+program: agents are started by you, or through `ak`.
+
+```bash
+dck herdr layout           # with a TTY: ask whether to reset (default keep); without one: keep
+dck herdr layout --keep    # create only what is missing
+dck herdr layout --reset   # close Home, Editor, Development, Agents (and the legacy "Home (~)") and recreate them
+bash dev.sh herdr-layout   # the same, from the repository
+```
+
+- **`dck up` runs it with `--keep`** right after `dck herdr add`.
+  `[herdr] layout = "none"` in dck.toml turns that off.
+- **`--keep` never rearranges your work:**
+  - Development is split only when it has exactly one pane, so a layout
+    you arranged by hand stays as it is;
+  - a tab whose presence cannot be read is skipped, never duplicated.
+- **`--reset` touches only the four standard workspaces** (and the legacy
+  "Home (~)"). It aborts, recreating nothing, when one of them cannot be
+  closed.
+- **It runs inside the container,** as the container user, against the
+  container's own Herdr server (`dck-herdr-layout`, installed by the
+  template).

@@ -48,8 +48,11 @@ COPY dck/entrypoint.sh /usr/local/lib/dck/entrypoint.sh
 COPY dck/dck-entrypoint /usr/local/bin/dck-entrypoint
 COPY dck/layers/ /usr/local/lib/dck/layers/
 COPY dck/dck-layer /usr/local/bin/dck-layer
+# The standard Herdr sidebar (Home · Editor · Development · Agents), created by
+# `dck herdr layout` / `dck up` inside the container.
+COPY dck/herdr-layout.sh /usr/local/bin/dck-herdr-layout
 RUN chmod 0644 /usr/local/lib/dck/entrypoint.sh /usr/local/lib/dck/layers/*.sh \
-    && chmod 0755 /usr/local/bin/dck-entrypoint /usr/local/bin/dck-layer
+    && chmod 0755 /usr/local/bin/dck-entrypoint /usr/local/bin/dck-layer /usr/local/bin/dck-herdr-layout
 
 ENV LANG=en_US.UTF-8 \
     EDITOR=nvim \
