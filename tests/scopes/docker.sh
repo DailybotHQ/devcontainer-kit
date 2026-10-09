@@ -56,6 +56,10 @@ test_build_node_flavour() {
 $tag" "the editor configuration is deepworkplan-vim $tag at its pinned commit"
   run_cmd docker run --rm --user dev --entrypoint bash "$IT_IMAGE" -c 'cd && timeout 120 nvim --headless +qa && echo started'
   assert_eq "$RUN_RC" "0" "nvim starts headless as the dev user with the baked-in plugins"
+  # A plugin build step that fails (e.g. no pnpm) leaves the build green and the
+  # plugin half-built: every plugin server with a package.json has its node_modules.
+  run_cmd docker run --rm --entrypoint bash "$IT_IMAGE" -c 'n=0; for p in /home/dev/.local/share/nvim/site/pack/pckr/*/*/server/package.json; do [ -e "$p" ] || continue; [ -d "${p%/package.json}/node_modules" ] || { echo "unbuilt: ${p%/package.json}"; n=$((n+1)); }; done; echo "unbuilt=$n"'
+  assert_contains "$RUN_OUT" "unbuilt=0" "every plugin build step that needs Node/pnpm ran"
 }
 
 test_end_to_end() {

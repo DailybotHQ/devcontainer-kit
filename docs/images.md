@@ -33,7 +33,11 @@ chosen by the **project's** runtime, identical otherwise.
   `bash install.sh --version 0.5.0 --skip-packages --strict`. `--strict` fails
   the build if the headless plugin install fails or leaves a required plugin
   missing, so the plugins are **baked in** and `nvim` starts ready; the
-  configuration must resolve to the pinned commit. `--nvim` is not used: the
+  configuration must resolve to the pinned commit. Plugin build steps that
+  need pnpm get it on every flavour: `node-24` has it, `python-3.13` and
+  `debian` get a build-only wrapper around Debian's corepack (no `pnpm` is
+  left on their PATH). The plugins themselves are **not pinned** by this
+  repository ([SECURITY.md](SECURITY.md), known limits). `--nvim` is not used: the
   installer would put a second Neovim in `~/.local/bin`, which non-login SSH
   sessions (Herdr) and `docker exec` do not have on PATH, and it resolves its
   checksum through the GitHub API at build time; the image's system-wide

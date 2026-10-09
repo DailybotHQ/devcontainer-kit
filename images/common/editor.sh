@@ -18,7 +18,10 @@
 # Neovim at /usr/local/bin/nvim for every user (install.sh); --nvim would put a
 # second copy in the dev user's ~/.local/bin, which non-login SSH sessions and
 # `docker exec` do not have on PATH.
-# The installed configuration must resolve to the pinned commit.
+# The installed configuration must resolve to the pinned commit. The plugins it
+# installs are NOT pinned by this repository: deepworkplan-vim lists them without a
+# commit, so each comes from its default branch at build time (docs/SECURITY.md,
+# "Known limits").
 set -euo pipefail
 
 BUILD_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -40,15 +43,31 @@ fetch "https://github.com/DailybotHQ/deepworkplan-vim/releases/download/${DWP_VI
   "$DWP_VIM_INSTALLER_SHA256" "$installer"
 chmod 0644 "$installer"
 
+# Plugin build steps run pnpm (e.g. `pnpm install --prefix server`); without it such a
+# step fails quietly and leaves a half-built plugin. node-24 has pnpm (corepack).
+# Debian's nodejs has only an old corepack, whose default "latest" pnpm it cannot run,
+# so python-3.13 and debian get a build-only wrapper (gone with /tmp/dck-editor; no
+# pnpm is left on PATH): corepack's own bundled pnpm, with dependency install scripts
+# off — as pnpm >= 10 does by default on node-24 (optional native add-ons such as
+# bufferutil fall back to JavaScript).
+mkdir -p /tmp/dck-editor/bin
+if ! command -v pnpm >/dev/null 2>&1; then
+  printf '%s\n' '#!/bin/sh' \
+    'COREPACK_DEFAULT_TO_LATEST=0 COREPACK_ENABLE_DOWNLOAD_PROMPT=0 npm_config_ignore_scripts=true exec corepack pnpm "$@"' \
+    > /tmp/dck-editor/bin/pnpm
+  chmod 0755 /tmp/dck-editor/bin/pnpm
+fi
+
 # As the dev user, with a clean environment (no build-time variable leaks in).
 runuser -u "$DEV_USER" -- env -i \
   HOME="$home" USER="$DEV_USER" LOGNAME="$DEV_USER" SHELL=/bin/bash LANG=en_US.UTF-8 \
-  PATH=/usr/local/bin:/usr/bin:/bin TMPDIR=/tmp/dck-editor/tmp \
+  PATH=/usr/local/bin:/usr/bin:/bin:/tmp/dck-editor/bin TMPDIR=/tmp/dck-editor/tmp \
   bash "$installer" --version "${DWP_VIM_TAG#v}" --skip-packages --strict
 
 got="$(git -C "$home/.config/nvim" rev-parse HEAD)"
 [ "$got" = "$DWP_VIM_COMMIT" ] || { echo "deepworkplan-vim ${DWP_VIM_TAG} resolved to $got, expected $DWP_VIM_COMMIT" >&2; exit 1; }
 nvim --version >/dev/null
-# Build-time caches of the plugin builds (corepack's pnpm download, pnpm's store) and
-# the temp dir: nothing the editor needs at run time.
-rm -rf /tmp/dck-editor /home/dev/.cache/node /home/dev/.cache/pnpm
+# Build-time caches of the plugin builds (corepack's pnpm download, pnpm's cache and
+# store; installed node_modules keep their own copies) and the temp dir: nothing the
+# editor needs at run time.
+rm -rf /tmp/dck-editor "$home/.cache/node" "$home/.cache/pnpm" "$home/.local/share/pnpm"

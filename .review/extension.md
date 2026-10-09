@@ -23,8 +23,7 @@ in is untrusted input on the host; the threat model is `docs/SECURITY.md`.
   printed, logged, written to a world-readable file, baked into an image, or copied into a
   container. `dck doctor` must report variable NAMES only (`lib/doctor.py`).
 - **Always `critical`:** a download in `images/common/install.sh`, `images/common/editor.sh`
-  or `lib/layers/*.sh`
-  that is not checked against a SHA-256 pinned in `images/versions.env`, any
+  or `lib/layers/*.sh` that is not checked against a SHA-256 pinned in `images/versions.env`, any
   fetch-piped-to-shell, or a coding-agent CLI / Dailybot CLI / Engram / Graphify
   installed in a base image (`images/`).
 - **Always `critical`:** the template (`src/template/`) gaining `cap_add`, `privileged`,

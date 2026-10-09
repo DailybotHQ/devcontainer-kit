@@ -67,6 +67,8 @@ test_editor_layer_uses_the_verified_installer() {
   assert_not_contains "$(grep -v '^#' "$ed")" "--nvim" "the image's own pinned Neovim is used (no --nvim)"
   assert_contains "$(cat "$ed")" 'runuser -u "$DEV_USER" -- env -i' "the installer runs as the dev user with a clean environment"
   assert_contains "$(cat "$ed")" '[ "$got" = "$DWP_VIM_COMMIT" ]' "the installed configuration is checked against its commit"
+  assert_contains "$(cat "$ed")" 'exec corepack pnpm' "flavours without pnpm get a build-only pnpm for the plugin builds"
+  assert_contains "$(cat "$ed")" 'PATH=/usr/local/bin:/usr/bin:/bin:/tmp/dck-editor/bin' "the build-only pnpm is reachable during the install only"
   for f in $FLAVOURS; do
     assert_contains "$(cat "$IMG/$f/Dockerfile")" "RUN /tmp/dck-editor/editor.sh" "$f installs the editor in its own layer"
   done

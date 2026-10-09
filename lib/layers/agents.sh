@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # lib/layers/agents.sh — the agents layer: coding-agents-kit (`ak`) at its
-# pinned tag, plus Node on flavours without it, then `ak install <kind>...`.
+# pinned tag, plus the pinned Node when node is missing or older than its major,
+# then `ak install <kind>...`.
 #
 #   dck-layer agents [kind...]      (rendered by `dck init` when layers.agents = true)
 #

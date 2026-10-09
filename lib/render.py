@@ -283,7 +283,7 @@ def layers_block(values):
     if values["layers.agents"]:
         lines += [
             "# Agents layer (layers.agents = true): coding-agents-kit (ak) at its pinned",
-            "# tag, Node when the flavour lacks it, then `ak install` for agents.clis.",
+            "# tag, the pinned Node when the flavour lacks a current one, then `ak install`.",
             "ARG DCK_AGENT_CLIS=\"%s\"" % " ".join(values["agents.clis"]),
             "RUN DCK_USER=%s dck-layer agents ${DCK_AGENT_CLIS}" % user,
         ]

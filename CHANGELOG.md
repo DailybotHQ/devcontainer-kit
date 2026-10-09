@@ -22,8 +22,10 @@ and the interface number).
 - The agents layer installs the pinned Node when `node` is missing **or older than the pinned
   major**, so Debian's `nodejs` never stands in for it.
 - Image sizes grow with the baked-in plugins and their runtime dependencies (arm64, uncompressed):
-  `node-24` 840 → 959 MB, `python-3.13` 732 → 1052 MB, `debian` 689 → 978 MB (most of the last
+  `node-24` 840 → 956 MB, `python-3.13` 732 → 1074 MB, `debian` 689 → 999 MB (most of the last
   two is Debian's `nodejs`/`npm`).
+- The baked-in plugins are **not pinned** by this repository (deepworkplan-vim lists them without
+  commits); `docs/SECURITY.md` records it as a known limit.
 
 - Contributor tooling (not shipped): the repository vendors DeepWorkPlan **v7.0.1** and the AI
   Diff Reviewer **v3.3.0** (local review with `.review/extension.md`), adds the `dwp-*` command
