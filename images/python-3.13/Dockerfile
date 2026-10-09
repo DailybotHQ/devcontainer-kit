@@ -1,5 +1,6 @@
 # devcontainer-kit base image — flavour python-3.13.
-# Project runtime: Python 3.13 + uv. No Node in the base (the agents layer adds it).
+# Project runtime: Python 3.13 + uv. Debian's nodejs/npm only for the editor's
+# plugins; the agents layer adds the pinned Node.
 # Agent-free by design: no coding-agent CLI and no agent tooling (docs/images.md).
 # Build from the repository root:
 #   docker build -f images/python-3.13/Dockerfile -t dck-base:python-3.13 .
@@ -18,9 +19,14 @@ LABEL org.opencontainers.image.source="https://github.com/DailybotHQ/devcontaine
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 COPY images/versions.env images/common/ /tmp/dck-build/
-RUN /tmp/dck-build/install.sh python-3.13
+RUN /tmp/dck-build/install.sh python-3.13 nodejs npm
 COPY --from=uv /uv /uvx /usr/local/bin/
 RUN uv --version
+
+# The editor in its own layer: deepworkplan-vim through its official installer,
+# verified and run in container mode (images/common/editor.sh, docs/images.md).
+COPY images/versions.env images/common/editor.sh /tmp/dck-editor/
+RUN /tmp/dck-editor/editor.sh
 
 # Entrypoint library and the default entrypoint (docs/entrypoint.md).
 COPY lib/entrypoint.sh /usr/local/lib/dck/entrypoint.sh

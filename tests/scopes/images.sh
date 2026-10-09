@@ -41,6 +41,7 @@ test_tools_pinned_with_checksums() {
   done
   assert_match "$(pin DWP_VIM_TAG)" '^v[0-9]+\.[0-9]+\.[0-9]+$' "deepworkplan-vim is pinned to a release tag"
   assert_match "$(pin DWP_VIM_COMMIT)" '^[0-9a-f]{40}$' "deepworkplan-vim's tag is bound to a commit"
+  assert_match "$(pin DWP_VIM_INSTALLER_SHA256)" '^[0-9a-f]{64}$' "deepworkplan-vim's installer has a SHA-256"
   assert_match "$(pin AGENTKIT_TAG)" '^v[0-9]+\.[0-9]+\.[0-9]+$' "the agents layer pins coding-agents-kit by tag"
   assert_match "$(pin DAILYBOT_CLI_WHEEL_SHA256)" '^[0-9a-f]{64}$' "the dailybot layer pins the CLI wheel hash"
 }
@@ -53,7 +54,24 @@ test_every_download_is_verified() {
   assert_contains "$(sed -n '/^fetch() {/,/^}/p' "$inst")" "sha256sum -c" "fetch verifies the checksum"
   n_fetch="$(grep -c '^fetch "https://' "$inst")"
   assert_eq "$n_fetch" "3" "gh, herdr and nvim are all fetched through fetch()"
-  assert_contains "$(cat "$inst")" '[ "$got" = "$DWP_VIM_COMMIT" ]' "the deepworkplan-vim clone is checked against its commit"
+  assert_not_contains "$(cat "$inst")" "git clone" "install.sh clones nothing (the editor has its own layer)"
+}
+
+test_editor_layer_uses_the_verified_installer() {
+  local ed="$IMG/common/editor.sh" f
+  assert_eq "$(grep -cE '^[[:space:]]*curl ' "$ed")" "1" "editor.sh has exactly one curl call (inside fetch)"
+  assert_contains "$(sed -n '/^fetch() {/,/^}/p' "$ed")" "sha256sum -c" "editor.sh's fetch verifies the checksum"
+  assert_contains "$(cat "$ed")" 'fetch "https://github.com/DailybotHQ/deepworkplan-vim/releases/download/${DWP_VIM_TAG}/install.sh"' "the installer is the versioned release asset"
+  assert_contains "$(cat "$ed")" '"$DWP_VIM_INSTALLER_SHA256"' "the installer is checked against its pinned SHA-256"
+  assert_contains "$(cat "$ed")" '--version "${DWP_VIM_TAG#v}" --skip-packages --strict' "container mode: pinned version, no packages, strict plugin check"
+  assert_not_contains "$(grep -v '^#' "$ed")" "--nvim" "the image's own pinned Neovim is used (no --nvim)"
+  assert_contains "$(cat "$ed")" 'runuser -u "$DEV_USER" -- env -i' "the installer runs as the dev user with a clean environment"
+  assert_contains "$(cat "$ed")" '[ "$got" = "$DWP_VIM_COMMIT" ]' "the installed configuration is checked against its commit"
+  assert_contains "$(cat "$ed")" 'exec corepack pnpm' "flavours without pnpm get a build-only pnpm for the plugin builds"
+  assert_contains "$(cat "$ed")" 'PATH=/usr/local/bin:/usr/bin:/bin:/tmp/dck-editor/bin' "the build-only pnpm is reachable during the install only"
+  for f in $FLAVOURS; do
+    assert_contains "$(cat "$IMG/$f/Dockerfile")" "RUN /tmp/dck-editor/editor.sh" "$f installs the editor in its own layer"
+  done
 }
 
 test_nothing_piped_to_a_shell() {
@@ -87,13 +105,13 @@ test_dev_user_and_contents() {
   assert_contains "$(cat "$inst")" "DEV_UID=1000" "the dev user is uid 1000"
   assert_contains "$(cat "$inst")" 'NOPASSWD:ALL' "the dev user has sudo"
   local pkg
-  for pkg in git sudo build-essential curl ca-certificates ripgrep fd-find openssh-server; do
+  for pkg in git sudo build-essential curl ca-certificates ripgrep fd-find openssh-server unzip tar gzip lua5.4 fontconfig; do
     assert_match "$(sed -n '/apt-get install/,/"\$@"/p' "$inst")" "(^|[[:space:]])$pkg([[:space:]]|$)" "apt installs $pkg"
   done
-  assert_contains "$(cat "$IMG/node-24/Dockerfile")" "install.sh node-24 python3" "node-24 adds python3 (no pip/venv) for the tooling"
-  assert_contains "$(cat "$IMG/debian/Dockerfile")" "install.sh debian python3" "debian adds python3 for the tooling"
+  assert_contains "$(cat "$IMG/node-24/Dockerfile")" "install.sh node-24 python3 python3-venv" "node-24 adds python3 and venv (tooling, editor plugins)"
+  assert_contains "$(cat "$IMG/debian/Dockerfile")" "install.sh debian python3 python3-venv nodejs npm" "debian adds python3, venv and Debian's nodejs/npm"
   assert_contains "$(cat "$IMG/python-3.13/Dockerfile")" "COPY --from=uv /uv /uvx /usr/local/bin/" "python-3.13 ships uv"
-  assert_not_contains "$(cat "$IMG/python-3.13/Dockerfile")" "node" "python-3.13 has no Node in the base"
+  assert_contains "$(cat "$IMG/python-3.13/Dockerfile")" "install.sh python-3.13 nodejs npm" "python-3.13 adds Debian's nodejs/npm for the editor's plugins only"
   assert_contains "$(cat "$IMG/node-24/Dockerfile")" "corepack enable" "node-24 enables corepack (pnpm)"
   local f
   for f in $FLAVOURS; do

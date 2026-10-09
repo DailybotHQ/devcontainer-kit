@@ -5,15 +5,16 @@ chosen by the **project's** runtime, identical otherwise.
 
 | Flavour | FROM (pinned tag + digest) | Project runtime | Extra |
 | --- | --- | --- | --- |
-| `python-3.13` | `python:3.13.16-slim-trixie` | Python 3.13 + `uv` 0.12.24 | no Node (the agents layer adds it) |
-| `node-24` | `node:24.21.0-trixie-slim` | Node 24 + corepack (pnpm) | `python3` from apt, no pip/venv — the tooling needs the stdlib only |
-| `debian` | `debian:trixie-20261005-slim` | none | `python3` from apt |
+| `python-3.13` | `python:3.13.16-slim-trixie` | Python 3.13 + `uv` 0.12.24 | Debian's `nodejs`/`npm` for the editor's plugins only (the agents layer adds the pinned Node) |
+| `node-24` | `node:24.21.0-trixie-slim` | Node 24 + corepack (pnpm) | `python3` + `python3-venv` from apt (the tooling needs the stdlib; venv is for the editor's plugins) |
+| `debian` | `debian:trixie-20261005-slim` | none | `python3`, `python3-venv`, Debian's `nodejs`/`npm` from apt (the agents layer adds the pinned Node) |
 
 ## Every flavour contains
 
 - git, git-lfs, gh **2.102.0**, sudo for the dev user, build-essential,
   curl/ca-certificates, ripgrep, fd (`fd` → `fdfind`), less, nano, procps,
-  xz/unzip, locales (`en_US.UTF-8`);
+  xz/unzip/tar/gzip, lua5.4, fontconfig, locales (`en_US.UTF-8`) — the last
+  few plus a Node and Python venv are what deepworkplan-vim's plugins need;
 - openssh-server with the hardened drop-in
   `/etc/ssh/sshd_config.d/10-dck.conf` — public keys only, no root, no
   passwords, agent forwarding allowed, local forwarding only — and **no host
@@ -23,11 +24,24 @@ chosen by the **project's** runtime, identical otherwise.
   sessions, which is how a Herdr client starts the remote server) and a seeded
   `~/.config/herdr/config.toml` (login shell, `new_cwd = /workspace`,
   `allow_nested = true`);
-- Neovim **0.12.5** (`/opt/nvim-0.12.5`, `/usr/local/bin/nvim`) and the
-  deepworkplan-vim configuration at tag **v0.4.1** (commit-verified) in
-  `~/.config/nvim`. Only the configuration is baked in; deepworkplan-vim's own
-  plugin manager fetches its plugins on the first `nvim` launch, so nothing
-  unpinned ends up in the image. `EDITOR`/`VISUAL`/`GIT_EDITOR` are `nvim`
+- Neovim **0.12.5** (`/opt/nvim-0.12.5`, `/usr/local/bin/nvim`, SHA-256
+  pinned per architecture) and deepworkplan-vim **v0.5.0** in `~/.config/nvim`,
+  installed in its own image layer (`images/common/editor.sh`) by the
+  project's official installer — the one `https://vim.deepworkplan.com/install.sh`
+  serves — downloaded from the versioned release asset, checked against its
+  pinned SHA-256 and then run as `dev` in container mode:
+  `bash install.sh --version 0.5.0 --skip-packages --strict`. `--strict` fails
+  the build if the headless plugin install fails or leaves a required plugin
+  missing, so the plugins are **baked in** and `nvim` starts ready; the
+  configuration must resolve to the pinned commit. Plugin build steps that
+  need pnpm get it on every flavour: `node-24` has it, `python-3.13` and
+  `debian` get a build-only wrapper around Debian's corepack (no `pnpm` is
+  left on their PATH). The plugins themselves are **not pinned** by this
+  repository ([SECURITY.md](SECURITY.md), known limits). `--nvim` is not used: the
+  installer would put a second Neovim in `~/.local/bin`, which non-login SSH
+  sessions (Herdr) and `docker exec` do not have on PATH, and it resolves its
+  checksum through the GitHub API at build time; the image's system-wide
+  pinned Neovim covers every user. `EDITOR`/`VISUAL`/`GIT_EDITOR` are `nvim`
   unless the editor layer is turned off;
 - the entrypoint library `/usr/local/lib/dck/entrypoint.sh` and the default
   entrypoint `/usr/local/bin/dck-entrypoint`;
@@ -48,8 +62,9 @@ appears under `images/`.
 
 One file pins every input: base images by tag **and** digest, each tool by
 version **and** SHA-256 per architecture (amd64, arm64), deepworkplan-vim by
-tag **and** commit. `images/common/install.sh` downloads through a single
-`fetch()` that refuses a checksum mismatch; nothing is piped into a shell.
+tag, commit **and** installer SHA-256. `images/common/install.sh` and
+`images/common/editor.sh` download through a `fetch()` that refuses a checksum
+mismatch; nothing is piped into a shell.
 The Dockerfiles' `FROM` defaults are checked against the pin file by the test
 suite. Checksum provenance:
 

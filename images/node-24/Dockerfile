@@ -1,5 +1,6 @@
 # devcontainer-kit base image — flavour node-24.
-# Project runtime: Node 24 + corepack (pnpm). python3 from apt (no pip/venv) for the tooling.
+# Project runtime: Node 24 + corepack (pnpm). python3 + python3-venv from apt
+# (the tooling; venv for the editor's plugins).
 # Agent-free by design: no coding-agent CLI and no agent tooling (docs/images.md).
 # Build from the repository root:
 #   docker build -f images/node-24/Dockerfile -t dck-base:node-24 .
@@ -16,12 +17,17 @@ LABEL org.opencontainers.image.source="https://github.com/DailybotHQ/devcontaine
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 COPY images/versions.env images/common/ /tmp/dck-build/
-RUN /tmp/dck-build/install.sh node-24 python3
+RUN /tmp/dck-build/install.sh node-24 python3 python3-venv
 ENV PNPM_HOME=/usr/local/share/pnpm
 RUN corepack enable \
     && mkdir -p "${PNPM_HOME}/bin" \
     && chown -R dev:dev "${PNPM_HOME}" \
     && node --version
+
+# The editor in its own layer: deepworkplan-vim through its official installer,
+# verified and run in container mode (images/common/editor.sh, docs/images.md).
+COPY images/versions.env images/common/editor.sh /tmp/dck-editor/
+RUN /tmp/dck-editor/editor.sh
 
 # Entrypoint library and the default entrypoint (docs/entrypoint.md).
 COPY lib/entrypoint.sh /usr/local/lib/dck/entrypoint.sh

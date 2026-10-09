@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # lib/layers/agents.sh — the agents layer: coding-agents-kit (`ak`) at its
-# pinned tag, plus Node on flavours without it, then `ak install <kind>...`.
+# pinned tag, plus the pinned Node when node is missing or older than its major,
+# then `ak install <kind>...`.
 #
 #   dck-layer agents [kind...]      (rendered by `dck init` when layers.agents = true)
 #
@@ -21,8 +22,12 @@ for k in "$@"; do
   esac
 done
 
-# 1. Node — the npm-distributed CLIs need it; python-3.13 and debian lack it.
-if ! command -v node >/dev/null 2>&1; then
+# 1. Node — the npm-distributed CLIs need a current one. python-3.13 and debian
+#    carry only Debian's nodejs (an older major, installed for the editor's
+#    plugins), so the pinned Node goes into /usr/local, ahead of /usr/bin on PATH,
+#    whenever node is missing or older than the pinned major.
+node_major="$({ node --version 2>/dev/null || true; } | sed -n 's/^v\([0-9][0-9]*\)\..*/\1/p')"
+if [ -z "$node_major" ] || [ "$node_major" -lt "${NODE_VERSION%%.*}" ]; then
   arch="$(layer_arch)"
   case "$arch" in
     amd64) node_arch=x64; node_sha="$NODE_SHA256_AMD64" ;;

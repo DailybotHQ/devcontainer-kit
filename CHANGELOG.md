@@ -9,6 +9,24 @@ and the interface number).
 
 ### Changed
 
+- Base images install deepworkplan-vim **v0.5.0** (commit
+  `3b9c79a52f50ee7d3fd103e31c1a307bad661e59`) through its official installer instead of a
+  hand-written clone: the versioned release asset (the file vim.deepworkplan.com serves) is
+  checked against a pinned SHA-256 (`DWP_VIM_INSTALLER_SHA256`) and run as `dev` with
+  `--version 0.5.0 --skip-packages --strict`, in its own image layer (`images/common/editor.sh`).
+  Plugins are now installed at build time — `nvim` starts ready — instead of on first launch.
+  The image keeps its own system-wide, SHA-256-pinned Neovim (the installer's `--nvim` is not used).
+- Every flavour adds `tar`, `gzip`, `lua5.4` and `fontconfig`; `node-24` and `debian` add
+  `python3-venv`; `python-3.13` and `debian` add Debian's `nodejs`/`npm` (for the editor's
+  plugins only).
+- The agents layer installs the pinned Node when `node` is missing **or older than the pinned
+  major**, so Debian's `nodejs` never stands in for it.
+- Image sizes grow with the baked-in plugins and their runtime dependencies (arm64, uncompressed):
+  `node-24` 840 → 956 MB, `python-3.13` 732 → 1074 MB, `debian` 689 → 999 MB (most of the last
+  two is Debian's `nodejs`/`npm`).
+- The baked-in plugins are **not pinned** by this repository (deepworkplan-vim lists them without
+  commits); `docs/SECURITY.md` records it as a known limit.
+
 - Contributor tooling (not shipped): the repository vendors DeepWorkPlan **v7.0.1** and the AI
   Diff Reviewer **v3.3.0** (local review with `.review/extension.md`), adds the `dwp-*` command
   delegators, agent personas and catalogs under `.agents/`, and tracks the addon registry
