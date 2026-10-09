@@ -345,3 +345,20 @@ test_install_refuses_foreign_directory() {
   run_cmd env DCK_INSTALL_DIR="$HOME" bash "$DCK_REPO/install.sh" --no-rc
   assert_rc 5 "install refuses HOME as the destination"
 }
+
+test_setup_writes_git_identity() {
+  mk_repo || return 0
+  local fake="placeholder-$$-mail@example.invalid"
+  git config --global user.name "Dev Example"
+  git config --global user.email "$fake"
+  d setup
+  assert_rc 0 "setup succeeds"
+  assert_contains "$(cat "$REPO/docker/local/app/.env")" "DCK_GIT_NAME=Dev Example" "setup copies user.name into .env"
+  assert_contains "$(cat "$REPO/docker/local/app/.env")" "DCK_GIT_EMAIL=$fake" "setup copies user.email into .env"
+  assert_not_contains "$RUN_OUT$RUN_ERR" "$fake" "the value is never printed"
+  printf 'DCK_GIT_EMAIL=kept@example.invalid\n' > "$REPO/docker/local/app/.env.tmp" && grep -v '^DCK_GIT_EMAIL=' "$REPO/docker/local/app/.env" >> "$REPO/docker/local/app/.env.tmp" && mv "$REPO/docker/local/app/.env.tmp" "$REPO/docker/local/app/.env" && chmod 600 "$REPO/docker/local/app/.env"
+  d setup
+  assert_eq "$(grep -c '^DCK_GIT_EMAIL=' "$REPO/docker/local/app/.env")" "1" "an existing key is never duplicated"
+  assert_contains "$(cat "$REPO/docker/local/app/.env")" "DCK_GIT_EMAIL=kept@example.invalid" "an existing key is never overwritten"
+  git config --global --unset user.name; git config --global --unset user.email
+}

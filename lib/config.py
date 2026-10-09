@@ -57,6 +57,7 @@ REPO_RULES = {
     "layers.editor": ("bool", True, None),
     "agents.clis": ("kind_list", [], ("enum", AGENT_KINDS)),
     "herdr.machine": ("bool", False, None),
+    "ssh_agent": ("bool", True, None),
     "herdr.label": ("label", "{repo}", ("placeholders", LABEL_PLACEHOLDERS)),
 }
 PROFILE_RULES = {

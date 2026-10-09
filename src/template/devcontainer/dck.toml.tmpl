@@ -14,6 +14,9 @@ flavour = "{{flavour}}"
 # Optional: a different official image for the runtime, pinned by digest, e.g.
 # base_image = "node:22.20.0-trixie-slim@sha256:<64 hex>"
 
+# Share the host's SSH agent with the container (git over SSH; keys never enter it).
+ssh_agent = {{ssh_agent}}
+
 # Loopback-only host port for the container's sshd (Herdr, `dck ssh`); 0 = no sshd.
 ssh_port = {{ssh_port}}
 

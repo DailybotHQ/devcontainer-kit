@@ -20,6 +20,7 @@
 #   dck_herdr_config                         Herdr config defaults, in place
 #   dck_repo_hook                            docker/local/dev-setup-hook.sh, if present
 #   dck_layer_persist                        per-CLI volumes of the agents layer
+#   dck_git_identity                         global git [user] settings from DCK_GIT_* (no host file)
 #   dck_start                                the standard sequence of the above
 #
 # Inputs (environment; the compose file rendered by `dck init` sets them):
@@ -450,6 +451,30 @@ HOMES
 # dck_start — the standard sequence (what /usr/local/bin/dck-entrypoint runs)
 # --------------------------------------------------------------------------
 
+# dck_git_identity — write the git identity from DCK_GIT_NAME, DCK_GIT_EMAIL and
+# the optional signing settings (DCK_GIT_SIGNINGKEY, DCK_GIT_GPG_FORMAT,
+# DCK_GIT_COMMIT_GPGSIGN) into the dev user's global git config. Values are
+# never printed; an unset variable leaves that key alone.
+dck_git_identity() {
+  _dck_env
+  local pairs="user.name=DCK_GIT_NAME user.email=DCK_GIT_EMAIL user.signingkey=DCK_GIT_SIGNINGKEY gpg.format=DCK_GIT_GPG_FORMAT commit.gpgsign=DCK_GIT_COMMIT_GPGSIGN"
+  local pair key var value set=0
+  for pair in $pairs; do
+    key="${pair%%=*}"; var="${pair#*=}"
+    value="${!var:-}"
+    [ -n "$value" ] || continue
+    case "$value" in *"
+"*) dck_log "git identity: $var spans several lines; ignored"; continue ;; esac
+    if _dck_is_root && [ "$DCK_USER" != "root" ]; then
+      runuser -u "$DCK_USER" -- env HOME="$DCK_HOME" git config --global "$key" "$value" || return 1
+    else
+      HOME="$DCK_HOME" git config --global "$key" "$value" || return 1
+    fi
+    set=$((set + 1))
+  done
+  [ "$set" -eq 0 ] || dck_log "git identity: $set setting(s) written from DCK_GIT_*"
+}
+
 dck_start() {
   _dck_env
   dck_log "starting for user $DCK_USER (workspace $DCK_WORKSPACE)"
@@ -462,6 +487,7 @@ dck_start() {
   dck_persist state "$DCK_HOME/.config/herdr" dir || true
   dck_persist state "$DCK_HOME/.bash_history" file || true
   dck_layer_persist || true
+  dck_git_identity || true
   dck_herdr_config || true
   dck_env_profile || true
   dck_sshd || true

@@ -142,6 +142,11 @@
       "type": "string",
       "pattern": "^[a-z0-9]+([._/-][a-z0-9]+)*(:[A-Za-z0-9._-]{1,128})?@sha256:[0-9a-f]{64}$",
       "description": "optional: an official image for the runtime, pinned by digest; defaults to the flavour's pin in versions.env"
+    },
+    "ssh_agent": {
+      "type": "boolean",
+      "default": true,
+      "description": "share the host's SSH agent with the container (git over SSH; keys never enter it)"
     }
   }
 }

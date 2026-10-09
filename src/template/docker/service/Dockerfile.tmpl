@@ -16,7 +16,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # System packages, hardened sshd (no host keys in the image), gh, Herdr,
 # Neovim and the uid-1000 user — every download pinned and verified
 # (dck/versions.env, dck/install.sh).
-COPY dck/versions.env dck/install.sh dck/sshd_config.conf dck/herdr-config.toml dck/profile.sh /tmp/dck-build/
+COPY dck/versions.env dck/install.sh dck/sshd_config.conf dck/github_known_hosts dck/herdr-config.toml dck/profile.sh /tmp/dck-build/
 RUN bash /tmp/dck-build/install.sh {{flavour}} {{apt_extras}}
 {% if is_node %}
 ENV PNPM_HOME=/usr/local/share/pnpm

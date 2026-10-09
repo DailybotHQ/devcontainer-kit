@@ -267,3 +267,16 @@ test_library_under_system_bash() {
   run_cmd bash -n "$LIB"
   assert_rc 0 "the library parses"
 }
+
+test_git_identity() {
+  local fake="placeholder-$$-mail@example.invalid"
+  run_cmd env DCK_GIT_NAME="Dev Example" DCK_GIT_EMAIL="$fake" DCK_GIT_GPG_FORMAT=ssh \
+    bash -c '. "$1"; dck_git_identity' _ "$LIB"
+  assert_rc 0 "the git identity is written"
+  assert_eq "$(HOME="$DCK_HOME" git config --global user.name)" "Dev Example" "user.name comes from DCK_GIT_NAME"
+  assert_eq "$(HOME="$DCK_HOME" git config --global user.email)" "$fake" "user.email comes from DCK_GIT_EMAIL"
+  assert_eq "$(HOME="$DCK_HOME" git config --global gpg.format)" "ssh" "signing settings are written when set"
+  assert_eq "$(HOME="$DCK_HOME" git config --global user.signingkey || true)" "" "an unset variable leaves its key alone"
+  assert_not_contains "$RUN_OUT$RUN_ERR" "$fake" "values are never printed"
+  assert_contains "$RUN_ERR" "3 setting(s) written" "only a count is logged"
+}

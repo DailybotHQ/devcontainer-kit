@@ -335,3 +335,19 @@ mine
 added
 # <<< dck:b <<<" "blocks are replaced, removed and added; user lines are kept"
 }
+
+test_ssh_agent_and_known_hosts() {
+  local r c
+  r="$(new_repo agent)"
+  init_repo "$r" --no-herdr --yes
+  c="$(cat "$r/docker/local/docker-compose.yaml")"
+  assert_contains "$c" '- ${DCK_HOST_SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}:/run/dck/ssh-agent.sock' "the host SSH agent socket is mounted (no key file)"
+  assert_contains "$c" "SSH_AUTH_SOCK: /run/dck/ssh-agent.sock" "exec sessions see the agent"
+  assert_contains "$(cat "$r/.devcontainer/dck.toml")" "ssh_agent = true" "dck.toml records the agent sharing"
+  assert_contains "$(cat "$r/docker/local/app/dck/github_known_hosts")" "github.com ssh-ed25519 " "GitHub's host keys are vendored"
+  assert_contains "$(cat "$r/docker/local/app/.env.example")" "# DCK_GIT_EMAIL=" "the env example documents the git identity"
+  assert_contains "$(cat "$r/docker/local/app/.env.example")" "# AGENTKIT_PERMISSIONS=ask" "the env example documents the opt-out"
+  sed -i.orig 's/^ssh_agent = true$/ssh_agent = false/' "$r/.devcontainer/dck.toml" && rm -f "$r/.devcontainer/dck.toml.orig"
+  init_repo "$r" --no-herdr --yes
+  assert_not_contains "$(cat "$r/docker/local/docker-compose.yaml")" "ssh-agent.sock" "ssh_agent = false shares no agent"
+}

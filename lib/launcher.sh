@@ -286,6 +286,45 @@ $(env_examples)
 EOF
 }
 
+# ensure_git_identity_env — copy the host's git identity (user.name, user.email
+# and the signing settings, when set) into each service .env as DCK_GIT_*, only
+# where the key is absent. Values are written, never printed.
+ensure_git_identity_env() {
+  GIT_ID_SET=0
+  command -v git >/dev/null 2>&1 || return 0
+  local f target pair key var value
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    target="${f%.example}"
+    [ -f "$target" ] && [ ! -L "$target" ] || continue
+    for pair in user.name=DCK_GIT_NAME user.email=DCK_GIT_EMAIL user.signingkey=DCK_GIT_SIGNINGKEY \
+                gpg.format=DCK_GIT_GPG_FORMAT commit.gpgsign=DCK_GIT_COMMIT_GPGSIGN; do
+      key="${pair%%=*}"; var="${pair#*=}"
+      grep -q "^${var}=" "$target" && continue
+      value="$(git config --global --get "$key" 2>/dev/null || true)"
+      [ -n "$value" ] || continue
+      case "$value" in *"
+"*) continue ;; esac
+      printf '%s=%s\n' "$var" "$value" >> "$target" || die "could not update $target"
+      GIT_ID_SET=$((GIT_ID_SET + 1))
+    done
+  done <<EOF
+$(env_examples)
+EOF
+  [ "$GIT_ID_SET" -eq 0 ] || note "setup: wrote $GIT_ID_SET git identity setting(s) from your git config into the service .env"
+}
+
+# export_host_ssh_agent — the compose file mounts ${DCK_HOST_SSH_AUTH_SOCK} as the
+# container's SSH agent. Docker Desktop's default path needs nothing; on a Linux
+# host it is the user's own agent socket.
+export_host_ssh_agent() {
+  [ -n "${DCK_HOST_SSH_AUTH_SOCK:-}" ] && return 0
+  if [ "$(uname -s)" = "Linux" ] && [ -S "${SSH_AUTH_SOCK:-}" ]; then
+    export DCK_HOST_SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+  fi
+  return 0
+}
+
 ensure_external_networks() {
   local net f
   for f in "${DC_COMPOSE_FILES[@]}"; do
@@ -409,6 +448,8 @@ cmd_setup() {
   ENV_CREATED=0
   ensure_env_from_examples
   changed=$((changed + ENV_CREATED))
+  ensure_git_identity_env
+  changed=$((changed + GIT_ID_SET))
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     target="${f%.example}"
@@ -447,6 +488,7 @@ cmd_up() {
   done
   require_docker
   fast_check
+  export_host_ssh_agent
   resolve_backend
   selected_services ${args[@]+"${args[@]}"}
   if [ "$BACKEND" = devcontainer ] && [ "${#args[@]}" -eq 0 ]; then
