@@ -4,7 +4,8 @@
 
 | Version | Supported |
 | --- | --- |
-| `v0.1.4` (latest), `v0.1.3` | yes |
+| `v0.1.5` (latest), `v0.1.4` | yes |
+| `v0.1.3` | no — upgrade (no code security fix since; newer editor pin) |
 | `v0.1.2` | no — upgrade (no code security fix since; newer editor pin and doctor fix) |
 | `v0.1.1` | no — upgrade (the agents layer cannot install npm-based CLIs) |
 | `v0.1.0` | no — upgrade (security fixes in `v0.1.1`) |
