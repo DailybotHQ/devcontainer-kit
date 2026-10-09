@@ -1,0 +1,46 @@
+name: Bug report
+description: Something in dck, the template or the images does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Security problems go to SECURITY.md, not here.**
+        Never paste secrets, tokens or the contents of `.env` files.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `dck --version`.
+      placeholder: devcontainer-kit 0.1.2
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: dck doctor --json
+      description: Paste the output (it reports variable names only, never values). Remove anything you consider private.
+      render: json
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Commands you ran, from a clean checkout if possible.
+    validations:
+      required: true
+  - type: dropdown
+    id: host
+    attributes:
+      label: Host
+      options:
+        - macOS
+        - Linux
+        - other
+    validations:
+      required: true

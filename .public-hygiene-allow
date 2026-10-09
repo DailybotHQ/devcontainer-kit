@@ -1,0 +1,8 @@
+# .public-hygiene-allow — exceptions to scripts/check-public-hygiene.sh (standard A3, S3).
+#
+# One per line:  <path glob>  <rule|*>  <reason>
+# Only for obviously fake fixtures: the fake value itself must contain one of
+# "fake", "test", "planted" or "example". Real secrets are never allowed — rotate them.
+# The hygiene test scope builds its violating strings at run time, so it needs no entry.
+#
+# (no exception is needed today)

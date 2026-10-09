@@ -21,7 +21,7 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
 | `init [flags]` | render or reconcile the template ([init.md](init.md)) |
 | `setup` | create each `docker/local/**/.env` from its `.env.example` at **0600** (an existing readable one is narrowed to 0600, loudly), create missing external networks, create the dedicated dck SSH key |
 | `up [--recreate] [svc…]` | start `runServices`, detached. A second `up` leaves running containers alone; `--recreate` applies compose changes. Registers the Herdr machine afterwards when `dck.toml` says so ([herdr.md](herdr.md)) |
-| `down [svc…]` | stop and remove this repository's services — never `compose down`; named volumes are kept |
+| `down [svc…]` | stop and remove this repository's services — never `compose down`; named volumes and the project network are kept (the next `up` reuses them). To retire a repository completely: `docker volume rm <project>_state …` and `docker network rm <project>_default` |
 | `stop` / `start` / `restart` `[svc…]` | as compose; `stop` skips the environment checks so a stack can always be stopped |
 | `ps [svc…]` | the repository's containers |
 | `logs [--no-follow] [svc…]` | the last 200 lines, following by default |
@@ -113,7 +113,7 @@ entrypoint). `dck ssh` connects to `127.0.0.1:<ssh_port>` with:
 ## Install
 
 ```bash
-git clone --branch v0.1.2 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.1.3 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh            # or --no-rc for scripted installs
 ```
 

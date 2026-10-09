@@ -19,6 +19,9 @@ it_cleanup() {
   if [ -n "${IT_PROJECT:-}" ]; then
     docker volume rm "${IT_PROJECT}_state" >/dev/null 2>&1
     docker image rm "${IT_PROJECT}-app" >/dev/null 2>&1
+    # dck down keeps the project network (shared projects); a test project is
+    # unique per run, so its network must go too or runs exhaust Docker's pools.
+    docker network rm "${IT_PROJECT}_default" >/dev/null 2>&1
   fi
   if [ -n "${IT_AGENT_PID:-}" ]; then kill "$IT_AGENT_PID" 2>/dev/null; fi
   if [ -n "${IT_SOCK:-}" ]; then rm -f "$IT_SOCK"; fi
@@ -145,4 +148,12 @@ test_agents_layer_installs_the_kit() {
   assert_contains "$RUN_OUT" "agentkit ${tag#v}" "the installed kit is the pinned $tag"
   assert_contains "$RUN_OUT" "1 ask" "ak reports interface 1 and pass-through permissions (no bypass)"
   assert_contains "$RUN_OUT" "prefix=/home/dev/.local" "npm globals go to the dev user's ~/.local"
+}
+
+test_zz_nothing_left_behind() {
+  # Runs last in the scope: every container, volume and network a test created is gone.
+  require_docker "the docker scope leaves no container, volume or network behind" || return 0
+  local left
+  left="$( { docker ps -a --format '{{.Names}}'; docker volume ls --format '{{.Name}}'; docker network ls --format '{{.Name}}'; } | grep -E '^(dckit|dckdc)[0-9a-f]{8}' || true)"
+  assert_eq "$left" "" "the docker scope leaves no container, volume or network behind"
 }

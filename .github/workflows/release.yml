@@ -1,0 +1,57 @@
+name: release
+
+# An annotated tag vX.Y.Z (matching VERSION) becomes a GitHub release whose notes are
+# that version's CHANGELOG section and whose asset is SHA256SUMS over the shipped
+# files (scripts/release-sums.sh). A tag with a pre-release suffix (vX.Y.Z-beta.1) is
+# published as a pre-release. images.yml builds the base images on the same tag.
+# Third-party actions are pinned by commit SHA.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: the tag is annotated and matches VERSION
+        run: |
+          git fetch --force origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          [ "$(git cat-file -t "refs/tags/${TAG}")" = "tag" ] || { echo "::error::${TAG} is not an annotated tag"; exit 1; }
+          [ "v$(git show "${TAG}:VERSION")" = "${TAG}" ] || { echo "::error::${TAG} does not match VERSION"; exit 1; }
+      - name: public hygiene
+        run: bash scripts/check-public-hygiene.sh
+      - name: SHA256SUMS
+        run: bash scripts/release-sums.sh "${TAG}" SHA256SUMS
+      - name: notes from the CHANGELOG
+        run: |
+          {
+            bash scripts/release-notes.sh "${TAG#v}"
+            printf '\n## Install\n\n```bash\ngit clone --branch %s https://github.com/DailybotHQ/devcontainer-kit\n./devcontainer-kit/install.sh\n```\n' "${TAG}"
+            printf '\nVerify a clone with `shasum -a 256 -c SHA256SUMS`. Images: `ghcr.io/dailybothq/devcontainer-kit-base:{python-3.13,node-24,debian}-%s` (digests in the images workflow run).\n' "${TAG}"
+          } > notes.md
+      - name: publish
+        run: |
+          pre=""
+          case "${TAG}" in *-*) pre="--prerelease" ;; esac
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" SHA256SUMS --clobber
+          else
+            gh release create "${TAG}" --verify-tag --title "devcontainer-kit ${TAG}" --notes-file notes.md ${pre} SHA256SUMS
+          fi

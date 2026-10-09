@@ -34,7 +34,7 @@ SCOPES_DIR="${DCK_TEST_SCOPES_DIR:-$TESTS_DIR/scopes}"
 
 # The canonical order. Scopes not listed here run after these, alphabetically.
 # docker is last: it is the only integration scope and the slowest.
-ORDER="harness config template images entrypoint launcher layers herdr doctor security docker"
+ORDER="harness config template images entrypoint launcher layers herdr doctor security hygiene standard docker"
 
 usage_error() {
   printf 'tests/run.sh: %s\n' "$1" >&2

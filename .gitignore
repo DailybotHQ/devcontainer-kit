@@ -6,3 +6,5 @@ node_modules/
 !.env.example
 __pycache__/
 .DS_Store
+Thumbs.db
+*.swp

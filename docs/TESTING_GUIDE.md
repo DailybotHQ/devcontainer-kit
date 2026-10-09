@@ -4,7 +4,8 @@
 
 ```bash
 bash tests/run.sh                                   # every scope, docker last
-shellcheck -S warning bin/* lib/*.sh tests/run.sh install.sh
+bash scripts/check-public-hygiene.sh                # public-repository hygiene (no private names, no secrets)
+shellcheck -S warning bin/* lib/*.sh scripts/*.sh tests/run.sh install.sh
 ```
 
 Both run in CI (`.github/workflows/ci.yml`): Ubuntu runs every scope including
@@ -38,6 +39,8 @@ change touches shared code (`lib/common.sh`, `lib/dckpy.py`, `bin/dck`).
 | `herdr` | `lib/herdr.sh`, `lib/sshconf.py` (fake `herdr`/`ssh`/`docker`, sandbox `~/.ssh`) | no |
 | `doctor` | `lib/doctor.py`, `lib/doctor.sh`, `docs/schema/dck-doctor-v1.json` (validated by `tests/py/minischema.py`), `skills/dck/` | no |
 | `security` | static posture checks over `src/template/`, `images/`, `lib/` | no |
+| `hygiene` | `scripts/check-public-hygiene.sh`, `.public-hygiene-allow` (every A3 rule, allow-list, secrets never echoed, this repo clean) | no |
+| `standard` | the public repository standard: README order/badges/footer, LICENSE, CHANGELOG (Keep a Changelog), CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, CLAUDE.md, .gitignore, `.github/` community files, CI; the release workflow with `scripts/release-sums.sh` and `scripts/release-notes.sh` | no |
 | `docker` | integration: build the node-24 image, `dck init` a fixture, `setup`, `up`, `shell -c`, sshd on loopback only, `ssh` with agent forwarding (throwaway key, sandbox agent), env profile in ssh sessions, host key stable across `up --recreate`, live `doctor --json` against the schema, `down`; the same `up`/`shell` through the real `devcontainer` CLI; the agents layer installing coding-agents-kit at its pin (interface 1, `ask`, npm prefix). Cleans up its containers, volumes and images | **yes** |
 
 ## How a test is written

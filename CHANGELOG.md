@@ -1,7 +1,31 @@
 # Changelog
 
-All notable changes to devcontainer-kit. Versions follow [SemVer](https://semver.org)
-(0.x: a breaking change bumps the minor version and the interface number).
+All notable changes to devcontainer-kit are documented here. The format is based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
+[Semantic Versioning](https://semver.org/) (0.x: a breaking change bumps the minor version
+and the interface number).
+
+## [Unreleased]
+
+## [0.1.3] — 2026-10-09
+
+Interface stays **1**. Repository standard and a doctor fix; no behaviour change for
+`dck.toml`, the template or the images.
+
+### Added
+
+- Public-repository standard: `CONTRIBUTING.md`, `SECURITY.md` (policy), `CODE_OF_CONDUCT.md`
+  (Contributor Covenant 2.1), `CLAUDE.md` → `AGENTS.md`, issue and pull-request templates,
+  `CODEOWNERS`, Dependabot for GitHub Actions.
+- `scripts/check-public-hygiene.sh` + `.public-hygiene-allow`: fails CI on personal paths,
+  private names and secret patterns in tracked files (never printing the match).
+- Release workflow: an annotated tag publishes the GitHub release with this CHANGELOG's
+  notes and `SHA256SUMS` (`scripts/release-sums.sh`, `scripts/release-notes.sh`).
+
+### Fixed
+
+- `dck doctor` no longer reports a stuck Docker engine (`docker info` exiting 0 with its
+  error on stdout) as an answering daemon.
 
 ## [0.1.2] — 2026-10-09
 
@@ -81,6 +105,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.3
 [0.1.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.2
 [0.1.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.1
 [0.1.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.0
