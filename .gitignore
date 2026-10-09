@@ -1,4 +1,6 @@
-.dwp/
+# DeepWorkPlan: plans and records stay local; the addon registry is shared.
+.dwp/*
+!.dwp/config.json
 tmp/
 node_modules/
 .env

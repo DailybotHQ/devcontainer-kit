@@ -7,6 +7,13 @@ and the interface number).
 
 ## [Unreleased]
 
+### Changed
+
+- Contributor tooling (not shipped): the repository vendors DeepWorkPlan **v7.0.0** and the AI
+  Diff Reviewer **v3.3.0** (local review with `.review/extension.md`), adds the `dwp-*` command
+  delegators, agent personas and catalogs under `.agents/`, and tracks the addon registry
+  `.dwp/config.json`.
+
 ## [0.1.4] — 2026-10-09
 
 Interface stays **1**. Editor pin only.
