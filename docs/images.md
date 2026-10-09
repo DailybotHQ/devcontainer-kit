@@ -71,6 +71,13 @@ docker build -f images/node-24/Dockerfile -t dck-base:node-24 .   # from the rep
 The build context is the repository root; each flavour's
 `Dockerfile.dockerignore` sends only `images/` and the entrypoint library.
 
+## Releases — `.github/workflows/release.yml`
+
+An annotated tag `vX.Y.Z` that matches `VERSION` becomes a GitHub release: notes from
+that version's `CHANGELOG.md` section (`scripts/release-notes.sh`), the asset
+`SHA256SUMS` over the shipped files read from the tag (`scripts/release-sums.sh`), and a
+pre-release flag for tags like `v0.2.0-beta.1`. The hygiene check runs first.
+
 ## Publishing — `.github/workflows/images.yml`
 
 - **Tag `vX.Y.Z`** → `…:<flavour>-vX.Y.Z` for `linux/amd64` and `linux/arm64`,

@@ -126,3 +126,56 @@ test_no_placeholders() {
     assert_no_match "$(cat "$R/$f")" '\[(TODO|TBD|FIXME)|\[INSERT|lorem ipsum' "$f has no placeholder"
   done
 }
+
+# ---- S4: release workflow -------------------------------------------------------------
+
+rel_repo() {
+  local d="$SANDBOX/rel"
+  mkdir -p "$d/bin" "$d/lib" "$d/tests" "$d/images"
+  git -C "$d" init -q
+  echo "0.9.0" > "$d/VERSION"; echo "#!/bin/sh" > "$d/bin/dck"; echo "x" > "$d/lib/a.py"
+  echo "MIT License" > "$d/LICENSE"; echo "K=V" > "$d/images/versions.env"; echo "t" > "$d/tests/t.sh"
+  printf '# Changelog\n\n## [Unreleased]\n\n## [0.9.0] — 2026-01-02\n\n### Added\n\n- first\n\n## [0.8.0] — 2026-01-01\n\n- older\n\n[0.9.0]: https://example.invalid\n' > "$d/CHANGELOG.md"
+  git -C "$d" add -A && git -C "$d" commit -qm init && git -C "$d" tag -a v0.9.0 -m v0.9.0
+  echo "changed after the tag" > "$d/lib/a.py"
+  printf '%s\n' "$d"
+}
+
+test_release_sums() {
+  local d; d="$(rel_repo)"
+  run_cmd bash -c 'cd "$1" && bash "$2" v0.9.0 SHA256SUMS' _ "$d" "$R/scripts/release-sums.sh"
+  assert_rc 0 "release-sums succeeds on a tag"
+  assert_eq "$(cut -d' ' -f3 "$d/SHA256SUMS" | tr '\n' ' ')" "CHANGELOG.md LICENSE VERSION bin/dck images/versions.env lib/a.py " "it lists exactly the shipped files (tests/ excluded)"
+  run_cmd bash -c 'cd "$1" && git stash -q && shasum -a 256 -c SHA256SUMS' _ "$d"
+  assert_rc 0 "the sums verify against the tagged content (not the working tree)"
+  run_cmd bash -c 'cd "$1" && bash "$2" v9.9.9' _ "$d" "$R/scripts/release-sums.sh"
+  assert_rc 2 "an unknown tag is refused"
+}
+
+test_release_notes() {
+  local d; d="$(rel_repo)"
+  run_cmd bash -c 'cd "$1" && bash "$2" 0.9.0' _ "$d" "$R/scripts/release-notes.sh"
+  assert_eq "$RUN_OUT" "### Added
+
+- first" "the notes are exactly that version's section"
+  run_cmd bash -c 'cd "$1" && bash "$2" 0.8.0' _ "$d" "$R/scripts/release-notes.sh"
+  assert_eq "$RUN_OUT" "- older" "the last section stops at the link references"
+  run_cmd bash -c 'cd "$1" && bash "$2" 1.0.0' _ "$d" "$R/scripts/release-notes.sh"
+  assert_rc 1 "a version without a section is refused"
+  run_cmd env CHANGELOG="$R/CHANGELOG.md" bash "$R/scripts/release-notes.sh" "$VERSION"
+  assert_rc 0 "this repository's CHANGELOG has notes for the current version"
+}
+
+test_release_workflow() {
+  local w; w="$(cat "$R/.github/workflows/release.yml")"
+  assert_contains "$w" 'tags: ["v*.*.*"]' "releases are triggered by version tags"
+  assert_contains "$w" '[ "$(git cat-file -t "refs/tags/${TAG}")" = "tag" ]' "only annotated tags are released"
+  assert_contains "$w" '[ "v$(git show "${TAG}:VERSION")" = "${TAG}" ]' "the tag must match VERSION"
+  assert_contains "$w" 'bash scripts/release-sums.sh "${TAG}" SHA256SUMS' "SHA256SUMS is attached"
+  assert_contains "$w" 'bash scripts/release-notes.sh "${TAG#v}"' "notes come from the CHANGELOG"
+  assert_contains "$w" '*-*) pre="--prerelease"' "pre-release tags are flagged"
+  assert_contains "$w" "bash scripts/check-public-hygiene.sh" "the hygiene check runs before publishing"
+  assert_eq "$(grep -c 'contents: write' "$R/.github/workflows/release.yml")" "1" "only the release job can write"
+  assert_no_match "$(grep -E 'uses:' "$R/.github/workflows/release.yml")" '@(v[0-9]|main)' "actions are pinned by SHA"
+  assert_no_match "$(sed -n '/run: |/,$p' "$R/.github/workflows/release.yml" | grep -v '^ *TAG:\|^ *GH_TOKEN:')" '\$\{\{' "no expression is expanded inside a run: script"
+}
