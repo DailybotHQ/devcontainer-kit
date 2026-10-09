@@ -193,6 +193,7 @@ _dck_valid_pubkeys() {
   LC_ALL=C grep -E '^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com) [A-Za-z0-9+/]+={0,3}( [ -~]*)?$' || true
 }
 
+# shellcheck disable=SC2120  # the optional --add is used by `dck herdr add` through docker exec
 dck_authorize_keys() {
   _dck_env
   local mode="${1:-env}" keys ak="$DCK_HOME/.ssh/authorized_keys"

@@ -346,6 +346,7 @@ fast_check() {
   export_authorized_keys
 }
 
+# shellcheck disable=SC2120  # the service argument is optional (default: the main service)
 container_running() {
   local s="${1:-$DC_SERVICE}" names
   # Captured, then tested: piping docker into `grep -q` under pipefail fails
