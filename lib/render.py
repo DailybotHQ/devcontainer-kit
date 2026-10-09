@@ -441,8 +441,9 @@ def reconcile_devcontainer(existing_text, ctx):
 # --------------------------------------------------------------------------
 
 class Change(object):
-    def __init__(self, rel, action, new=None, old=None, note=""):
+    def __init__(self, rel, action, new=None, old=None, note="", mode=None):
         self.rel, self.action, self.new, self.old, self.note = rel, action, new, old, note
+        self.mode = mode
 
 
 def _read(path):
@@ -508,6 +509,20 @@ def plan(repo, values, ctx, toml_overrides, toml_exists, drop=()):
         else:
             changes.append(Change(rel, "unchanged" if old == content else "update", content, old,
                                   "vendored from devcontainer-kit %s" % ctx["dck_tag"]))
+
+    # dev.sh: the per-repository entry point. A repository's own dev.sh (no dck
+    # markers) is kept as it is; a rendered one is reconciled by its block.
+    rel = "dev.sh"
+    rendered = render_text(read_template("dev.sh.tmpl"), ctx, "dev.sh.tmpl")
+    old = _read(os.path.join(repo, rel))
+    if old is None:
+        changes.append(Change(rel, "create", rendered, mode=0o755))
+    elif "devsh" not in (parse_blocks(old) or {}):
+        changes.append(Change(rel, "unchanged", note="the repository's own dev.sh is kept (docs/launcher.md maps "
+                                                     "its commands to dck)"))
+    else:
+        new = reconcile_blocks(old, rendered)
+        changes.append(Change(rel, "unchanged" if new == old else "update", new, old, "managed block"))
 
     # Create-only files.
     rel = "docker/local/%s/.env.example" % svc
@@ -620,7 +635,7 @@ def apply(repo, changes, yes, interactive, out=sys.stdout):
                 out.write("backup   %s -> %s\n" % (c.rel, os.path.relpath(backup(path), repo)))
             write_atomic(path, c.new, mode)
         else:
-            write_atomic(path, c.new)
+            write_atomic(path, c.new, c.mode)
         out.write("wrote    %s\n" % c.rel)
     return EXIT_REFUSED if declined else EXIT_OK
 

@@ -123,3 +123,24 @@ block to `~/.bashrc` / `~/.zshrc` that puts its `bin/` on `PATH`. Running it
 again is safe; `--uninstall` removes the install and the block (your
 `~/.config/dck` is kept). It refuses to replace a directory that is not a dck
 install.
+
+## `dev.sh` — the per-repository entry point
+
+`dck init` renders `dev.sh` at the repository root, a thin launcher over
+`dck`, so every repository starts the same way: `bash dev.sh up`.
+
+| `bash dev.sh …` | runs |
+| --- | --- |
+| `up` | `dck setup`, then `dck up` |
+| `down`, `shell`, `exec`, `build`, `rebuild`, `logs`, `ps`, `doctor`, `ssh`, `setup` | the same `dck` verb |
+| `herdr [add\|status\|repair\|remove\|mesh]` | `dck herdr …` (default `add`) |
+| `agents` | `dck agents` (herdr-peers list) |
+| `ask <machine>:<pane> "<prompt>"` | `dck ask …` (herdr-peers ask) |
+
+When `dck` is not installed, `dev.sh` prints the pinned install steps
+(`git clone --branch <the release it was rendered with> …` and
+`install.sh`). It installs nothing itself. When the installed `dck`
+differs from that release, it suggests `dck init`. A repository that keeps
+its own `dev.sh` (no dck markers) keeps it untouched and can call the
+verbs above.
+

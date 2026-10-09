@@ -351,3 +351,39 @@ test_ssh_agent_and_known_hosts() {
   init_repo "$r" --no-herdr --yes
   assert_not_contains "$(cat "$r/docker/local/docker-compose.yaml")" "ssh-agent.sock" "ssh_agent = false shares no agent"
 }
+
+test_devsh() {
+  local r fake
+  r="$(new_repo devsh)"
+  init_repo "$r" --no-herdr --yes
+  assert_file "$r/dev.sh" "dev.sh is rendered"
+  assert_match "$(ls -l "$r/dev.sh")" '^-rwx' "dev.sh is executable"
+  run_cmd bash -n "$r/dev.sh"
+  assert_rc 0 "dev.sh is valid bash"
+  assert_contains "$(cat "$r/dev.sh")" "# >>> dck:devsh >>>" "dev.sh has a managed block"
+  fake="$SANDBOX/dckbin"; mkdir -p "$fake"
+  printf '#!/bin/sh\nif [ "$1" = --version ]; then echo "devcontainer-kit %s"; exit 0; fi\nprintf "dck %%s\\n" "$*" >> "%s"\n' "$(cat "$DCK_REPO/VERSION")" "$DCK_FAKE_LOG" > "$fake/dck"
+  chmod +x "$fake/dck"
+  : > "$DCK_FAKE_LOG"
+  local v
+  for v in down shell build rebuild logs ps doctor agents; do
+    run_cmd env PATH="$fake:$PATH" bash "$r/dev.sh" "$v"
+    assert_contains "$(fake_calls dck)" "dck $v" "dev.sh $v runs dck $v"
+  done
+  run_cmd env PATH="$fake:$PATH" bash "$r/dev.sh" up
+  assert_contains "$(fake_calls dck)" "dck setup" "dev.sh up runs dck setup first"
+  assert_contains "$(fake_calls dck)" "dck up" "then dck up"
+  run_cmd env PATH="$fake:$PATH" bash "$r/dev.sh" herdr
+  assert_contains "$(fake_calls dck)" "dck herdr add" "dev.sh herdr defaults to dck herdr add"
+  run_cmd env PATH="$fake:$PATH" bash "$r/dev.sh" ask dck-x:w1:p1 "a question"
+  assert_contains "$(fake_calls dck)" "dck ask dck-x:w1:p1 a question" "dev.sh ask passes the target and prompt"
+  run_cmd env PATH="$fake:$PATH" bash "$r/dev.sh" nope
+  assert_rc 2 "an unknown dev.sh command is a usage error"
+  run_cmd env PATH=/usr/bin:/bin bash "$r/dev.sh" up
+  assert_rc 4 "without dck, dev.sh says how to install it"
+  assert_contains "$RUN_ERR" "git clone --branch v$(cat "$DCK_REPO/VERSION") https://github.com/DailybotHQ/devcontainer-kit" "the install line is pinned"
+  r="$(new_repo devsh-own)"
+  printf '#!/usr/bin/env bash\necho mine\n' > "$r/dev.sh"
+  init_repo "$r" --no-herdr --yes
+  assert_eq "$(cat "$r/dev.sh")" "$(printf '#!/usr/bin/env bash\necho mine')" "a repository's own dev.sh is kept"
+}
