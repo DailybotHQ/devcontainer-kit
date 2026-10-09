@@ -25,19 +25,21 @@ chosen by the **project's** runtime, identical otherwise.
   `~/.config/herdr/config.toml` (login shell, `new_cwd = /workspace`,
   `allow_nested = true`);
 - Neovim **0.12.5** (`/opt/nvim-0.12.5`, `/usr/local/bin/nvim`, SHA-256
-  pinned per architecture) and deepworkplan-vim **v0.5.0** in `~/.config/nvim`,
+  pinned per architecture) and deepworkplan-vim **v0.5.1** in `~/.config/nvim`,
   installed in its own image layer (`images/common/editor.sh`) by the
   project's official installer — the one `https://vim.deepworkplan.com/install.sh`
   serves — downloaded from the versioned release asset, checked against its
   pinned SHA-256 and then run as `dev` in container mode:
-  `bash install.sh --version 0.5.0 --skip-packages --strict`. `--strict` fails
-  the build if the headless plugin install fails or leaves a required plugin
-  missing, so the plugins are **baked in** and `nvim` starts ready; the
+  `bash install.sh --version 0.5.1 --skip-packages --strict`. `--strict` fails
+  the build if the headless plugin install fails, leaves a required plugin
+  missing, or leaves a plugin away from the commit deepworkplan-vim pins in
+  `pckr/lockfile.lua`, so the plugins are **baked in**, pinned, and `nvim`
+  starts ready; the
   configuration must resolve to the pinned commit. Plugin build steps that
   need pnpm get it on every flavour: `node-24` has it, `python-3.13` and
   `debian` get a build-only wrapper around Debian's corepack (no `pnpm` is
-  left on their PATH). The plugins themselves are **not pinned** by this
-  repository ([SECURITY.md](SECURITY.md), known limits). `--nvim` is not used: the
+  left on their PATH). The plugin commits are pinned upstream, by the
+  release's lockfile, not by this repository ([SECURITY.md](SECURITY.md), known limits). `--nvim` is not used: the
   installer would put a second Neovim in `~/.local/bin`, which non-login SSH
   sessions (Herdr) and `docker exec` do not have on PATH, and it resolves its
   checksum through the GitHub API at build time; the image's system-wide
