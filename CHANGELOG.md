@@ -7,6 +7,11 @@ and the interface number).
 
 ## [Unreleased]
 
+### Changed
+
+- Base images install deepworkplan-vim **v0.4.1** (was v0.3.1), verified against commit
+  `13db97c9691a864dadebf649fb656a55e6273f91`, matching the ecosystem's editor pin.
+
 ## [0.1.3] — 2026-10-09
 
 Interface stays **1**. Repository standard and a doctor fix; no behaviour change for

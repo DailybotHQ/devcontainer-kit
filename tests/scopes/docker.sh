@@ -48,6 +48,12 @@ test_build_node_flavour() {
 5
 0
 0" "the image has the dev user and its tools, no host keys and no agent CLI"
+  local tag commit
+  tag="$(sed -n 's/^DWP_VIM_TAG=//p' "$DCK_REPO/images/versions.env")"
+  commit="$(sed -n 's/^DWP_VIM_COMMIT=//p' "$DCK_REPO/images/versions.env")"
+  run_cmd docker run --rm --entrypoint bash "$IT_IMAGE" -c "git -C /home/dev/.config/nvim rev-parse HEAD; python3 -c 'import json; print(json.load(open(\"/home/dev/.config/nvim/addon/surface.json\"))[\"version\"])'"
+  assert_eq "$RUN_OUT" "$commit
+$tag" "the editor configuration is deepworkplan-vim $tag at its pinned commit"
 }
 
 test_end_to_end() {
