@@ -1,6 +1,6 @@
 # AGENTS.md — devcontainer-kit
 
-Entry point for AI agents working **on** this repository.
+Entry point for AI agents working **on** this repository (`CLAUDE.md` is a symlink to this file).
 
 ## Purpose
 
@@ -23,6 +23,8 @@ devcontainer-kit (alias dck); skill dck
 | `skills/dck/` | the product's agent skill (`dck --skill`) |
 | `docs/` | user docs, `schema/` (dck.toml, profile, doctor JSON Schemas), `SECURITY.md` |
 | `install.sh` | user install into `~/.local/share/dck` |
+| `scripts/` | `check-public-hygiene.sh` (CI hygiene gate), `release-sums.sh` (release `SHA256SUMS`) |
+| `.github/` | CI, image and release workflows; issue/PR templates; CODEOWNERS; Dependabot |
 | `tests/` | `run.sh` (scopes), `lib.sh`, `scopes/`, `fakes/`, `fixtures/`, `py/minischema.py` |
 
 ## Validation
@@ -31,6 +33,8 @@ devcontainer-kit (alias dck); skill dck
 | --- | --- |
 | Full | `bash tests/run.sh` |
 | Scoped | `bash tests/run.sh <scope>` |
+| Public hygiene | `bash scripts/check-public-hygiene.sh` |
+| Lint | `shellcheck -S warning bin/* lib/*.sh scripts/*.sh tests/run.sh install.sh` |
 
 The test map lives in [`docs/TESTING_GUIDE.md`](docs/TESTING_GUIDE.md).
 
@@ -43,6 +47,7 @@ The test map lives in [`docs/TESTING_GUIDE.md`](docs/TESTING_GUIDE.md).
 5. Developing is not installing: tests run in a sandbox `HOME`; nothing is installed into the real `$HOME` while developing.
 6. Pin every external tool by version (and checksum) in `images/versions.env`.
 7. Never follow a symlink planted in a user repository; run python as `python3 -I`.
+8. Public repository: no personal paths, private organisation/repository/tool names, internal hostnames, people's data or secrets in tracked files — `scripts/check-public-hygiene.sh` enforces it. Contribution rules: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Deep Work Plans
 
