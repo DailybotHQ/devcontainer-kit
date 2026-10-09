@@ -129,7 +129,7 @@ def cmd_init(args):
     opts = {"repo": opt(args, "--repo"), "profile": opt(args, "--profile")}
     for name, key, conv in (("--flavour", "flavour", str), ("--service", "service", str),
                             ("--user", "user", str), ("--workspace", "workspace", str),
-                            ("--image-tag", "image_tag", str), ("--ssh-port", "ssh_port", int)):
+                            ("--ssh-port", "ssh_port", int)):
         value = opt(args, name)
         if value is not None:
             try:
@@ -154,9 +154,9 @@ def cmd_init(args):
             opts[key] = True
         if flag(args, off):
             opts[key] = False
+    flag(args, "--no-digest")  # accepted for compatibility: v0.2 resolves no registry digest
     opts["dry_run"] = flag(args, "--dry-run")
     opts["yes"] = flag(args, "--yes") or flag(args, "-y")
-    opts["no_digest"] = flag(args, "--no-digest") or os.environ.get("DCK_NO_DIGEST") == "1"
     if args:
         return usage("init: unexpected argument %r (see: dck help init)" % args[0])
     opts["interactive"] = (not opts["yes"]) and sys.stdin.isatty() and os.environ.get("DCK_NONINTERACTIVE") != "1"

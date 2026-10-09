@@ -30,14 +30,14 @@ change touches shared code (`lib/common.sh`, `lib/dckpy.py`, `bin/dck`).
 | Scope | Covers | Needs Docker |
 | --- | --- | --- |
 | `harness` | `tests/run.sh`, `tests/lib.sh` | no |
-| `config` | `lib/config.py`, `docs/schema/dck-config-v1.json` | no |
+| `config` | `lib/config.py`, `docs/schema/dck-config-v2.json` | no |
 | `template` | `src/template/`, `lib/render.py`, `dck init` | no |
 | `images` | `images/`, `.github/workflows/images.yml` (static checks) | no |
 | `entrypoint` | `lib/entrypoint.sh` (sandbox root, fake `sshd`) | no |
 | `launcher` | `bin/dck`, `bin/devcontainer-kit`, `lib/*.sh`, `install.sh` (fake `docker`/`devcontainer`) | no |
 | `layers` | the agents/editor/dailybot layers in the template and entrypoint | no |
 | `herdr` | `lib/herdr.sh`, `lib/sshconf.py` (fake `herdr`/`ssh`/`docker`, sandbox `~/.ssh`) | no |
-| `doctor` | `lib/doctor.py`, `lib/doctor.sh`, `docs/schema/dck-doctor-v1.json` (validated by `tests/py/minischema.py`), `skills/dck/` | no |
+| `doctor` | `lib/doctor.py`, `lib/doctor.sh`, `docs/schema/dck-doctor-v2.json` (validated by `tests/py/minischema.py`), `skills/dck/` | no |
 | `security` | static posture checks over `src/template/`, `images/`, `lib/` | no |
 | `hygiene` | `scripts/check-public-hygiene.sh`, `.public-hygiene-allow` (every A3 rule, allow-list, secrets never echoed, this repo clean) | no |
 | `standard` | the public repository standard: README order/badges/footer, LICENSE, CHANGELOG (Keep a Changelog), CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, CLAUDE.md, .gitignore, `.github/` community files, CI; the release workflow with `scripts/release-sums.sh` and `scripts/release-notes.sh` | no |

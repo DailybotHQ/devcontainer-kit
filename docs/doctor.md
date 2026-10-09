@@ -2,7 +2,7 @@
 
 ```bash
 dck doctor            # human report
-dck doctor --json     # machine report, interface 1 (docs/schema/dck-doctor-v1.json)
+dck doctor --json     # machine report, interface 1 (docs/schema/dck-doctor-v2.json)
 dck doctor --strict   # exit 1 while `problems` is not empty (CI)
 ```
 

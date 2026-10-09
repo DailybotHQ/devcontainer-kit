@@ -33,8 +33,30 @@ import zlib
 import config
 import jsonc
 
-TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "template")
-BASE_IMAGE_REPO = "ghcr.io/dailybothq/devcontainer-kit-base"
+KIT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+TEMPLATE_DIR = os.path.join(KIT_ROOT, "src", "template")
+
+# The scripts a rendered Dockerfile COPYs, vendored into docker/local/<service>/dck/
+# as byte copies of this kit's files (no shared base image carries them).
+VENDORED = (
+    ("versions.env", "images/versions.env"),
+    ("install.sh", "images/common/install.sh"),
+    ("editor.sh", "images/common/editor.sh"),
+    ("sshd_config.conf", "images/common/sshd_config.conf"),
+    ("herdr-config.toml", "images/common/herdr-config.toml"),
+    ("profile.sh", "images/common/profile.sh"),
+    ("dck-entrypoint", "images/common/dck-entrypoint"),
+    ("dck-layer", "images/common/dck-layer"),
+    ("entrypoint.sh", "lib/entrypoint.sh"),
+    ("layers/common.sh", "lib/layers/common.sh"),
+    ("layers/agents.sh", "lib/layers/agents.sh"),
+    ("layers/dailybot.sh", "lib/layers/dailybot.sh"),
+)
+# Per flavour: the base-image pin in versions.env and the extra apt packages
+# install.sh adds (the editor's plugins need python3-venv / nodejs).
+FLAVOUR_BASE = {"node-24": "BASE_NODE", "python-3.13": "BASE_PYTHON", "debian": "BASE_DEBIAN"}
+FLAVOUR_APT = {"node-24": "python3 python3-venv", "python-3.13": "nodejs npm",
+               "debian": "python3 python3-venv nodejs npm"}
 
 DEVCONTAINER_KEYS = ("dockerComposeFile", "service", "runServices", "remoteUser",
                      "workspaceFolder", "shutdownAction")
@@ -243,37 +265,45 @@ def which(cmd):
     return None
 
 
-def resolve_digest(ref, timeout=30):
-    """sha256 digest of a registry image index, or None (no docker, offline,
-    not pushed yet). Never fatal: the caller falls back to the tag pin."""
-    if not which("docker"):
-        return None
-    try:
-        r = subprocess.run(["docker", "buildx", "imagetools", "inspect", ref,
-                            "--format", "{{json .Manifest}}"],
-                           stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                           timeout=timeout, text=True)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if r.returncode != 0:
-        return None
-    try:
-        digest = json.loads(r.stdout).get("digest", "")
-    except ValueError:
-        return None
-    return digest if re.match(r"^sha256:[0-9a-f]{64}$", digest or "") else None
+def kit_pins():
+    """images/versions.env of this kit as a dict (KEY=VALUE lines)."""
+    pins = {}
+    with open(os.path.join(KIT_ROOT, "images", "versions.env")) as fh:
+        for line in fh:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                pins[k.strip()] = v.strip()
+    return pins
 
 
-def existing_base_image(repo):
-    path = os.path.join(repo, "docker", "local", "docker-compose.yaml")
-    if os.path.islink(path):
-        return None
-    try:
-        text = open(path).read()
-    except OSError:
-        return None
-    m = re.search(r'BASE_IMAGE:\s*"([^"]+)"', text)
-    return m.group(1) if m else None
+def base_image_for(values, pins):
+    """The image the Dockerfile starts FROM: dck.toml base_image, else the
+    flavour's official image pinned by digest in versions.env."""
+    return values.get("base_image") or pins[FLAVOUR_BASE[values["flavour"]]]
+
+
+def vendored_files():
+    """(relative path under dck/, content) for every vendored script, plus
+    the VERSION stamp."""
+    out = []
+    for rel, src in VENDORED:
+        with open(os.path.join(KIT_ROOT, src)) as fh:
+            out.append((rel, fh.read()))
+    return out
+
+
+def toml_drop(text, key):
+    """Remove a top-level `key = ...` line from TOML text (before any table)."""
+    lines = text.splitlines()
+    out, in_table = [], False
+    for ln in lines:
+        if re.match(r"^\s*\[", ln):
+            in_table = True
+        if not in_table and re.match(r"^\s*%s\s*=" % re.escape(key), ln):
+            continue
+        out.append(ln)
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
 def layers_block(values):
@@ -305,7 +335,7 @@ def layers_block(values):
 AGENT_VOLUMES = ("claude", "codex", "cursor", "opencode", "pi", "cline", "grok")
 
 
-def context(values, repo_name, project, network, base_image, dck_tag):
+def context(values, repo_name, project, network, base_image, dck_tag, pins=None):
     user = values["user"]
     vols = ["state"]
     if values["layers.agents"]:
@@ -320,13 +350,18 @@ def context(values, repo_name, project, network, base_image, dck_tag):
     raw_label = values.get("_label_fmt", values["herdr.label"])
     return {
         "dck_tag": dck_tag,
+        "dck_version": dck_tag.lstrip("v"),
+        "is_node": values["flavour"] == "node-24",
+        "is_python": values["flavour"] == "python-3.13",
+        "editor_on": values["layers.editor"],
+        "uv_image": (pins or {}).get("UV_IMAGE", ""),
+        "apt_extras": FLAVOUR_APT[values["flavour"]],
         "repo_name": repo_name,
         "project": project,
         "service": values["service"],
         "user": user,
         "workspace": values["workspace"],
         "flavour": values["flavour"],
-        "image_tag": values["image_tag"],
         "base_image": base_image,
         "ssh_port": values["ssh_port"],
         "ssh_enabled": "1" if values["ssh_port"] else "0",
@@ -415,7 +450,7 @@ def _read(path):
         return None
 
 
-def plan(repo, values, ctx, toml_overrides, toml_exists):
+def plan(repo, values, ctx, toml_overrides, toml_exists, drop=()):
     svc = values["service"]
     changes = []
 
@@ -428,7 +463,10 @@ def plan(repo, values, ctx, toml_overrides, toml_exists):
         new = old
         for key, value in toml_overrides:
             new = toml_set(new, key, value)
-        changes.append(Change(rel, "unchanged" if new == old else "update", new, old, "values from flags"))
+        for key in drop:
+            new = toml_drop(new, key)
+        changes.append(Change(rel, "unchanged" if new == old else "update", new, old,
+                              "migrated to interface 2" if drop else "values from flags"))
 
     # devcontainer.json — owned keys.
     rel = ".devcontainer/devcontainer.json"
@@ -455,6 +493,16 @@ def plan(repo, values, ctx, toml_overrides, toml_exists):
             changes.append(Change(rel, "replace", rendered, old, "no dck markers: whole file"))
         else:
             changes.append(Change(rel, "unchanged" if new == old else "update", new, old, "managed blocks"))
+
+    # Vendored scripts: owned by dck, byte copies of this kit's files.
+    for sub, content in vendored_files() + [("VERSION", "devcontainer-kit %s\n" % ctx["dck_tag"])]:
+        rel = "docker/local/%s/dck/%s" % (svc, sub)
+        old = _read(os.path.join(repo, rel))
+        if old is None:
+            changes.append(Change(rel, "create", content))
+        else:
+            changes.append(Change(rel, "unchanged" if old == content else "update", content, old,
+                                  "vendored from devcontainer-kit %s" % ctx["dck_tag"]))
 
     # Create-only files.
     rel = "docker/local/%s/.env.example" % svc
@@ -603,7 +651,7 @@ def init(opts, dck_tag, env=None, out=sys.stdout, err=sys.stderr):
 
     # Flag values → dotted keys. They override dck.toml and are written into it.
     flag_map = (("flavour", "flavour"), ("service", "service"), ("user", "user"),
-                ("workspace", "workspace"), ("ssh_port", "ssh_port"), ("image_tag", "image_tag"),
+                ("workspace", "workspace"), ("ssh_port", "ssh_port"),
                 ("agents", "layers.agents"), ("clis", "agents.clis"), ("editor", "layers.editor"),
                 ("herdr_machine", "herdr.machine"), ("ports", "ports"))
     if opts.get("ports") is not None:
@@ -632,8 +680,6 @@ def init(opts, dck_tag, env=None, out=sys.stdout, err=sys.stderr):
         return EXIT_CONFIG
     for w in warnings:
         err.write("dck: warning: %s\n" % w)
-    if values["image_tag"] is None:
-        values["image_tag"] = dck_tag
     values["_label_fmt"] = values["herdr.label"]
 
     prof, pwarn = config.load_profile(opts.get("profile"), env)
@@ -641,24 +687,17 @@ def init(opts, dck_tag, env=None, out=sys.stdout, err=sys.stderr):
         err.write("dck: warning: %s\n" % w)
     project = prof["compose_project_prefix"] + rslug
 
-    ref = "%s:%s-%s" % (BASE_IMAGE_REPO, values["flavour"], values["image_tag"])
-    base_image = ref
-    if not opts.get("no_digest"):
-        digest = resolve_digest(ref)
-        if digest:
-            base_image = "%s@%s" % (ref, digest)
-        else:
-            prev = existing_base_image(repo)
-            if prev and prev.startswith(ref + "@sha256:"):
-                base_image = prev
-            else:
-                err.write("dck: warning: could not resolve the digest of %s (offline, no docker, or not "
-                          "published yet); the base image is pinned by tag only — re-run `dck init` "
-                          "later to pin the digest\n" % ref)
+    pins = kit_pins()
+    base_image = base_image_for(values, pins)
+    # A version-1 dck.toml migrates to interface 2: the interface line is
+    # rewritten and image_tag (meaningful only with the shared base image) goes.
+    migrate = toml_exists and (values["interface"] == 1 or values["image_tag"] is not None)
 
-    ctx = context(values, repo_name, project, prof["network"], base_image, dck_tag)
+    ctx = context(values, repo_name, project, prof["network"], base_image, dck_tag, pins)
     try:
-        changes = plan(repo, values, ctx, overrides if toml_exists else [], toml_exists)
+        changes = plan(repo, values, ctx, (overrides if toml_exists else []) +
+                       ([("interface", config.INTERFACE)] if migrate else []), toml_exists,
+                       drop=("image_tag",) if migrate else ())
     except RenderError as exc:
         err.write("dck: template error: %s\n" % exc)
         return EXIT_FAIL

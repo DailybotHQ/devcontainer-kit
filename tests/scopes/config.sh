@@ -43,7 +43,7 @@ flavour = "debian"'
 service = "app"'
   invalid_case "a missing interface" "interface: required key is missing" 'service = "app"
 flavour = "debian"'
-  invalid_case "an unknown interface major" "interface 2 is not supported by this dck (supports 1)" 'interface = 2
+  invalid_case "an unknown interface major" "interface 3 is not supported by this dck (supports 1 and 2)" 'interface = 3
 service = "app"
 flavour = "debian"'
   invalid_case "an unknown flavour" "flavour: invalid value 'alpine'" 'interface = 1
@@ -223,8 +223,8 @@ root = sys.argv[1]
 sys.path.insert(0, os.path.join(root, "lib"))
 import config as c
 problems = []
-for kind, rules, fname in (("repo", c.REPO_RULES, "dck-config-v1.json"),
-                           ("profile", c.PROFILE_RULES, "dck-profile-v1.json")):
+for kind, rules, fname in (("repo", c.REPO_RULES, "dck-config-v2.json"),
+                           ("profile", c.PROFILE_RULES, "dck-profile-v2.json")):
     schema = json.load(open(os.path.join(root, "docs", "schema", fname)))
     props = schema["properties"]
     flat = {}
@@ -247,6 +247,9 @@ for kind, rules, fname in (("repo", c.REPO_RULES, "dck-config-v1.json"),
             pat = s.get("pattern") or (s.get("propertyNames") or {}).get("pattern")
             if pat != cons[1]:
                 problems.append("%s.%s pattern differs" % (kind, key))
+        if cons and cons[0] == "interface":
+            if s.get("enum") != list(cons[1]):
+                problems.append("%s.%s interface enum differs" % (kind, key))
         if cons and cons[0] == "enum":
             enum = s.get("enum") or (s.get("items") or {}).get("enum")
             if list(enum or []) != list(cons[1]):
@@ -259,7 +262,7 @@ PY
 
 test_schema_files_are_valid_json() {
   local f
-  for f in "$DCK_REPO"/docs/schema/dck-config-v1.json "$DCK_REPO"/docs/schema/dck-profile-v1.json; do
+  for f in "$DCK_REPO"/docs/schema/dck-config-v2.json "$DCK_REPO"/docs/schema/dck-profile-v2.json; do
     run_cmd python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["$schema"].endswith("2020-12/schema")' "$f"
     assert_rc 0 "$(basename "$f") is a draft 2020-12 JSON Schema"
   done

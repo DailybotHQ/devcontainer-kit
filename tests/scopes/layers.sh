@@ -19,7 +19,7 @@ dockerfile() { cat "$REPO/docker/local/app/Dockerfile"; }
 test_off_by_default() {
   render --flavour node-24
   assert_rc 0 "init renders"
-  assert_not_contains "$(dockerfile)" "dck-layer" "the Dockerfile has no layer by default"
+  assert_not_contains "$(sed -n '/>>> dck:layers >>>/,/<<< dck:layers <<</p' "$REPO/docker/local/app/Dockerfile")" "dck-layer" "the Dockerfile has no layer by default"
   assert_contains "$(dockerfile)" "No opt-in layer is enabled" "the layers block says so"
   assert_not_contains "$(compose)" "DCK_AGENTS" "no agents environment by default"
   assert_not_contains "$(compose)" "AGENTKIT" "no coding-agents-kit setting by default"

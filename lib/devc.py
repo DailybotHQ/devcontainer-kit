@@ -112,7 +112,6 @@ def env_lines(repo, dck_tag, profile=None):
                 ("DCK_HERDR_LABEL", merged["herdr.label"]),
                 ("DCK_NETWORK", merged["network"]),
                 ("DCK_FLAVOUR", merged["flavour"]),
-                ("DCK_IMAGE_TAG", merged["image_tag"]),
                 ("DCK_PORTS", " ".join("%s=%s" % kv for kv in sorted(merged["ports"].items()))),
                 ("DCK_TOML_USER", merged["user"])]
     else:

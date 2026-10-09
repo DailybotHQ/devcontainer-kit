@@ -1,6 +1,6 @@
 """`dck doctor [--json]` — environment and repository health, interface 1.
 
-Top-level keys (ECOSYSTEM_CONTRACT §2.3; schema docs/schema/dck-doctor-v1.json):
+Top-level keys (ECOSYSTEM_CONTRACT §2.3; schema docs/schema/dck-doctor-v2.json):
 interface, version, runtime, repo, layers, ssh, herdr, drift — plus os,
 python, profile and problems. Works anywhere: outside a repository `repo`,
 `layers` and `ssh` are null. Never prints the value of an environment
@@ -22,7 +22,7 @@ import sys
 import config
 import devc
 
-INTERFACE = 1
+INTERFACE = 2
 TIMEOUT = 15
 
 
@@ -120,8 +120,8 @@ def port_answers(host, port, timeout=2.0):
 
 def repo_info(repo, dck_tag, profile, rt, problems):
     info = {"path": repo, "devcontainer": None, "config_valid": False, "errors": [],
-            "warnings": [], "flavour": None, "image_tag": None, "base_image": None,
-            "digest_pinned": False, "digest_match": None, "project": None,
+            "warnings": [], "flavour": None, "base_image": None, "digest_pinned": False,
+            "kit_version": None, "vendored": None, "project": None,
             "service": None, "container": None, "env_files": []}
     merged = None
     try:
@@ -129,12 +129,19 @@ def repo_info(repo, dck_tag, profile, rt, problems):
         info["devcontainer"] = os.path.relpath(d["file"], repo)
         info["service"] = d["service"]
         info["project"] = d["compose_name"] or None
-        compose_text = open(d["compose_files"][0]).read()
-        m = re.search(r'BASE_IMAGE:\s*"([^"]+)"', compose_text)
-        if m:
-            info["base_image"] = m.group(1)
-            info["digest_pinned"] = "@sha256:" in m.group(1)
         compose_dir = os.path.dirname(d["compose_files"][0])
+        svc_dir = os.path.join(compose_dir, d["service"] or "")
+        dockerfile = os.path.join(svc_dir, "Dockerfile")
+        if os.path.isfile(dockerfile) and not os.path.islink(dockerfile):
+            m = re.search(r"^ARG BASE_IMAGE=(\S+)", open(dockerfile).read(), re.M)
+            if m:
+                info["base_image"] = m.group(1)
+                info["digest_pinned"] = "@sha256:" in m.group(1)
+        stamp = os.path.join(svc_dir, "dck", "VERSION")
+        if os.path.isfile(stamp) and not os.path.islink(stamp):
+            m = re.match(r"^devcontainer-kit (v\S+)", open(stamp).read())
+            info["kit_version"] = m.group(1) if m else None
+            info["vendored"] = vendored_state(os.path.join(svc_dir, "dck"))
         for root, _dirs, files in os.walk(compose_dir):
             for f in sorted(files):
                 if f.startswith(".env") and f.endswith(".example"):
@@ -162,7 +169,6 @@ def repo_info(repo, dck_tag, profile, rt, problems):
             info["config_valid"] = not info["errors"]
             info["warnings"] = warnings
             info["flavour"] = merged["flavour"]
-            info["image_tag"] = merged["image_tag"]
             if not info["project"]:
                 info["project"] = None
         except config.ConfigError as exc:
@@ -172,7 +178,10 @@ def repo_info(repo, dck_tag, profile, rt, problems):
     for e in info["errors"]:
         problems.append("repo: %s" % e)
     if info["base_image"] and not info["digest_pinned"]:
-        problems.append("the base image is pinned by tag only (re-run dck init when the registry is reachable)")
+        problems.append("the Dockerfile's base image is not pinned by digest (dck init pins it)")
+    if info["vendored"] == "modified":
+        problems.append("docker/local/%s/dck/ differs from the devcontainer-kit files it was vendored from "
+                        "(dck init restores them)" % info["service"])
     docker_ok = rt["docker"]["daemon"]
     if docker_ok and info["project"] and info["service"]:
         rc, out = run(["docker", "ps", "-a", "--filter", "label=com.docker.compose.project=%s" % info["project"],
@@ -184,19 +193,21 @@ def repo_info(repo, dck_tag, profile, rt, problems):
             info["container"] = {"name": name, "state": state or "unknown"}
         else:
             info["container"] = {"name": None, "state": "absent"}
-    if docker_ok and info["digest_pinned"]:
-        ref, _, digest = info["base_image"].partition("@")
-        rc, out = run(["docker", "image", "inspect", "--format", "{{json .RepoDigests}}", info["base_image"]])
-        if rc == 0:
-            try:
-                info["digest_match"] = any(x.endswith(digest) for x in json.loads(out or "[]"))
-            except ValueError:
-                info["digest_match"] = None
-        else:
-            info["digest_match"] = None  # not pulled yet: nothing to compare
-        if info["digest_match"] is False:
-            problems.append("the local base image does not match the digest pinned in compose (dck rebuild --no-cache pulls it)")
     return info, merged
+
+
+def vendored_state(dck_dir):
+    """"current" when every vendored script equals this kit's copy, "modified"
+    when one differs or is missing, None when render is unavailable."""
+    try:
+        import render
+    except ImportError:
+        return None
+    for rel, content in render.vendored_files():
+        path = os.path.join(dck_dir, rel)
+        if os.path.islink(path) or not os.path.isfile(path) or open(path).read() != content:
+            return "modified"
+    return "current"
 
 
 def herdr_info(merged, problems):
@@ -233,10 +244,10 @@ def drift_info(merged, h, container_name):
     pins = read_env_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "images", "versions.env"))
     items = []
     mine = "v" + config_version()
-    if merged:
-        items.append({"name": "image_tag", "pinned": merged["image_tag"], "installed": mine,
-                      "status": "ok" if merged["image_tag"] == mine else "drift",
-                      "note": "repository image tag vs the installed dck"})
+    if merged and merged.get("_kit_version"):
+        items.append({"name": "kit", "pinned": merged["_kit_version"], "installed": mine,
+                      "status": "ok" if merged["_kit_version"] == mine else "drift",
+                      "note": "the devcontainer-kit the repository was rendered with vs the installed dck"})
     host_herdr = h.get("version")
     if pins.get("HERDR_VERSION"):
         items.append({"name": "herdr", "pinned": pins["HERDR_VERSION"], "installed": host_herdr,
@@ -299,6 +310,8 @@ def collect(start, profile=None):
     container_running = False
     if repo:
         info, merged = repo_info(repo, "v" + version, profile, rt, problems)
+        if merged is not None:
+            merged["_kit_version"] = info["kit_version"]
         report["repo"] = info
         container_running = bool(info["container"] and info["container"]["state"] == "running")
         if merged:
@@ -346,10 +359,10 @@ def text(report):
     if r:
         out += ["repo             %s" % r["path"],
                 "  config valid   %s" % yes(r["config_valid"]),
-                "  flavour        %s, image %s" % (r["flavour"] or "-", r["image_tag"] or "-"),
+                "  flavour        %s" % (r["flavour"] or "-"),
                 "  base image     %s" % (r["base_image"] or "-"),
-                "  digest         %s%s" % ("pinned" if r["digest_pinned"] else "tag only",
-                                           "" if r["digest_match"] is None else (", matches local image" if r["digest_match"] else ", DIFFERS from the local image")),
+                "  digest         %s" % ("pinned" if r["digest_pinned"] else "not pinned"),
+                "  rendered with  %s (dck/ %s)" % (r["kit_version"] or "-", r["vendored"] or "-"),
                 "  container      %s" % ((r["container"] or {}).get("state") or "-")]
         for e in r["env_files"]:
             out.append("  env file       %s: %s%s" % (e["path"],

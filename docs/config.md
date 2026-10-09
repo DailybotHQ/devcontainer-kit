@@ -6,8 +6,8 @@ the same rules and are checked against the validator by the test suite.
 
 | File | Scope | Schema |
 | --- | --- | --- |
-| `.devcontainer/dck.toml` | one repository, committed | [`dck-config-v1.json`](schema/dck-config-v1.json) |
-| `~/.config/dck/profile.toml` | one host, never committed | [`dck-profile-v1.json`](schema/dck-profile-v1.json) |
+| `.devcontainer/dck.toml` | one repository, committed | [`dck-config-v2.json`](schema/dck-config-v2.json) |
+| `~/.config/dck/profile.toml` | one host, never committed | [`dck-profile-v2.json`](schema/dck-profile-v2.json) |
 
 Validate either by hand:
 

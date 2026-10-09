@@ -1,13 +1,14 @@
 """dck configuration: the per-repo `.devcontainer/dck.toml` and the host profile.
 
-Interface 1 (see docs/config.md and docs/schema/). Python 3.11+ standard
+Interface 2 (see docs/config.md and docs/schema/); a version-1 file is still
+read, with warnings, so `dck init` can migrate it. Python 3.11+ standard
 library only (`tomllib`). Every rule lives in the RULES tables below; the
 JSON Schemas under docs/schema/ are checked against them by the test suite,
 so the two cannot drift apart silently.
 
 Errors are collected, not raised one at a time: a user fixing a config sees
 every problem in one run. Unknown keys are warnings (a newer dck may add
-optional keys within interface 1), never errors.
+optional keys within an interface), never errors.
 """
 
 import os
@@ -18,7 +19,8 @@ try:  # pragma: no cover - exercised by the doctor on old interpreters
 except ModuleNotFoundError:  # Python < 3.11
     tomllib = None
 
-INTERFACE = 1
+INTERFACE = 2
+INTERFACES = (1, 2)  # 1 is read for migration only
 
 FLAVOURS = ("python-3.13", "node-24", "debian")
 AGENT_KINDS = ("claude", "codex", "cursor", "opencode", "pi", "cline", "grok")
@@ -28,6 +30,8 @@ RE_SERVICE = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$"
 RE_USER = r"^[a-z_][a-z0-9_-]{0,31}$"
 RE_WORKSPACE = r"^/[A-Za-z0-9._/-]*$"
 RE_TAG = r"^v\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$"
+# An official image pinned by digest: name[:tag]@sha256:<64 hex>, no registry host.
+RE_IMAGE_PIN = r"^[a-z0-9]+([._/-][a-z0-9]+)*(:[A-Za-z0-9._-]{1,128})?@sha256:[0-9a-f]{64}$"
 RE_PORT_NAME = r"^[a-z][a-z0-9_-]{0,31}$"
 RE_IPV4 = r"^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$"
 RE_PROFILE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$"
@@ -38,12 +42,13 @@ RE_ALIAS_PREFIX = r"^[a-z0-9][a-z0-9._-]{0,31}$"
 # key path -> (type, default, constraint). "required" defaults are REQUIRED.
 REQUIRED = object()
 REPO_RULES = {
-    "interface": ("int", REQUIRED, ("const", INTERFACE)),
+    "interface": ("int", REQUIRED, ("interface", INTERFACES)),
     "service": ("str", REQUIRED, ("pattern", RE_SERVICE)),
     "user": ("str", "dev", ("pattern", RE_USER)),
     "workspace": ("str", "/workspace", ("pattern", RE_WORKSPACE)),
     "flavour": ("str", REQUIRED, ("enum", FLAVOURS)),
-    "image_tag": ("str", None, ("pattern", RE_TAG)),  # None -> this dck's tag
+    "image_tag": ("str", None, ("pattern", RE_TAG)),  # interface 1 only; ignored since v0.2.0
+    "base_image": ("str", None, ("pattern", RE_IMAGE_PIN)),  # None -> the flavour's pinned image
     "ssh_port": ("int", 0, ("port_or_zero", None)),
     "bind": ("str", "127.0.0.1", ("pattern", RE_IPV4)),
     "ports": ("port_map", {}, ("pattern", RE_PORT_NAME)),
@@ -55,7 +60,7 @@ REPO_RULES = {
     "herdr.label": ("label", "{repo}", ("placeholders", LABEL_PLACEHOLDERS)),
 }
 PROFILE_RULES = {
-    "interface": ("int", INTERFACE, ("const", INTERFACE)),
+    "interface": ("int", INTERFACE, ("interface", INTERFACES)),
     "name": ("str", "default", ("pattern", RE_PROFILE_NAME)),
     "compose_project_prefix": ("str", "", ("pattern", RE_PREFIX)),
     "network": ("str", "", ("pattern", RE_NETWORK)),
@@ -96,6 +101,9 @@ def _check(key, value, rule, problems):
             return bad("expected an integer, got %s" % _type_name(value))
         if ctype == "const" and value != carg:
             return bad("interface %s is not supported by this dck (supports %s)" % (value, carg))
+        if ctype == "interface" and value not in carg:
+            return bad("interface %s is not supported by this dck (supports %s)"
+                       % (value, " and ".join(str(v) for v in carg)))
         if ctype == "port_or_zero" and not (value == 0 or 1024 <= value <= 65535):
             return bad("expected 0 (no sshd) or a port in 1024-65535, got %s" % value)
     elif kind in ("str", "label", "path"):
@@ -182,6 +190,12 @@ def validate(data, kind="repo", path="dck.toml"):
                 problems.append("ports.%s: port %s is already the ssh_port" % (name, port))
         if effective["herdr.machine"] and not ssh:
             problems.append("herdr.machine: a Herdr machine needs sshd; set ssh_port to a port in 1024-65535")
+        if effective["interface"] == 1:
+            warnings.append("%s: interface 1 is read for migration only; `dck init` rewrites it as "
+                            "interface 2" % path)
+        if effective["image_tag"] is not None:
+            warnings.append("%s: image_tag is ignored since devcontainer-kit v0.2.0 (no shared base "
+                            "image); `dck init` removes it" % path)
     if problems:
         raise ConfigError(path, problems)
     return effective, warnings

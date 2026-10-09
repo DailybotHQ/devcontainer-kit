@@ -2,7 +2,7 @@
 # Scope: doctor — `dck doctor [--json]` (schema-checked) and the dck skill.
 
 DCK="$DCK_REPO/bin/dck"
-SCHEMA="$DCK_REPO/docs/schema/dck-doctor-v1.json"
+SCHEMA="$DCK_REPO/docs/schema/dck-doctor-v2.json"
 VERSION="$(cat "$DCK_REPO/VERSION")"
 use_fakes
 export DCK_BACKEND=compose DCK_NONINTERACTIVE=1 DCK_NO_DIGEST=1
@@ -25,8 +25,8 @@ valid() {
 test_outside_a_repository() {
   outside
   assert_rc 0 "doctor works outside a repository"
-  valid "the report matches dck-doctor-v1"
-  assert_eq "$(j 'd["interface"]')" "1" "interface is 1"
+  valid "the report matches dck-doctor-v2"
+  assert_eq "$(j 'd["interface"]')" "2" "interface is 2"
   assert_eq "$(j 'd["version"]')" "\"$VERSION\"" "version is the installed dck's"
   assert_eq "$(j '[d["repo"], d["layers"], d["ssh"]]')" "[null, null, null]" "repo, layers and ssh are null outside a repository"
   assert_eq "$(j 'd["runtime"]["docker"]["daemon"]')" "true" "the (fake) daemon is reported"
@@ -37,15 +37,15 @@ test_outside_a_repository() {
 test_inside_a_repository() {
   mk_repo
   doc
-  valid "the in-repo report matches dck-doctor-v1"
+  valid "the in-repo report matches dck-doctor-v2"
   assert_eq "$(j 'd["repo"]["config_valid"]')" "true" "the config is valid"
   assert_eq "$(j 'd["repo"]["flavour"]')" '"node-24"' "the flavour is reported"
-  assert_eq "$(j 'd["repo"]["image_tag"]')" "\"v$VERSION\"" "the image tag is reported"
+  assert_eq "$(j 'd["repo"]["kit_version"]')" "\"v$VERSION\"" "the kit version is reported"
   assert_eq "$(j 'd["repo"]["project"]')" '"proj"' "the compose project is reported"
   assert_eq "$(j 'd["layers"]')" '{"agents": false, "clis": [], "dailybot": false, "editor": true}' "the layers are reported"
   assert_eq "$(j '[d["ssh"]["enabled"], d["ssh"]["port"], d["ssh"]["bind"]]')" '[true, 22040, "127.0.0.1"]' "ssh port and bind are reported"
-  assert_eq "$(j 'd["repo"]["digest_pinned"]')" "false" "a tag-only pin is reported"
-  assert_contains "$(j 'd["problems"]')" "pinned by tag only" "and listed as a problem"
+  assert_eq "$(j 'd["repo"]["digest_pinned"]')" "true" "the Dockerfile's digest pin is reported"
+  assert_not_contains "$(j 'd["problems"]')" "not pinned by digest" "a digest-pinned base is no problem"
   assert_contains "$(j 'd["problems"]')" "docker/local/app/.env is missing" "a missing .env is a problem"
   assert_eq "$(j 'd["ok"]')" "false" "ok is false while problems remain"
 }
@@ -96,20 +96,17 @@ test_provider_detection() {
   assert_eq "$(j 'd["runtime"]["provider"]')" '"docker-desktop"' "Docker Desktop is recognised"
 }
 
-test_digest_match() {
-  printf 'sha256:%064d\n' 5 > "$DCK_FAKE_STATE/digest"
+test_vendored_state() {
   mkdir -p "$REPO"; git -C "$REPO" init -q
-  run_cmd env DCK_NO_DIGEST=0 "$DCK" init --repo "$REPO" --flavour debian --ssh-port 22040 --no-herdr --yes
+  run_cmd "$DCK" init --repo "$REPO" --flavour debian --ssh-port 22040 --no-herdr --yes
   doc
-  assert_eq "$(j 'd["repo"]["digest_pinned"]')" "true" "a digest pin is reported"
-  assert_eq "$(j 'd["repo"]["digest_match"]')" "null" "an image not pulled yet cannot be compared"
-  printf '["ghcr.io/dailybothq/devcontainer-kit-base@sha256:%064d"]\n' 5 > "$DCK_FAKE_STATE/image_inspect_out"
+  assert_eq "$(j 'd["repo"]["digest_pinned"]')" "true" "the Dockerfile's base image digest pin is reported"
+  assert_eq "$(j 'd["repo"]["kit_version"]')" "\"v$(cat "$DCK_REPO/VERSION")\"" "the kit version the repository was rendered with is reported"
+  assert_eq "$(j 'd["repo"]["vendored"]')" '"current"' "vendored scripts equal to the kit are current"
+  printf '\n# local edit\n' >> "$REPO/docker/local/app/dck/install.sh"
   doc
-  assert_eq "$(j 'd["repo"]["digest_match"]')" "true" "a matching local image is reported"
-  printf '["ghcr.io/dailybothq/devcontainer-kit-base@sha256:%064d"]\n' 6 > "$DCK_FAKE_STATE/image_inspect_out"
-  doc
-  assert_eq "$(j 'd["repo"]["digest_match"]')" "false" "a different local image is reported"
-  assert_contains "$(j 'd["problems"]')" "does not match the digest pinned in compose" "and listed as a problem"
+  assert_eq "$(j 'd["repo"]["vendored"]')" '"modified"' "an edited vendored script is reported"
+  assert_contains "$(j 'd["problems"]')" "differs from the devcontainer-kit files" "and listed as a problem"
 }
 
 test_container_ssh_and_drift() {
@@ -126,9 +123,9 @@ test_container_ssh_and_drift() {
   assert_eq "$(j '[x["status"] for x in d["drift"] if x["name"] == "gh"]')" '["drift"]' "a tool version different from the pin is drift"
   assert_eq "$(j '[x["status"] for x in d["drift"] if x["name"] == "nvim"]')" '["ok"]' "a matching tool version is ok"
   assert_contains "$(j 'd["problems"]')" "drift: gh pinned" "tool drift is a problem"
-  sed -i.orig "s/^image_tag = .*/image_tag = \"v0.0.9\"/" "$REPO/.devcontainer/dck.toml" && rm -f "$REPO/.devcontainer/dck.toml.orig"
+  printf 'devcontainer-kit v0.0.9\n' > "$REPO/docker/local/app/dck/VERSION"
   doc
-  assert_eq "$(j '[x["status"] for x in d["drift"] if x["name"] == "image_tag"]')" '["drift"]' "a repository pinned to another dck tag shows drift"
+  assert_eq "$(j '[x["status"] for x in d["drift"] if x["name"] == "kit"]')" '["drift"]' "a repository rendered with another dck version shows drift"
 }
 
 test_herdr_section() {
@@ -144,7 +141,7 @@ test_herdr_section() {
 test_strict_text_and_flags() {
   outside
   run_cmd bash -c 'cd "$1" && "$2" doctor' _ "$SANDBOX/nowhere" "$DCK"
-  assert_contains "$RUN_OUT" "devcontainer-kit $VERSION (interface 1)" "the text report starts with version and interface"
+  assert_contains "$RUN_OUT" "devcontainer-kit $VERSION (interface 2)" "the text report starts with version and interface"
   mk_repo
   run_cmd bash -c 'cd "$1" && "$2" doctor --strict' _ "$REPO" "$DCK"
   assert_rc 1 "--strict exits 1 while problems remain"

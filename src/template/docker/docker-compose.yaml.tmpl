@@ -11,8 +11,6 @@ services:
     build:
       context: ./{{service}}
       dockerfile: Dockerfile
-      args:
-        BASE_IMAGE: "{{base_image}}"
     init: true
     working_dir: {{workspace}}
     command: ["sleep", "infinity"]

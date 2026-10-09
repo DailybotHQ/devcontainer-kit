@@ -98,8 +98,10 @@ for p in bin lib src docs/schema skills; do
   mkdir -p "$stage/$(dirname "$p")"
   cp -R "$SRC/$p" "$stage/$p"
 done
-mkdir -p "$stage/images"
+mkdir -p "$stage/images/common"
 cp "$SRC/images/versions.env" "$stage/images/versions.env"
+# dck init vendors these into each repository (docker/local/<service>/dck/).
+cp -R "$SRC/images/common/." "$stage/images/common/"
 for f in VERSION LICENSE CREDITS.md README.md; do
   [ -f "$SRC/$f" ] && cp "$SRC/$f" "$stage/$f"
 done

@@ -115,7 +115,7 @@ test_end_to_end() {
   local ok
   ok="$(printf '%s' "$RUN_OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["interface"], d["repo"]["container"]["state"], d["ssh"]["answering"], sorted({x["status"] for x in d["drift"] if x["name"] in ("gh","nvim","dwp_vim")}))')"
   assert_eq "$ok" "1 running True ['ok']" "doctor sees the running container, sshd and no tool drift"
-  printf '%s' "$RUN_OUT" | python3 "$TESTS_DIR/py/minischema.py" "$DCK_REPO/docs/schema/dck-doctor-v1.json" >/dev/null
+  printf '%s' "$RUN_OUT" | python3 "$TESTS_DIR/py/minischema.py" "$DCK_REPO/docs/schema/dck-doctor-v2.json" >/dev/null
   assert_rc 0 "the live doctor report matches the schema"
 
   d down

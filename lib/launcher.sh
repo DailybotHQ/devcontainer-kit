@@ -86,14 +86,12 @@ is written and dck exits 5.
   --workspace PATH     workspaceFolder (default /workspace)
   --ssh-port N         loopback sshd port, 0 = none (default: derived from the repo name)
   --port NAME=N        a named loopback port (repeatable)
-  --image-tag vX.Y.Z   devcontainer-kit-base tag (default: this dck's tag)
   --agents | --no-agents       the agents layer (coding-agents-kit)
   --clis "claude codex"        kinds for `ak install` when agents is on
   --editor | --no-editor       the editor layer
   --herdr | --no-herdr         register as a Herdr machine on `dck up`
   --dry-run            show the plan and the diffs, write nothing
   --yes, -y            consent to every change shown
-  --no-digest          do not resolve the base image digest (tag pin only)
   --repo DIR           the repository to initialise
 EOF
 }
@@ -121,13 +119,13 @@ load_context() {
   local out
   out="$(dckpy "${args[@]}")" || exit "$DCK_EXIT_CONFIG"
   DCK_HAS_TOML=0; DCK_SSH_PORT=0; DCK_BIND=127.0.0.1; DCK_ALIAS=""; DCK_HERDR_MACHINE=0
-  DCK_HERDR_LABEL=""; DCK_PORTS=""; DCK_SSH_IDENTITY=""; DCK_FLAVOUR=""; DCK_IMAGE_TAG=""
+  DCK_HERDR_LABEL=""; DCK_PORTS=""; DCK_SSH_IDENTITY=""; DCK_FLAVOUR=""
   while IFS= read -r line; do
     k="${line%%=*}"; v="${line#*=}"
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_IMAGE_TAG|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out
@@ -643,7 +641,7 @@ cmd_config() {
     note "overlay          <none needed>"
   fi
   if [ "$DCK_HAS_TOML" = "1" ]; then
-    note "dck.toml         .devcontainer/dck.toml (flavour $DCK_FLAVOUR, image $DCK_IMAGE_TAG)"
+    note "dck.toml         .devcontainer/dck.toml (flavour $DCK_FLAVOUR)"
     note "ssh              $( [ "$DCK_SSH_PORT" = 0 ] && echo "off" || echo "$DCK_BIND:$DCK_SSH_PORT → 22, alias $DCK_ALIAS")"
     note "herdr machine    $( [ "$DCK_HERDR_MACHINE" = 1 ] && echo "on, label \"$DCK_HERDR_LABEL\"" || echo off)"
     note "ssh identity     $(pretty_path "$DCK_SSH_IDENTITY")"

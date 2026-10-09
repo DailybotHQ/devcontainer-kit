@@ -49,11 +49,19 @@ test_init_empty_repo_renders_layout() {
   assert_contains "$c" '"127.0.0.1:22040:22"' "sshd is published on loopback only"
   assert_contains "$c" '"127.0.0.1:4321:4321"' "named ports are published on loopback only"
   assert_not_contains "$c" "0.0.0.0" "nothing binds every interface"
-  assert_contains "$c" 'BASE_IMAGE: "ghcr.io/dailybothq/devcontainer-kit-base:node-24-v' "the base image is the flavour's kit image"
+  assert_not_contains "$c" "BASE_IMAGE" "compose passes no base image (no shared image)"
+  assert_not_contains "$c" "devcontainer-kit-base" "nothing refers to the shared base image"
   assert_contains "$c" "- state:/home/dev/.dck/volumes/state" "the state volume is per project"
   assert_not_contains "$c" "docker.sock" "no docker socket is mounted"
   assert_not_contains "$c" ".ssh" "no host ssh directory is mounted"
-  assert_match "$(cat "$r/docker/local/app/Dockerfile")" '^FROM \$\{BASE_IMAGE\}$' "the Dockerfile builds FROM the pinned base image"
+  assert_match "$(cat "$r/docker/local/app/Dockerfile")" '^ARG BASE_IMAGE=node:[0-9.]+-trixie-slim@sha256:[0-9a-f]{64}$' "the Dockerfile starts from the official node image pinned by digest"
+  assert_match "$(cat "$r/docker/local/app/Dockerfile")" '^FROM \$\{BASE_IMAGE\}$' "the Dockerfile builds FROM that pin"
+  local rel src
+  while read -r rel src; do
+    if cmp -s "$DCK_REPO/$src" "$r/docker/local/app/dck/$rel"; then pass "dck/$rel is a byte copy of $src"; else fail "dck/$rel is a byte copy of $src"; fi
+  done < <(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import render; [print(r, s) for r, s in render.VENDORED]' "$DCK_REPO/lib")
+  assert_eq "$(cat "$r/docker/local/app/dck/VERSION")" "devcontainer-kit v$(cat "$DCK_REPO/VERSION")" "dck/VERSION stamps the kit version"
+  assert_contains "$(cat "$r/docker/local/app/Dockerfile")" "# dck:managed v$(cat "$DCK_REPO/VERSION") base" "the base block carries the render stamp"
   run_cmd python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import jsonc; d=jsonc.load(sys.argv[2]); print(d["service"], d["runServices"], d["remoteUser"], d["workspaceFolder"], d["shutdownAction"], d["dockerComposeFile"])' "$DCK_REPO/lib" "$r/.devcontainer/devcontainer.json"
   assert_eq "$RUN_OUT" "app ['app'] dev /workspace none ../docker/local/docker-compose.yaml" "devcontainer.json carries the owned keys"
   assert_contains "$(cat "$r/.gitignore")" "docker/local/**/.env" "the .gitignore guard keeps .env files out of git"
@@ -193,23 +201,33 @@ test_invalid_flags() {
   assert_rc 2 "an unknown init flag is a usage error"
 }
 
-test_digest_pinning() {
-  local r
-  r="$(new_repo dig)"
-  printf 'sha256:%064d\n' 7 > "$DCK_FAKE_STATE/digest"
-  run_cmd env DCK_NONINTERACTIVE=1 "$DCK" init --repo "$r"
-  assert_match "$(cat "$r/docker/local/docker-compose.yaml")" 'BASE_IMAGE: "ghcr.io/dailybothq/devcontainer-kit-base:debian-v[0-9.]+@sha256:0{63}7"' "the base image digest is pinned in compose"
-  assert_contains "$(fake_calls docker)" "buildx imagetools inspect ghcr.io/dailybothq/devcontainer-kit-base:debian-v" "the digest is resolved from the registry"
-  rm -f "$DCK_FAKE_STATE/digest"
-  run_cmd env DCK_NONINTERACTIVE=1 "$DCK" init --repo "$r"
-  assert_rc 0 "an unreachable registry does not change a pinned digest"
-  assert_contains "$(cat "$r/docker/local/docker-compose.yaml")" "@sha256:" "a previously pinned digest is kept when lookup fails"
-  r="$(new_repo dig2)"
-  run_cmd env DCK_NONINTERACTIVE=1 "$DCK" init --repo "$r"
-  assert_contains "$RUN_ERR" "pinned by tag only" "an unresolvable digest is a warning, not a silent pass"
+test_runtimes_and_migration() {
+  local r f
+  for f in python-3.13 debian; do
+    r="$(new_repo "rt-$f")"
+    init_repo "$r" --flavour "$f" --no-herdr --yes
+    assert_rc 0 "init renders the $f runtime"
+    case "$f" in
+      python-3.13) assert_match "$(cat "$r/docker/local/app/Dockerfile")" '^ARG BASE_IMAGE=python:[0-9.]+-slim-trixie@sha256:[0-9a-f]{64}$' "python starts from the official python image by digest"
+                   assert_contains "$(cat "$r/docker/local/app/Dockerfile")" "COPY --from=uv /uv /uvx /usr/local/bin/" "python gets uv" ;;
+      debian) assert_match "$(cat "$r/docker/local/app/Dockerfile")" '^ARG BASE_IMAGE=debian:[a-z0-9.-]+@sha256:[0-9a-f]{64}$' "debian starts from the official debian image by digest" ;;
+    esac
+  done
+  r="$(new_repo base-override)"
+  mkdir -p "$r/.devcontainer"
+  printf 'interface = 2\nservice = "app"\nflavour = "node-24"\nbase_image = "node:22.20.0-trixie-slim@sha256:%064d"\n' 1 > "$r/.devcontainer/dck.toml"
+  init_repo "$r" --yes --no-herdr
+  assert_match "$(cat "$r/docker/local/app/Dockerfile")" '^ARG BASE_IMAGE=node:22\.20\.0-trixie-slim@sha256:0{63}1$' "dck.toml base_image overrides the flavour's pin"
+  r="$(new_repo v1)"
+  mkdir -p "$r/.devcontainer"
+  printf 'interface = 1\nservice = "app"\nflavour = "debian"\nimage_tag = "v0.1.6"\nssh_port = 22041\n' > "$r/.devcontainer/dck.toml"
   : > "$DCK_FAKE_LOG"
-  run_cmd env DCK_NONINTERACTIVE=1 "$DCK" init --repo "$r" --no-digest
-  assert_eq "$(fake_calls docker)" "" "--no-digest makes no registry call"
+  init_repo "$r" --yes --no-herdr
+  assert_rc 0 "a version-1 config migrates"
+  assert_contains "$(cat "$r/.devcontainer/dck.toml")" "interface = 2" "the interface line is rewritten"
+  assert_not_contains "$(cat "$r/.devcontainer/dck.toml")" "image_tag" "image_tag is removed"
+  assert_contains "$(cat "$r/.devcontainer/dck.toml")" "ssh_port = 22041" "the rest of the file is kept"
+  assert_eq "$(fake_calls docker)" "" "init makes no registry call"
 }
 
 test_profile_network_and_user_rename() {
