@@ -1,0 +1,10 @@
+// A hand-written devcontainer: image-based, with comments and a trailing comma.
+{
+  "name": "Legacy app", // the display name is the user's
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "remoteUser": "vscode",
+  "customizations": {
+    "vscode": { "extensions": ["eamodio.gitlens"] }, // keep me
+  },
+  "forwardPorts": [3000],
+}

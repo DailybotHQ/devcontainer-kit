@@ -124,7 +124,50 @@ def cmd_config(args):
     return usage("unknown config command %r" % sub)
 
 
-GROUPS = {"config": cmd_config}
+def cmd_init(args):
+    import render
+    opts = {"repo": opt(args, "--repo"), "profile": opt(args, "--profile")}
+    for name, key, conv in (("--flavour", "flavour", str), ("--service", "service", str),
+                            ("--user", "user", str), ("--workspace", "workspace", str),
+                            ("--image-tag", "image_tag", str), ("--ssh-port", "ssh_port", int)):
+        value = opt(args, name)
+        if value is not None:
+            try:
+                opts[key] = conv(value)
+            except ValueError:
+                return usage("%s expects %s, got %r" % (name, "a number" if conv is int else "text", value))
+    ports = {}
+    while "--port" in args:
+        spec = opt(args, "--port")
+        name, sep, num = spec.partition("=")
+        if not sep or not num.isdigit():
+            return usage("--port expects name=number, got %r" % spec)
+        ports[name] = int(num)
+    if ports:
+        opts["ports"] = ports
+    clis = opt(args, "--clis")
+    if clis is not None:
+        opts["clis"] = [c for c in clis.replace(",", " ").split() if c]
+    for on, off, key in (("--agents", "--no-agents", "agents"), ("--editor", "--no-editor", "editor"),
+                         ("--herdr", "--no-herdr", "herdr_machine")):
+        if flag(args, on):
+            opts[key] = True
+        if flag(args, off):
+            opts[key] = False
+    opts["dry_run"] = flag(args, "--dry-run")
+    opts["yes"] = flag(args, "--yes") or flag(args, "-y")
+    opts["no_digest"] = flag(args, "--no-digest") or os.environ.get("DCK_NO_DIGEST") == "1"
+    if args:
+        return usage("init: unexpected argument %r (see: dck help init)" % args[0])
+    opts["interactive"] = (not opts["yes"]) and sys.stdin.isatty() and os.environ.get("DCK_NONINTERACTIVE") != "1"
+    try:
+        return render.init(opts, default_tag())
+    except config.ConfigError as exc:
+        sys.stderr.write("dck: invalid configuration\n%s\n" % exc)
+        return EXIT_CONFIG
+
+
+GROUPS = {"config": cmd_config, "init": cmd_init}
 
 
 def main(argv):

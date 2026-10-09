@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#
+# dck (devcontainer-kit) — start, enter and manage a repository's dev container
+# from a plain terminal, with or without VS Code / Cursor.
+#
+#   dck help            all verbs
+#   dck init            render the Dev Container template into this repository
+#
+# Requires bash 3.2+ and python3 >= 3.11. Docker for the container verbs.
+
+set -euo pipefail
+
+_self="${BASH_SOURCE[0]}"
+while [ -L "$_self" ]; do
+  _dir="$(cd -P "$(dirname "$_self")" && pwd)"
+  _self="$(readlink "$_self")"
+  case "$_self" in /*) ;; *) _self="$_dir/$_self" ;; esac
+done
+DCK_ROOT="$(cd -P "$(dirname "$_self")/.." && pwd)"
+DCK_LIB="$DCK_ROOT/lib"
+export DCK_ROOT DCK_LIB
+
+# shellcheck source=lib/common.sh
+. "$DCK_LIB/common.sh"
+# shellcheck source=lib/launcher.sh
+. "$DCK_LIB/launcher.sh"
+
+dck_main "$@"

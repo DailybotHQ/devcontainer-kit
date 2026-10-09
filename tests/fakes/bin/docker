@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Fake docker CLI for the unit scopes. Logs argv, answers from $DCK_FAKE_STATE:
+#   daemon_down          `docker info` fails
+#   digest               printed as the manifest digest by `buildx imagetools inspect`
+#   ps                   stdout of `docker ps ...` and `docker compose ... ps ...`
+#   exec_out / exec_rc   stdout / status of `docker compose ... exec ...`
+#   compose_rc           status of every other `docker compose ...` call
+#   net_<name>           an existing network
+#   inspect_out          stdout of `docker inspect ...`
+#   volumes              stdout of `docker volume ls ...`
+st="${DCK_FAKE_STATE:-/nonexistent}"
+printf 'docker %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
+# Record stdin for exec calls that pipe data in (e.g. authorized keys).
+case " $* " in *" exec "*" -i "*|*" exec -i "*) cat > "$st/exec_stdin" 2>/dev/null ;; esac
+case "$1" in
+  info)
+    [ -f "$st/daemon_down" ] && { echo "Cannot connect to the Docker daemon" >&2; exit 1; }
+    echo "29.0.0"; exit 0 ;;
+  buildx)
+    if [ "$2 $3" = "imagetools inspect" ]; then
+      [ -f "$st/digest" ] || { echo "not found" >&2; exit 1; }
+      printf '{"mediaType":"application/vnd.oci.image.index.v1+json","digest":"%s","size":1}\n' "$(cat "$st/digest")"
+      exit 0
+    fi
+    exit 0 ;;
+  ps) cat "$st/ps" 2>/dev/null; exit 0 ;;
+  inspect) cat "$st/inspect_out" 2>/dev/null; [ -f "$st/inspect_out" ]; exit $? ;;
+  volume) cat "$st/volumes" 2>/dev/null; exit 0 ;;
+  network)
+    case "$2" in
+      inspect) [ -f "$st/net_$3" ]; exit $? ;;
+      create) touch "$st/net_$3"; exit 0 ;;
+    esac
+    exit 0 ;;
+  compose)
+    shift
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        -p|-f|--project-name|--file) shift 2 ;;
+        version) echo "Docker Compose version v2.99.0-fake"; exit 0 ;;
+        ps) cat "$st/ps" 2>/dev/null; exit 0 ;;
+        exec) cat "$st/exec_out" 2>/dev/null; exit "$(cat "$st/exec_rc" 2>/dev/null || echo 0)" ;;
+        *) break ;;
+      esac
+    done
+    exit "$(cat "$st/compose_rc" 2>/dev/null || echo 0)" ;;
+esac
+exit 0

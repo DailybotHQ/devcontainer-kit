@@ -1,0 +1,36 @@
+# devcontainer-kit config for this repository (interface 1).
+# Reference: https://github.com/DailybotHQ/devcontainer-kit/blob/{{dck_tag}}/docs/config.md
+# Edit this file, then run `dck init` to reconcile the generated files.
+interface = 1
+
+# Compose service the tools attach to, its user and workspace folder.
+service = "{{service}}"
+user = "{{user}}"
+workspace = "{{workspace}}"
+
+# Base image: flavour (python-3.13 | node-24 | debian) and devcontainer-kit-base tag.
+flavour = "{{flavour}}"
+image_tag = "{{image_tag}}"
+
+# Loopback-only host port for the container's sshd (Herdr, `dck ssh`); 0 = no sshd.
+ssh_port = {{ssh_port}}
+
+# Named ports, each published as 127.0.0.1:<port>:<port>, e.g. { web = 4321 }.
+ports = { {{ports_inline}} }
+
+[layers]
+# true → installs coding-agents-kit (ak) at its pinned tag; see [agents].
+agents = {{layers_agents}}
+# true only when the dailybot addon asks for it.
+dailybot = {{layers_dailybot}}
+# nvim + deepworkplan-vim as the default editor.
+editor = {{layers_editor}}
+
+[agents]
+# Kinds passed to `ak install` when layers.agents is true.
+clis = [{{agents_clis_toml}}]
+
+[herdr]
+# Register the container as a Herdr machine on `dck up` (needs ssh_port).
+machine = {{herdr_machine}}
+label = "{{herdr_label_fmt}}"

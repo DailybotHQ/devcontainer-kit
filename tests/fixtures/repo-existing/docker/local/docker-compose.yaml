@@ -1,0 +1,7 @@
+# hand-written compose file, no dck markers
+name: legacy
+services:
+  web:
+    image: node:24
+    ports:
+      - "3000:3000"
