@@ -641,7 +641,9 @@ cmd_ssh() {
   # never collides; dck's own known_hosts keeps ~/.ssh/known_hosts unchanged.
   # After deleting the state volume on purpose:
   #   ssh-keygen -R <alias> -f ~/.config/dck/ssh/known_hosts
-  ssh -p "$DCK_SSH_PORT" \
+  local cfg=()
+  [ -n "${DCK_SSH_CONFIG:-}" ] && cfg=(-F "$DCK_SSH_CONFIG")
+  ssh ${cfg[@]+"${cfg[@]}"} -p "$DCK_SSH_PORT" \
       -i "$DCK_SSH_IDENTITY" -o IdentitiesOnly=yes \
       -o ForwardAgent=yes \
       -o StrictHostKeyChecking=accept-new \

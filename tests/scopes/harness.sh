@@ -6,7 +6,7 @@ FIX="$TESTS_DIR/fixtures/harness"
 # Runs a nested runner over a fixture scope directory.
 nested() {
   local dir="$1"; shift
-  run_cmd env DCK_TEST_SCOPES_DIR="$dir" bash "$TESTS_DIR/run.sh" "$@"
+  run_cmd env -u DCK_TEST_DOCKER DCK_TEST_SCOPES_DIR="$dir" bash "$TESTS_DIR/run.sh" "$@"
 }
 
 test_sandbox_home_is_private() {
@@ -74,7 +74,7 @@ test_docker_disabled_reports_unavailable() {
 }
 
 test_docker_daemon_down_reports_unavailable() {
-  run_cmd env PATH="$FIX/fake-docker-down:$PATH" DCK_TEST_SCOPES_DIR="$FIX/scopes-pass" bash "$TESTS_DIR/run.sh" sample
+  run_cmd env -u DCK_TEST_DOCKER PATH="$FIX/fake-docker-down:$PATH" DCK_TEST_SCOPES_DIR="$FIX/scopes-pass" bash "$TESTS_DIR/run.sh" sample
   assert_rc 0 "a missing daemon is not a failure"
   assert_match "$RUN_OUT" '^unavailable - docker-dependent check \(docker daemon not answering\)$' "a daemon that does not answer is reported honestly"
   assert_not_contains "$RUN_OUT" "ok - docker answered" "nothing docker-dependent passes without a daemon"
@@ -87,7 +87,7 @@ test_docker_cli_missing_reports_unavailable() {
   for t in bash sh env python3 mktemp sed grep tail cat rm mkdir dirname basename readlink pwd tr wc head ls touch cp; do
     ln -s "$(command -v "$t")" "$bin/$t"
   done
-  run_cmd env PATH="$bin" DCK_TEST_SCOPES_DIR="$FIX/scopes-pass" "$bin/bash" "$TESTS_DIR/run.sh" sample
+  run_cmd env -u DCK_TEST_DOCKER PATH="$bin" DCK_TEST_SCOPES_DIR="$FIX/scopes-pass" "$bin/bash" "$TESTS_DIR/run.sh" sample
   assert_match "$RUN_OUT" '^unavailable - docker-dependent check \(docker CLI not found\)$' "a missing docker CLI is reported honestly"
 }
 

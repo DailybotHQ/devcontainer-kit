@@ -98,6 +98,7 @@ entrypoint). `dck ssh` connects to `127.0.0.1:<ssh_port>` with:
 | `DCK_NO_DIGEST=1` | `dck init` skips the digest lookup |
 | `DCK_NONINTERACTIVE=1` | never prompt (as if stdin were not a terminal) |
 | `COMPOSE_PROJECT_NAME` | project name (see above) |
+| `DCK_SSH_CONFIG` | `dck ssh` passes `-F <file>` (e.g. `/dev/null` to ignore `~/.ssh/config`) |
 
 ## Install
 

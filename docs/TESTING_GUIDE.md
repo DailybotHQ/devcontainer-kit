@@ -38,7 +38,7 @@ change touches shared code (`lib/common.sh`, `lib/dckpy.py`, `bin/dck`).
 | `herdr` | `lib/herdr.sh`, `lib/sshconf.py` (fake `herdr`/`ssh`/`docker`, sandbox `~/.ssh`) | no |
 | `doctor` | `lib/doctor.py`, `lib/doctor.sh`, `docs/schema/dck-doctor-v1.json` (validated by `tests/py/minischema.py`), `skills/dck/` | no |
 | `security` | static posture checks over `src/template/`, `images/`, `lib/` | no |
-| `docker` | integration: build the node flavour, `dck init` a fixture, `up`, `shell`, sshd on loopback, `down` | **yes** |
+| `docker` | integration: build the node-24 image, `dck init` a fixture, `setup`, `up`, `shell -c`, sshd on loopback only, `ssh` with agent forwarding (throwaway key, sandbox agent), env profile in ssh sessions, host key stable across `up --recreate`, live `doctor --json` against the schema, `down`; the same `up`/`shell` through the real `devcontainer` CLI. Cleans up its containers, volumes and images | **yes** |
 
 ## How a test is written
 
@@ -68,7 +68,11 @@ assertion, is a failure.
   global/system config point into a per-test temporary directory; `DCK_*`
   variables from the caller are cleared. Nothing is installed anywhere.
 - **No network** in the unit scopes. The `docker` scope pulls base images and
-  release assets because building an image does.
+  release assets because building an image does. It runs with the sandbox
+  `HOME` (docker reads an empty `$HOME/.docker`) and `DCK_SSH_CONFIG=/dev/null`,
+  so the developer's `~/.ssh` is never read or written; its ssh-agent socket
+  lives at `/tmp/dck-it-<pid>.sock` (Unix socket paths are length-limited) and
+  is removed by the test.
 - **Honest unavailability.** Without a Docker daemon (or with
   `DCK_TEST_DOCKER=0`) docker-dependent tests print
   `unavailable - <test> (<reason>)`; they never pass silently.

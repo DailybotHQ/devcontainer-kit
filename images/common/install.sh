@@ -86,6 +86,16 @@ chmod 0440 "/etc/sudoers.d/$DEV_USER"
 home="/home/$DEV_USER"
 mkdir -p "$home/.dck/volumes" "$home/.config/herdr" "$home/.local/bin" "$home/.ssh"
 chmod 0700 "$home/.ssh"
+# `ssh <container> <command>` runs a non-login shell, which bash (run by sshd)
+# starts by reading ~/.bashrc. Load the container environment there, BEFORE
+# Debian's "not interactive: return" guard, so commands see it too.
+[ -f "$home/.bashrc" ] || cp /etc/skel/.bashrc "$home/.bashrc"
+{
+  echo '# devcontainer-kit: the container environment, also for non-interactive ssh commands'
+  # shellcheck disable=SC2016  # expanded by the user's shell, not here
+  echo '[ -r "$HOME/.dck/env.sh" ] && . "$HOME/.dck/env.sh"'
+  cat "$home/.bashrc"
+} > /tmp/dck-bashrc && mv /tmp/dck-bashrc "$home/.bashrc"
 
 # --- deepworkplan-vim at its pinned tag, verified against the pinned commit --
 # Only the configuration is installed; its plugin manager fetches plugins on
