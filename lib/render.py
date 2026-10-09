@@ -42,6 +42,7 @@ VENDORED = (
     ("versions.env", "images/versions.env"),
     ("install.sh", "images/common/install.sh"),
     ("editor.sh", "images/common/editor.sh"),
+    ("peers.sh", "images/common/peers.sh"),
     ("sshd_config.conf", "images/common/sshd_config.conf"),
     ("github_known_hosts", "images/common/github_known_hosts"),
     ("herdr-config.toml", "images/common/herdr-config.toml"),

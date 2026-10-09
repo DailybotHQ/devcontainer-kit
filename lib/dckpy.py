@@ -217,7 +217,7 @@ def cmd_devc(args):
 def cmd_sshconf(args):
     import sshconf
     if not args:
-        return usage("sshconf needs a command: upsert | remove | has | include")
+        return usage("sshconf needs a command: upsert | remove | has | include | peers")
     sub = args.pop(0)
     try:
         if sub == "upsert":
@@ -232,6 +232,25 @@ def cmd_sshconf(args):
             return EXIT_OK if sshconf.has_alias(opt(args, "--file"), opt(args, "--alias")) else EXIT_FAIL
         if sub == "include":
             print(sshconf.ensure_include(opt(args, "--config")))
+            return EXIT_OK
+        if sub == "peers":
+            labels = {}
+            raw = sys.stdin.read() if "--labels-stdin" in args else ""
+            if "--labels-stdin" in args:
+                args.remove("--labels-stdin")
+            start = min([i for i in (raw.find("["), raw.find("{")) if i >= 0] or [-1])
+            try:
+                data = json.loads(raw[start:]) if start >= 0 else []
+            except ValueError:
+                data = []
+            if isinstance(data, dict):
+                data = (data.get("result") or {}).get("machines") or data.get("machines") or []
+            for m in data if isinstance(data, list) else []:
+                if isinstance(m, dict) and m.get("target") and m.get("label"):
+                    labels[str(m["target"])] = str(m["label"])
+            sys.stdout.write(sshconf.peers(opt(args, "--file"), opt(args, "--known-hosts"),
+                                           opt(args, "--exclude") or "", labels,
+                                           opt(args, "--host-user") or "", opt(args, "--host-key") or ""))
             return EXIT_OK
     except sshconf.SshConfError as exc:
         sys.stderr.write("dck: %s\n" % exc)

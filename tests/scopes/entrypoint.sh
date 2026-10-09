@@ -280,3 +280,45 @@ test_git_identity() {
   assert_not_contains "$RUN_OUT$RUN_ERR" "$fake" "values are never printed"
   assert_contains "$RUN_ERR" "3 setting(s) written" "only a count is logged"
 }
+
+test_mesh_apply() {
+  local payload
+  payload="$(printf '%s\n' \
+    'peer dck-other 22041 dev other label' \
+    'peer dck-host 22 alice host' \
+    'hostkey 22041 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPeerHostKeyFakeOnlyForTests000000000000' \
+    'hostkey 22 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHostHostKeyFakeOnlyForTests00000000000000' \
+    'peer bad;alias 22042 dev x' \
+    'peer dck-bad x dev x' \
+    'peer dck-bad2 22043 Root x' \
+    'hostkey 22041 ssh-dss AAAA' \
+    'something else entirely')"
+  run_cmd bash -c '. "$1"; printf "%s\n" "$2" | dck_mesh_apply' _ "$LIB" "$payload"
+  assert_rc 0 "the mesh applies"
+  local frag="$DCK_HOME/.ssh/config.d/dck-peers" known="$DCK_HOME/.ssh/known_hosts.dck-peers"
+  assert_contains "$(cat "$frag")" "Host dck-other" "a valid peer gets an ssh host"
+  assert_contains "$(cat "$frag")" "HostName host.docker.internal" "peers are reached through the host gateway"
+  assert_contains "$(cat "$frag")" "ForwardAgent yes" "the agent is forwarded (no key inside)"
+  assert_contains "$(cat "$frag")" "StrictHostKeyChecking yes" "host keys are strict"
+  assert_contains "$(cat "$frag")" "Host dck-host" "the host is a peer when pushed"
+  assert_not_contains "$(cat "$frag")" "bad" "invalid aliases, ports and users are refused"
+  assert_contains "$(cat "$known")" "[host.docker.internal]:22041 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPeerHostKeyFakeOnlyForTests000000000000" "the peer key is pinned on its gateway port"
+  assert_contains "$(cat "$known")" "host.docker.internal ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHostHostKeyFakeOnlyForTests00000000000000" "the host key is pinned on port 22"
+  assert_not_contains "$(cat "$known")" "ssh-dss" "an unknown key type is refused"
+  assert_eq "$(head -1 "$DCK_HOME/.ssh/config")" "Include config.d/dck-peers" "the ssh config includes the peers first"
+  assert_mode "$frag" 600 "the peers file is private"
+  assert_contains "$RUN_ERR" "mesh: 2 peer(s) written" "the count is logged"
+  run_cmd bash -c '. "$1"; printf "%s\n" "$2" | dck_mesh_apply' _ "$LIB" "$payload"
+  assert_eq "$(grep -c '^Include config.d/dck-peers$' "$DCK_HOME/.ssh/config")" "1" "the include is written once"
+}
+
+test_skills_link() {
+  local src="$SANDBOX/skills-src"
+  mkdir -p "$src/herdr-peers" "$src/herdr" "$DCK_HOME/.claude/skills/herdr"
+  echo mine > "$DCK_HOME/.claude/skills/herdr/SKILL.md"
+  run_cmd env DCK_SKILLS_SRC="$src" bash -c '. "$1"; dck_skills_link' _ "$LIB"
+  assert_rc 0 "skills link"
+  assert_symlink "$DCK_HOME/.agents/skills/herdr-peers" "herdr-peers is linked into ~/.agents/skills"
+  assert_symlink "$DCK_HOME/.claude/skills/herdr-peers" "herdr-peers is linked into ~/.claude/skills"
+  assert_eq "$(cat "$DCK_HOME/.claude/skills/herdr/SKILL.md")" "mine" "a skill directory the user put there is never replaced"
+}

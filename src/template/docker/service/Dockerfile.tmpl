@@ -18,6 +18,12 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # (dck/versions.env, dck/install.sh).
 COPY dck/versions.env dck/install.sh dck/sshd_config.conf dck/github_known_hosts dck/herdr-config.toml dck/profile.sh /tmp/dck-build/
 RUN bash /tmp/dck-build/install.sh {{flavour}} {{apt_extras}}
+
+# herdr-peers and Herdr's skill: agents inside ask Herdr agents on other
+# machines (the host, other containers). Verified against the pinned release
+# sums (dck/peers.sh).
+COPY dck/versions.env dck/peers.sh /tmp/dck-peers/
+RUN bash /tmp/dck-peers/peers.sh && rm -rf /tmp/dck-peers
 {% if is_node %}
 ENV PNPM_HOME=/usr/local/share/pnpm
 RUN corepack enable \

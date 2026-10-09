@@ -213,3 +213,40 @@ test_herdr_json_shapes() {
   run_cmd bash -c 'printf "[]" | python3 -I "$1" herdr find --target dck-a' _ "$DCK_REPO/lib/dckpy.py"
   assert_rc 1 "no match exits 1"
 }
+
+test_mesh_pushes_the_peers() {
+  mk_repo other 22041
+  DREPO="$SANDBOX/other" d herdr add
+  mk_repo proj 22040
+  d herdr add
+  mkdir -p "$HOME/.config/dck/ssh"
+  printf '[127.0.0.1]:22041 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPeerHostKeyFakeOnlyForTests000000000000\n' >> "$HOME/.config/dck/ssh/known_hosts"
+  : > "$DCK_FAKE_STATE/exec_stdin"
+  d herdr mesh
+  assert_rc 0 "herdr mesh succeeds"
+  local s; s="$(cat "$DCK_FAKE_STATE/exec_stdin")"
+  assert_contains "$s" "peer dck-other 22041 dev other" "the other container is a peer, with its Herdr label"
+  assert_not_contains "$s" "peer dck-proj " "the container itself is not its own peer"
+  assert_contains "$s" "hostkey 22041 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPeerHostKeyFakeOnlyForTests000000000000" "the peer's pinned host key is pushed"
+  assert_no_match "$s" 'PRIVATE KEY|id_ed25519' "no private key material or key path is pushed"
+  assert_contains "$(fake_calls docker)" "exec -T --user root app bash -c . /usr/local/lib/dck/entrypoint.sh && dck_mesh_apply" "the payload is applied inside the container"
+  assert_contains "$RUN_OUT" "mesh: 1 peer(s) reachable from inside app" "the peer count is reported"
+}
+
+test_agents_and_ask() {
+  mk_repo
+  run_cmd bash -c 'cd "$1" && PATH=/usr/bin:/bin "$2" agents' _ "$REPO" "$DCK"
+  assert_ne "$RUN_RC" "0" "without herdr-peers, dck agents fails"
+  assert_contains "$RUN_ERR" "herdr-peers is not installed on this host" "and says how to install it, pinned"
+  mkdir -p "$SANDBOX/peersbin"
+  printf '#!/bin/sh\nprintf "herdr-peers %%s\\n" "$*" >> "%s"\n' "$DCK_FAKE_LOG" > "$SANDBOX/peersbin/herdr-peers"
+  chmod +x "$SANDBOX/peersbin/herdr-peers"
+  run_cmd bash -c 'cd "$1" && PATH="$3:$PATH" "$2" agents' _ "$REPO" "$DCK" "$SANDBOX/peersbin"
+  assert_rc 0 "dck agents runs herdr-peers"
+  assert_contains "$(fake_calls herdr-peers)" "herdr-peers list" "dck agents is herdr-peers list"
+  run_cmd bash -c 'cd "$1" && PATH="$3:$PATH" "$2" ask dck-other:w1:p2 "which test covers the parser?"' _ "$REPO" "$DCK" "$SANDBOX/peersbin"
+  assert_rc 0 "dck ask runs herdr-peers"
+  assert_contains "$(fake_calls herdr-peers)" "herdr-peers ask dck-other:w1:p2 which test covers the parser?" "dck ask is herdr-peers ask, with the prompt as one argument"
+  run_cmd bash -c 'cd "$1" && PATH="$3:$PATH" "$2" ask justaname "hi"' _ "$REPO" "$DCK" "$SANDBOX/peersbin"
+  assert_rc 2 "a target without machine:pane is a usage error"
+}

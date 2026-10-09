@@ -47,7 +47,9 @@ usage: dck [--repo DIR] [--profile NAME] [--project NAME] [--trust] <verb> [args
   config                what dck resolved for this repository
   ports                 the published loopback ports
   ssh [cmd...]          ssh into the container with agent forwarding
-  herdr add|status|repair|remove   the container as a Herdr machine
+  herdr add|status|repair|remove|mesh   the container as a Herdr machine; mesh: reach the others from inside
+  agents                the live agents on every Herdr machine (herdr-peers list)
+  ask <machine>:<pane> "<prompt>"   ask one of them, with the reply grant (herdr-peers ask)
   doctor [--json] [--strict]   environment and repository health (interface 1)
   --skill               print the bundled agent skill
   help [verb]           this text, or one verb's details
@@ -120,12 +122,13 @@ load_context() {
   out="$(dckpy "${args[@]}")" || exit "$DCK_EXIT_CONFIG"
   DCK_HAS_TOML=0; DCK_SSH_PORT=0; DCK_BIND=127.0.0.1; DCK_ALIAS=""; DCK_HERDR_MACHINE=0
   DCK_HERDR_LABEL=""; DCK_PORTS=""; DCK_SSH_IDENTITY=""; DCK_FLAVOUR=""
+  export DCK_HOST_MACHINE="0"  # read by lib/herdr.sh (herdr_mesh)
   while IFS= read -r line; do
     k="${line%%=*}"; v="${line#*=}"
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out

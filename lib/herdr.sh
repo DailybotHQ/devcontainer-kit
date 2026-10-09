@@ -8,12 +8,17 @@
 #   dck herdr repair    re-assert the include and the key, then disable/enable
 #                       the machine (the fix for a client stuck "reconnecting")
 #   dck herdr remove    `herdr machine remove` and drop the include block
+#   dck herdr mesh      push the peer list into the container: every other dck
+#                       container (and the host, when the profile sets
+#                       host_machine) becomes reachable from inside
+#   dck agents          herdr-peers list: the live agents on every machine
+#   dck ask <machine>:<pane>|<#> "<prompt>"   herdr-peers ask, with the reply grant
 #
 # The machine's identity is its SSH alias (<alias_prefix><repo-slug>), defined
 # in ~/.ssh/config.d/dck with agent forwarding and the dedicated dck key. dck
 # only ever talks to Herdr through its CLI; it never edits Herdr's own files.
 
-DCK_VERBS="$DCK_VERBS herdr "
+DCK_VERBS="$DCK_VERBS herdr agents ask "
 
 herdr_paths() {
   HERDR_INCLUDE="$HOME/.ssh/config.d/dck"
@@ -99,6 +104,74 @@ herdr_prepare() {
   herdr_wait_for "sshd" herdr_ssh_ok || die "sshd in $DC_SERVICE does not answer on $HERDR_HOST:$DCK_SSH_PORT — run: dck logs, dck herdr status"
 }
 
+# herdr_agent_key — hops out of a container authenticate with the dck key held
+# by the HOST's ssh-agent (forwarded, or the Docker Desktop socket): make sure
+# it is loaded. The private key never leaves the host.
+herdr_agent_key() {
+  [ -f "$DCK_SSH_IDENTITY" ] || return 0
+  if ! command -v ssh-add >/dev/null 2>&1 || [ -z "${SSH_AUTH_SOCK:-}" ]; then
+    warn "no ssh-agent on this host: agents inside containers cannot reach other machines (start one, then: dck herdr mesh)"
+    return 0
+  fi
+  local fp
+  fp="$(ssh-keygen -lf "$DCK_SSH_IDENTITY.pub" 2>/dev/null | cut -d' ' -f2)"
+  if [ -n "$fp" ] && ssh-add -l 2>/dev/null | grep -qF "$fp"; then return 0; fi
+  if [ "$(uname -s)" = "Darwin" ]; then
+    ssh-add --apple-use-keychain "$DCK_SSH_IDENTITY" >/dev/null 2>&1 || ssh-add "$DCK_SSH_IDENTITY" >/dev/null 2>&1 || {
+      warn "could not add the dck key to the ssh-agent"; return 0; }
+  else
+    ssh-add "$DCK_SSH_IDENTITY" >/dev/null 2>&1 || { warn "could not add the dck key to the ssh-agent"; return 0; }
+  fi
+  note "ssh-agent: loaded the dck key (agents inside containers reach other machines through it)"
+}
+
+# herdr_mesh — push the peer list (public data only) into this container, where
+# dck_mesh_apply writes the ssh config, the pinned host keys and the Herdr machines.
+herdr_mesh() {
+  herdr_require_config
+  require_docker
+  herdr_paths
+  container_running || die "$DC_SERVICE is not running — run: dck up"
+  herdr_agent_key
+  local host_user="" host_key="" payload n
+  if [ "${DCK_HOST_MACHINE:-0}" = "1" ]; then
+    host_user="$(id -un)"
+    host_key=/etc/ssh/ssh_host_ed25519_key.pub
+  fi
+  payload="$( { herdr machine list --json 2>/dev/null || true; } | dckpy sshconf peers --labels-stdin \
+      --file "$HERDR_INCLUDE" --known-hosts "$HERDR_KNOWN_HOSTS" --exclude "$DCK_ALIAS" \
+      --host-user "$host_user" --host-key "$host_key")" || exit $?
+  n="$(printf '%s\n' "$payload" | grep -c '^peer ' || true)"
+  printf '%s\n' "$payload" | dc exec -T --user root "$DC_SERVICE" \
+    bash -c '. /usr/local/lib/dck/entrypoint.sh && dck_mesh_apply' >/dev/null 2>&1 \
+    || die "could not apply the mesh inside $DC_SERVICE (rendered by devcontainer-kit v0.2+?)"
+  note "mesh: $n peer(s) reachable from inside $DC_SERVICE"
+}
+
+herdr_peers_cli() {
+  command -v herdr-peers >/dev/null 2>&1 && return 0
+  die "$DCK_EXIT_ENV" "herdr-peers is not installed on this host. Install the skill, pinned:
+  npx --yes skills add DailybotHQ/herdr-peers@${HERDR_PEERS_TAG:-v0.1.0} --skill herdr-peers -g
+then put its helper on PATH (see https://github.com/DailybotHQ/herdr-peers#install)"
+}
+
+dck_cmd_agents() {
+  [ $# -eq 0 ] || die "$DCK_EXIT_USAGE" "usage: dck agents"
+  herdr_peers_cli
+  exec herdr-peers list
+}
+
+dck_cmd_ask() {
+  [ $# -ge 2 ] || die "$DCK_EXIT_USAGE" "usage: dck ask <machine>:<pane> \"<prompt>\""
+  herdr_peers_cli
+  local target="$1"; shift
+  case "$target" in
+    *:*) ;;
+    *) die "$DCK_EXIT_USAGE" "ask: the target is <machine>:<pane> (the MACHINE:PANE column of: dck agents)" ;;
+  esac
+  exec herdr-peers ask "$target" "$*"
+}
+
 herdr_add() {
   herdr_prepare
   herdr_lookup
@@ -116,6 +189,7 @@ herdr_add() {
     herdr machine add --label "$DCK_HERDR_LABEL" "$DCK_ALIAS" || die "herdr machine add failed — run: dck herdr status"
     note "herdr: registered $DCK_ALIAS as \"$DCK_HERDR_LABEL\""
   fi
+  herdr_agent_key
   if herdr_wait_for "server" herdr_server_ok; then
     note "herdr: the remote server answers"
   else
@@ -187,8 +261,8 @@ dck_cmd_herdr() {
   [ $# -gt 0 ] && shift
   [ $# -eq 0 ] || die "$DCK_EXIT_USAGE" "herdr $sub takes no arguments"
   case "$sub" in
-    add|status|repair|remove) ;;
-    *) die "$DCK_EXIT_USAGE" "usage: dck herdr add|status|repair|remove" ;;
+    add|status|repair|remove|mesh) ;;
+    *) die "$DCK_EXIT_USAGE" "usage: dck herdr add|status|repair|remove|mesh" ;;
   esac
   load_context
   "herdr_$sub"
@@ -200,5 +274,5 @@ dck_herdr_after_up() {
     note "herdr: not installed on this host; skipping machine registration"
     return 0
   fi
-  ( herdr_add )
+  ( herdr_add ) && ( herdr_mesh ) || true
 }

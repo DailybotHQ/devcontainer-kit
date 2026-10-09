@@ -106,3 +106,46 @@ The base images ship Herdr (pinned, `/usr/local/bin/herdr`, on the PATH of the
 non-login SSH session the Herdr client uses) and a seeded config with login
 shells, `new_cwd = <workspace>` and `allow_nested = true`, kept current by the
 entrypoint's `dck_herdr_config` ([entrypoint.md](entrypoint.md)).
+
+## Agents inside talking to agents outside (`dck herdr mesh`)
+
+An agent in the container can list and ask Herdr agents on the host and in
+other dck containers, and get the reply back, through
+[herdr-peers](https://github.com/DailybotHQ/herdr-peers). The image installs
+it from its tag's source, verifying every file against that release's
+`SHA256SUMS`, which is itself pinned by sha256 in `versions.env`. Herdr's
+own skill, matching the pinned binary, is installed next to it. At every
+start the entrypoint links both skills into each agent's skill directory
+(`~/.agents/skills`, `~/.claude/skills`, and the others that exist).
+
+`dck up` runs `dck herdr mesh` after `dck herdr add`, and you can run it
+again at any time:
+
+```bash
+dck herdr mesh      # make every other dck container (and the host, with host_machine) reachable from inside
+dck agents          # herdr-peers list: the live agents on every machine
+dck ask dck-other:w1:p2 "Which test covers the parser?"   # herdr-peers ask, with the reply grant
+```
+
+- **What is pushed.** Only public data goes into the container, through
+  `docker exec`:
+  - every other registered container's alias, port and user (from
+    `~/.ssh/config.d/dck`);
+  - its pinned host key (from dck's `known_hosts`);
+  - its Herdr label.
+
+  Inside, `dck_mesh_apply` writes `~/.ssh/config.d/dck-peers`
+  (`HostName host.docker.internal`, `ForwardAgent yes`, strict host keys),
+  the pinned `known_hosts.dck-peers` and a Herdr machine per peer.
+- **The host as a peer.** Set `host_machine = true` in your host profile.
+  The host is then reachable as `dck-host` (`host.docker.internal:22`, your
+  user, the host's ed25519 host key). This needs Remote Login (sshd) on the
+  host, and your key in its `authorized_keys`.
+- **Credentials.** No private key enters the container. Hops out of it
+  authenticate with keys held by the host's ssh-agent, reached through
+  agent forwarding (Herdr and `dck ssh` sessions) or the Docker Desktop
+  agent socket (exec sessions). `dck herdr add` loads the dck key into
+  that agent (`--apple-use-keychain` on macOS) and says so.
+- **When the container's Herdr server is not running yet**, the Herdr
+  machines are registered on the next `dck herdr mesh`. The ssh side is
+  always written.
