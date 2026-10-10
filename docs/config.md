@@ -82,7 +82,7 @@ directory is `$DCK_CONFIG_HOME`, else `$XDG_CONFIG_HOME/dck`, else
 `~/.config/dck`.
 
 ```toml
-interface = 1
+interface = 2
 name = "acme"
 compose_project_prefix = "acme-"   # compose project = <prefix><repo-slug>
 network = "acme-dev"               # shared external network ("" = none)
@@ -97,7 +97,7 @@ host_extra = []                    # aliases or host names beyond git services t
 
 | Key | Type | Default | Rule |
 | --- | --- | --- | --- |
-| `interface` | integer | `1` | must be `1` |
+| `interface` | integer | `2` | `2`; `1` is still read (the profile has the same shape in both) |
 | `name` | string | `default` | `^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$` |
 | `compose_project_prefix` | string | `""` | empty or `^[a-z0-9][a-z0-9_-]{0,31}$`; include your own separator |
 | `network` | string | `""` | docker network name, empty for none |

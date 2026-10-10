@@ -1,4 +1,4 @@
-"""`dck doctor [--json]` — environment and repository health, interface 1.
+"""`dck doctor [--json]` — environment and repository health, interface 2.
 
 Top-level keys (ECOSYSTEM_CONTRACT §2.3; schema docs/schema/dck-doctor-v2.json):
 interface, version, runtime, repo, layers, ssh, herdr, drift — plus os,

@@ -22,9 +22,9 @@ After changing the file, run `dck init` (it shows the diff and asks), then
 ## agents
 
 Installs [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit)
-at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v0.1.1**) into the
-dev user's home, following the kit's install contract:
-`git clone --branch <tag> … && ./install.sh`, then `ak install <kind>…` for the
+at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v0.3.0**) into the
+dev user's home, following the kit's install contract: the release tarball, verified
+against the pinned `AGENTKIT_SHA256` before it is unpacked, then `install.sh --no-rc`, then `ak install <kind>…` for the
 kinds in `agents.clis`, each through its vendor's official channel.
 
 What `dck init` renders when `agents = true`:
