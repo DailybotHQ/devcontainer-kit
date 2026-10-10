@@ -48,6 +48,7 @@ usage: dck [--repo DIR] [--profile NAME] [--project NAME] [--trust] <verb> [args
   ports                 the published loopback ports
   ssh [cmd...]          ssh into the container with agent forwarding
   herdr add|status|repair|remove|mesh   the container as a Herdr machine; mesh: reach the others from inside
+                                        (run explicitly, mesh works even with [herdr] mesh = false)
   herdr layout [--keep|--reset]   the standard sidebar inside: Home · Editor · Development · Agents
   agents                the live agents on every Herdr machine (herdr-peers list)
   ask <machine>:<pane> "<prompt>"   ask one of them, with the reply grant (herdr-peers ask)
@@ -126,12 +127,13 @@ load_context() {
   export DCK_HOST_MACHINE="0"  # read by lib/herdr.sh (herdr_mesh)
   export DCK_HERDR_LAYOUT="standard"  # read by lib/herdr.sh (herdr_layout)
   export DCK_HERDR_MESH="1"  # read by lib/herdr.sh (dck_herdr_after_up)
+  export DCK_SSH_AGENT="1"  # read by export_host_ssh_agent
   while IFS= read -r line; do
     k="${line%%=*}"; v="${line#*=}"
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out
@@ -361,20 +363,26 @@ warn_empty_ssh_agent() {
 
 # export_host_ssh_agent — the compose file mounts ${DCK_HOST_SSH_AUTH_SOCK} as the
 # container's SSH agent (a bind that never creates a missing host path).
-# Docker Desktop's default path needs nothing; on a Linux host it is the user's
-# own agent socket, or /dev/null (no agent inside) when there is none. Every
-# verb that creates containers calls it.
+# The path depends on the Docker provider: Docker Desktop (macOS, Windows,
+# Linux) and OrbStack share the host agent at /run/host-services/ssh-auth.sock;
+# a native Linux engine bind-mounts the user's own $SSH_AUTH_SOCK; any other
+# provider (colima, podman, …) gets /dev/null — no agent inside, said once. dck
+# always sets the variable, so a repository's .env never chooses the path.
+# Every verb that creates containers calls it.
 export_host_ssh_agent() {
   [ -n "${DCK_HOST_SSH_AUTH_SOCK:-}" ] && return 0
-  if [ "$(uname -s)" != "Linux" ]; then
-    export DCK_HOST_SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
-    return 0
+  local engine
+  engine="$( { docker info --format '{{.OperatingSystem}}|{{.Name}}' 2>/dev/null; docker context show 2>/dev/null; } | tr '[:upper:]' '[:lower:]' || true)"
+  case "$engine" in
+    *"docker desktop"*|*docker-desktop*|*desktop-linux*|*orbstack*)
+      export DCK_HOST_SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock; return 0 ;;
+  esac
+  if [ "$(uname -s)" = "Linux" ] && [ -S "${SSH_AUTH_SOCK:-}" ]; then
+    export DCK_HOST_SSH_AUTH_SOCK="$SSH_AUTH_SOCK"; return 0
   fi
-  if [ -S "${SSH_AUTH_SOCK:-}" ]; then
-    export DCK_HOST_SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
-  else
-    export DCK_HOST_SSH_AUTH_SOCK=/dev/null
-    warn "no ssh-agent socket on this host: git over SSH inside the container will have no keys (start an agent, then: dck rebuild)"
+  export DCK_HOST_SSH_AUTH_SOCK=/dev/null
+  if [ "${DCK_SSH_AGENT:-1}" = "1" ]; then
+    warn "the host's ssh-agent is not shared with this Docker provider: exec sessions inside have no agent (dck ssh and Herdr sessions forward it; or set ssh_agent = false)"
   fi
   return 0
 }

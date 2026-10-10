@@ -176,6 +176,7 @@ possible only by an explicit edit outside the managed blocks.
 | The repository hook runs at every start | it is the repository's own code in its own container |
 | `--remove-orphans` is never passed | protecting shared projects outweighs orphan cleanup |
 | `--trust` is per invocation | an explicit, reviewable decision each time a host-reaching configuration is started |
+| The mesh is on by default | agents inside a container asking agents in the other containers is the point of the Herdr integration; with it, every dck container can log in to the others (see the trust boundaries). Untrusted repositories: `[herdr] mesh = false`, `ssh_agent = false` |
 
 ## Coding agents
 

@@ -21,8 +21,10 @@ socket block and the vendored scripts) then `bash dev.sh rebuild`.
   containers) as trust boundaries. New `[herdr] mesh` (default `true`) turns the mesh off;
   the dck key is loaded into the agent only by the mesh, never into the macOS Keychain.
 - **The agent socket bind never creates a host path** (`create_host_path: false`). dck
-  always sets `DCK_HOST_SSH_AUTH_SOCK` itself (`/dev/null` on a Linux host without an
-  agent), and a repository compose `.env` that sets it needs `--trust`.
+  always sets `DCK_HOST_SSH_AUTH_SOCK` itself, by Docker provider: Docker Desktop and
+  OrbStack share the host agent, a native Linux engine mounts `$SSH_AUTH_SOCK`, other
+  providers (colima, podman) get `/dev/null` with a note. A repository compose `.env` that
+  sets it, or the bind with `ssh_agent = false`, needs `--trust`.
 - On a Linux host the entrypoint no longer changes the host agent socket's group and mode.
 - herdr-peers: every installed file must be listed in the release `SHA256SUMS`; symlinks
   are refused.
@@ -33,7 +35,9 @@ socket block and the vendored scripts) then `bash dev.sh rebuild`.
   dck pins with (plain or hashed), not only as `[127.0.0.1]:<port>`.
 - `dck rebuild` exports the host agent socket on Linux like `dck up`.
 - Commit signing is copied into the container only when it can work there (SSH signing; a
-  `.pub` path becomes a `key::` literal). openpgp signing no longer breaks every commit.
+  `.pub` path becomes a `key::` literal), and the entrypoint skips signing settings that
+  cannot work inside (a `.env` written by v0.2.0). openpgp signing no longer breaks every
+  commit.
 - The skill directories are created as the container user; v0.2.0's root-owned
   `~/.agents` / `~/.claude` are given back at the next start.
 - The agents-layer opt-out lives in the service `.env` (the commented compose line was

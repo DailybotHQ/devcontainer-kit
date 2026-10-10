@@ -19,6 +19,12 @@ in is untrusted input on the host; the threat model is `docs/SECURITY.md`.
 - **Always `critical`:** SSH agent forwarding or `ForwardAgent yes` towards an address
   that is not `127.0.0.1`, or an `IdentityFile` other than the dedicated dck key.
   Files: `lib/launcher.sh` (`cmd_ssh`), `lib/herdr.sh`, `lib/sshconf.py` (`RE_HOST`).
+- **Accepted by the owner (v0.2.1), do not flag:** the mesh being on by default
+  (`[herdr] mesh = true` with `ssh_agent = true`), which lets a dck container log in to
+  the other dck containers through the dck key in the host agent. Agents talking across
+  machines is a product requirement; the path is documented in `docs/SECURITY.md` with
+  its off switches. Still flag any change that widens it (agent forwarding onward, a
+  non-loopback peer, keys copied in, the mesh on Linux without a reachable route).
 - **Always `critical`:** a private key or a value of a `*_API_KEY`/`*_TOKEN` variable
   printed, logged, written to a world-readable file, baked into an image, or copied into a
   container. `dck doctor` must report variable NAMES only (`lib/doctor.py`).

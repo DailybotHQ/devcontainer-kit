@@ -114,7 +114,12 @@ test_node_fixture_end_to_end() {
   # 5. Git over SSH through the host agent in exec sessions (Linux: the sandbox
   #    agent; Docker Desktop: the host's own agent socket), and GitHub's keys.
   dev shell -c 'ssh-add -l >/dev/null 2>&1; echo "agent-rc=$?"; ssh-keygen -F github.com -f /etc/ssh/ssh_known_hosts >/dev/null && echo gh-known; git config --global user.name'
-  assert_no_match "$RUN_OUT" 'agent-rc=2' "exec sessions reach the host's SSH agent (no key inside)"
+  if [ "$(uname -s)" != "Linux" ] || [ "$(id -u)" = "1000" ]; then
+    assert_no_match "$RUN_OUT" 'agent-rc=2' "exec sessions reach the host's SSH agent (no key inside)"
+  else
+    # dck leaves a Linux host's socket as it is (owner, mode): another uid cannot connect.
+    unavailable "exec sessions reach the host's SSH agent (no key inside)" "host uid $(id -u) != container uid 1000: the host socket is not opened up"
+  fi
   if [ "$(uname -s)" = "Linux" ]; then
     # OpenSSH's ssh-agent refuses a client of another uid (getpeereid), so on a
     # Linux host the shared socket serves the container user (uid 1000) only

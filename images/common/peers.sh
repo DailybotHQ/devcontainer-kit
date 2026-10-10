@@ -31,8 +31,8 @@ tar -xzf "$work/src.tgz" -C "$work/src" --strip-components=1
 (cd "$work/src" && sha256sum -c --quiet "$work/SHA256SUMS") \
   || { echo "herdr-peers ${HERDR_PEERS_TAG}: a file does not match its release SHA256SUMS" >&2; exit 1; }
 # Everything installed must be listed (and so verified): no unlisted file, no symlink.
-if [ -n "$(cd "$work/src" && find skills/herdr-peers -type l)" ]; then
-  echo "herdr-peers ${HERDR_PEERS_TAG}: the skill contains a symlink" >&2; exit 1
+if [ -n "$(cd "$work/src" && find skills/herdr-peers ! -type f ! -type d)" ]; then
+  echo "herdr-peers ${HERDR_PEERS_TAG}: the skill contains a symlink or special file" >&2; exit 1
 fi
 listed="$(awk '{p=$2; sub(/^\*/, "", p); sub(/^\.\//, "", p); print p}' "$work/SHA256SUMS" | sort -u)"
 unlisted="$(cd "$work/src" && find skills/herdr-peers -type f | sort | comm -23 - <(printf '%s\n' "$listed"))"

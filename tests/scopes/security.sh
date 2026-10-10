@@ -206,6 +206,38 @@ PY
   assert_rc 5 "a compose file outside the repository needs --trust"
 }
 
+test_agent_socket_bind_cannot_be_redirected() {
+  local r; r="$(sec_repo sock)"
+  printf 'DCK_HOST_SSH_AUTH_SOCK: /etc\n' > "$r/docker/local/.env"
+  in_repo "$r" "$DCK" up
+  assert_rc 5 "a compose .env choosing the agent socket path needs --trust"
+  assert_contains "$RUN_ERR" "sets DCK_HOST_SSH_AUTH_SOCK" "the preflight names it (KEY: value spelling too)"
+  rm -f "$r/docker/local/.env"
+  sed -i.orig 's/^ssh_agent = true/ssh_agent = false/' "$r/.devcontainer/dck.toml" && rm -f "$r/.devcontainer/dck.toml.orig"
+  python3 - "$r/docker/local/docker-compose.yaml" <<'PY'
+import sys
+p = sys.argv[1]; s = open(p).read()
+s = s.replace("      - ../..:", "      - type: bind\n        source: ${DCK_HOST_SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}\n        target: /run/dck/ssh-agent.sock\n      - ../..:", 1)
+open(p, "w").write(s)
+PY
+  in_repo "$r" "$DCK" up
+  assert_rc 5 "with ssh_agent = false, a hand-added agent socket bind needs --trust"
+}
+
+test_agent_socket_follows_the_provider() {
+  local r; r="$(sec_repo prov)"
+  printf '29.0.0|Docker Desktop|docker-desktop\n' > "$DCK_FAKE_STATE/info_out"
+  in_repo "$r" "$DCK" up
+  assert_rc 0 "up succeeds on Docker Desktop"
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_sock")" "/run/host-services/ssh-auth.sock" "Docker Desktop: its shared host agent socket"
+  printf '29.0.0|Ubuntu 24.04|colima\n' > "$DCK_FAKE_STATE/info_out"
+  in_repo "$r" "$DCK" up --recreate
+  assert_rc 0 "up succeeds on another provider"
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_sock")" "/dev/null" "another provider without a host agent socket: /dev/null, never a guessed path"
+  assert_contains "$RUN_ERR" "not shared with this Docker provider" "and says so"
+  rm -f "$DCK_FAKE_STATE/info_out"
+}
+
 test_backup_never_written_through_a_planted_link() {
   local r; r="$(sec_repo bak)"
   printf 'RUN echo mine\n' >> "$r/docker/local/app/Dockerfile"

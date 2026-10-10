@@ -462,9 +462,18 @@ HOMES
 dck_git_identity() {
   _dck_env
   local pairs="user.name=DCK_GIT_NAME user.email=DCK_GIT_EMAIL user.signingkey=DCK_GIT_SIGNINGKEY gpg.format=DCK_GIT_GPG_FORMAT commit.gpgsign=DCK_GIT_COMMIT_GPGSIGN"
-  local pair key var value set=0
+  local pair key var value set=0 sign_ok=0
+  # Only SSH signing with a key:: literal works inside (no gpg key, no host
+  # path); anything else — e.g. a .env written by v0.2.0 — is skipped.
+  if [ "${DCK_GIT_GPG_FORMAT:-}" = "ssh" ]; then
+    case "${DCK_GIT_SIGNINGKEY:-}" in key::*) sign_ok=1 ;; esac
+  fi
+  if [ "$sign_ok" -eq 0 ] && [ -n "${DCK_GIT_SIGNINGKEY:-}${DCK_GIT_COMMIT_GPGSIGN:-}" ]; then
+    dck_log "git identity: signing settings skipped (only gpg.format=ssh with a key:: signing key works here)"
+  fi
   for pair in $pairs; do
     key="${pair%%=*}"; var="${pair#*=}"
+    case "$key" in user.signingkey|gpg.format|commit.gpgsign) [ "$sign_ok" -eq 1 ] || continue ;; esac
     value="${!var:-}"
     [ -n "$value" ] || continue
     case "$value" in *"

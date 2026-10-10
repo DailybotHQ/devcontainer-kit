@@ -112,6 +112,7 @@ def env_lines(repo, dck_tag, profile=None):
                 ("DCK_HOST_MACHINE", "1" if merged.get("host_machine") else "0"),
                 ("DCK_HERDR_LAYOUT", merged["herdr.layout"]),
                 ("DCK_HERDR_MESH", "1" if merged["herdr.mesh"] else "0"),
+                ("DCK_SSH_AGENT", "1" if merged["ssh_agent"] else "0"),
                 ("DCK_HERDR_LABEL", merged["herdr.label"]),
                 ("DCK_NETWORK", merged["network"]),
                 ("DCK_FLAVOUR", merged["flavour"]),
@@ -226,6 +227,13 @@ def preflight(repo):
     info = read(repo)
     data = jsonc.load(info["file"])
     found = []
+    # The agent socket bind is dck's own only while dck.toml asks for it.
+    agent_ok = False
+    if os.path.isfile(config.repo_config_path(repo)):
+        try:
+            agent_ok = bool(config.effective(repo, None, None)[0]["ssh_agent"])
+        except Exception:  # an invalid dck.toml fails later, with its own message
+            agent_ok = False
     for key in ("initializeCommand",):
         if data.get(key):
             found.append("%s (runs on the host with the devcontainer CLI)" % key)
@@ -251,11 +259,11 @@ def preflight(repo):
         env_file = os.path.join(base, ".env")
         if os.path.isfile(env_file) and not os.path.islink(env_file):
             with open(env_file, errors="replace") as fh:
-                if any(re.match(r"^\s*(export\s+)?DCK_HOST_SSH_AUTH_SOCK\s*=", ln) for ln in fh):
+                if any(re.match(r"^\s*(export\s+)?DCK_HOST_SSH_AUTH_SOCK\s*[=:]", ln) for ln in fh):
                     found.append("%s: sets DCK_HOST_SSH_AUTH_SOCK (the host path mounted as the SSH agent)"
                                  % os.path.relpath(env_file, repo))
         for src in _host_paths(text):
-            if src == AGENT_SOCK_SOURCE:
+            if src == AGENT_SOCK_SOURCE and agent_ok:
                 continue
             if src.startswith(("~", "$")):
                 found.append("%s: mounts a host path (%s)" % (rel, src))

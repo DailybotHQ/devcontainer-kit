@@ -47,6 +47,7 @@ case "$1" in
     exit 0 ;;
   compose)
     printf '%s' "${DCK_AUTHORIZED_KEYS:-}" > "$st/last_authorized_keys" 2>/dev/null
+    printf '%s' "${DCK_HOST_SSH_AUTH_SOCK:-}" > "$st/last_agent_sock" 2>/dev/null
     shift
     while [ $# -gt 0 ]; do
       case "$1" in
