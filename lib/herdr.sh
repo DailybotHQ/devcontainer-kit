@@ -106,9 +106,10 @@ herdr_prepare() {
   herdr_wait_for "sshd" herdr_ssh_ok || die "sshd in $DC_SERVICE does not answer on $HERDR_HOST:$DCK_SSH_PORT — run: dck logs, dck herdr status"
 }
 
-# herdr_agent_key — hops out of a container authenticate with the dck key held
-# by the HOST's ssh-agent (forwarded, or the Docker Desktop socket): make sure
-# it is loaded. The private key never leaves the host.
+# herdr_agent_key — mesh hops out of a container authenticate with the dck key
+# held by the HOST's ssh-agent (the Docker Desktop socket mounted in each
+# container): make sure it is loaded. The private key never leaves the host.
+# Only the mesh calls this; it is never stored in the macOS Keychain.
 herdr_agent_key() {
   [ -f "$DCK_SSH_IDENTITY" ] || return 0
   if ! command -v ssh-add >/dev/null 2>&1 || [ -z "${SSH_AUTH_SOCK:-}" ]; then
@@ -118,13 +119,8 @@ herdr_agent_key() {
   local fp
   fp="$(ssh-keygen -lf "$DCK_SSH_IDENTITY.pub" 2>/dev/null | cut -d' ' -f2)"
   if [ -n "$fp" ] && ssh-add -l 2>/dev/null | grep -qF "$fp"; then return 0; fi
-  if [ "$(uname -s)" = "Darwin" ]; then
-    ssh-add --apple-use-keychain "$DCK_SSH_IDENTITY" >/dev/null 2>&1 || ssh-add "$DCK_SSH_IDENTITY" >/dev/null 2>&1 || {
-      warn "could not add the dck key to the ssh-agent"; return 0; }
-  else
-    ssh-add "$DCK_SSH_IDENTITY" >/dev/null 2>&1 || { warn "could not add the dck key to the ssh-agent"; return 0; }
-  fi
-  note "ssh-agent: loaded the dck key (agents inside containers reach other machines through it)"
+  ssh-add "$DCK_SSH_IDENTITY" >/dev/null 2>&1 || { warn "could not add the dck key to the ssh-agent"; return 0; }
+  note "ssh-agent: loaded the dck key for the mesh (every dck container with the agent socket can now log in to the others; ssh-add -d removes it — see docs/SECURITY.md)"
 }
 
 # herdr_mesh — push the peer list (public data only) into this container, where
@@ -134,6 +130,12 @@ herdr_mesh() {
   require_docker
   herdr_paths
   container_running || die "$DC_SERVICE is not running — run: dck up"
+  if [ "${DCK_HOST_OS:-$(uname -s)}" = "Linux" ]; then  # DCK_HOST_OS: test hook
+    # Peers publish sshd on the host's 127.0.0.1, which host-gateway does not
+    # reach from a container on Linux: the mesh is Docker Desktop only.
+    note "mesh: skipped on a Linux host (peer containers are reachable from inside only with Docker Desktop; see docs/herdr.md)"
+    return 0
+  fi
   herdr_agent_key
   local host_user="" host_key="" payload n
   if [ "${DCK_HOST_MACHINE:-0}" = "1" ]; then
@@ -202,7 +204,6 @@ herdr_add() {
     herdr machine add --label "$DCK_HERDR_LABEL" "$DCK_ALIAS" || die "herdr machine add failed — run: dck herdr status"
     note "herdr: registered $DCK_ALIAS as \"$DCK_HERDR_LABEL\""
   fi
-  herdr_agent_key
   if herdr_wait_for "server" herdr_server_ok; then
     note "herdr: the remote server answers"
   else
@@ -290,7 +291,9 @@ dck_herdr_after_up() {
     return 0
   fi
   ( herdr_add ) || return 0
-  ( herdr_mesh ) || true
+  if [ "${DCK_HERDR_MESH:-1}" = "1" ]; then
+    ( herdr_mesh ) || true
+  fi
   if [ "${DCK_HERDR_LAYOUT:-standard}" = "standard" ]; then
     ( herdr_layout --keep ) || warn "herdr: the standard layout was not created (run: dck herdr layout)"
   fi

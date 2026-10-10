@@ -3,7 +3,7 @@ name: dck
 description: Operate a repository's development container with devcontainer-kit (dck) — render the Dev Container template (dck init), start/enter/rebuild it from a terminal (dck setup|up|shell|exec|rebuild|down), SSH in with agent forwarding, register it as a Herdr machine (dck herdr add|status|repair), and diagnose it (dck doctor --json). Use only when the user mentions dck or devcontainer-kit, a dev container / devcontainer / .devcontainer/ or docker/local/ setup they want created or operated, or a container they want as a Herdr machine. Do not use for building or deploying production images, for Kubernetes, or merely because a repository contains a Dockerfile.
 license: MIT
 metadata:
-  version: 0.2.0
+  version: 0.2.1
   interface: 2
   homepage: https://github.com/DailybotHQ/devcontainer-kit
 ---
@@ -27,7 +27,7 @@ tell the user and show the pinned install line — do not install it without
 being asked:
 
 ```bash
-git clone --branch v0.2.0 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.2.1 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh
 ```
 
@@ -83,8 +83,9 @@ What running this skill's commands may write, and nothing else:
 
 | Path | Written by | When |
 | --- | --- | --- |
-| the repository: `.devcontainer/`, `docker/local/`, `.gitignore` (dck block) | `dck init` | creation, or reconciliation after consent |
-| `docker/local/**/.env` (created 0600 from `.env.example`, never overwritten) | `dck setup`, `dck up` | when missing |
+| the repository: `.devcontainer/`, `docker/local/`, `dev.sh`, `.gitignore` (dck block) | `dck init` | creation, or reconciliation after consent |
+| `docker/local/**/.env` (created 0600 from `.env.example`; existing values never overwritten) | `dck setup`, `dck up` | when missing; missing `DCK_GIT_*` keys are appended from your git config |
+| your ssh-agent: the dck key is added (`ssh-add`, never the macOS Keychain) | `dck herdr mesh`, `dck up` with `[herdr] mesh` | Docker Desktop only; `ssh-add -d` removes it |
 | `~/.config/dck/` (dedicated SSH key, dck known_hosts, profiles) | `dck setup`, `dck up`, `dck ssh` | first use |
 | `~/.ssh/config.d/dck` (provenance-guarded) and one `Include config.d/dck` line at the top of `~/.ssh/config` | `dck herdr add/repair/remove` | only for Herdr machines |
 | Herdr's saved machines | the `herdr` CLI, called by `dck herdr …` | only for Herdr machines |

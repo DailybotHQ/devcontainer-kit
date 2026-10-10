@@ -386,6 +386,7 @@ def context(values, repo_name, project, network, base_image, dck_tag, pins=None)
         "agents_clis_space": " ".join(values["agents.clis"]),
         "herdr_machine": toml_value(values["herdr.machine"]),
         "herdr_layout": values["herdr.layout"],
+        "herdr_mesh": "true" if values["herdr.mesh"] else "false",
         "ssh_agent_on": values["ssh_agent"],
         "ssh_agent": toml_value(values["ssh_agent"]),
         "herdr_label_fmt": raw_label,

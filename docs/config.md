@@ -46,6 +46,7 @@ clis = []                      # kinds for `ak install` when layers.agents is tr
 machine = true                 # register as a Herdr machine on `dck up`
 label = "{repo}"
 layout = "standard"            # the sidebar dck up creates inside: standard | none
+mesh = true                    # dck up runs `dck herdr mesh` (Docker Desktop only; docs/SECURITY.md)
 ```
 
 | Key | Type | Default | Rule |
@@ -57,7 +58,7 @@ layout = "standard"            # the sidebar dck up creates inside: standard | n
 | `flavour` | string | **required** | `python-3.13`, `node-24` or `debian` |
 | `base_image` | string | the flavour's pin in `versions.env` | an official image pinned by digest: `name[:tag]@sha256:<64 hex>`, no registry host |
 | `image_tag` | string | — | interface 1 only; ignored since v0.2.0 (warning), removed by `dck init` |
-| `ssh_agent` | boolean | `true` | mount the host's SSH agent socket (Docker Desktop's, or `$SSH_AUTH_SOCK` on Linux) as `SSH_AUTH_SOCK` for exec sessions (`dev.sh shell`, editor terminals). On a Linux host OpenSSH's agent serves only its own uid, so this works when your uid is 1000 (the container user's); otherwise use `dck ssh` / Herdr sessions, which forward the agent |
+| `ssh_agent` | boolean | `true` | mount the host's SSH agent socket (Docker Desktop's, or `$SSH_AUTH_SOCK` on Linux) as `SSH_AUTH_SOCK` for exec sessions (`dev.sh shell`, editor terminals). On a Linux host OpenSSH's agent serves only its own uid, so this works when your uid is 1000 (the container user's); otherwise use `dck ssh` / Herdr sessions, which forward the agent. `dck up` and `dck rebuild` export the socket path; when an editor opens the container on a Linux host, export `DCK_HOST_SSH_AUTH_SOCK="$SSH_AUTH_SOCK"` in its environment (a missing path fails the start rather than being created) or set `ssh_agent = false` |
 | `ssh_port` | integer | `0` | `0` (no sshd) or 1024–65535; published on `bind` only |
 | `bind` | string | `127.0.0.1` | IPv4 address every published port binds to. Changing it exposes the container's ports beyond this machine — see [SECURITY.md](SECURITY.md). `dck ssh` and Herdr still connect only to 127.0.0.1 and refuse a `bind` that is neither loopback nor `0.0.0.0` |
 | `ports` | table | `{}` | `name = port`; names `^[a-z][a-z0-9_-]{0,31}$`; ports unique and different from `ssh_port` |
@@ -68,6 +69,7 @@ layout = "standard"            # the sidebar dck up creates inside: standard | n
 | `herdr.machine` | boolean | `false` | requires a non-zero `ssh_port` |
 | `herdr.label` | string | `{repo}` | 1–64 chars; placeholders `{repo}` `{service}` `{project}` `{user}` |
 | `herdr.layout` | string | `standard` | `standard` (Home · Editor · Development · Agents, created by `dck up`) or `none` ([herdr.md](herdr.md)) |
+| `herdr.mesh` | boolean | `true` | `dck up` runs `dck herdr mesh`: agents inside reach the other dck containers (and the host, with `host_machine`). Docker Desktop only; widens trust between containers ([SECURITY.md](SECURITY.md)) |
 
 ## Host profile
 
@@ -83,7 +85,7 @@ name = "acme"
 compose_project_prefix = "acme-"   # compose project = <prefix><repo-slug>
 network = "acme-dev"               # shared external network ("" = none)
 alias_prefix = "acme-"             # SSH alias = <alias_prefix><repo-slug>
-host_machine = false               # reserved in v0.1 (reported by the doctor)
+host_machine = false               # the host as a mesh peer (dck-host); see docs/herdr.md
 [labels]
 machine = "{project} · {repo}"     # Herdr label when the repo sets none
 [ssh]
@@ -97,7 +99,7 @@ identity = "~/.config/dck/ssh/id_ed25519"   # dedicated key dck authorizes in co
 | `compose_project_prefix` | string | `""` | empty or `^[a-z0-9][a-z0-9_-]{0,31}$`; include your own separator |
 | `network` | string | `""` | docker network name, empty for none |
 | `alias_prefix` | string | `dck-` | `^[a-z0-9][a-z0-9._-]{0,31}$` |
-| `host_machine` | boolean | `false` | host-as-Herdr-machine preference; v0.1 reports it and configures nothing on the host |
+| `host_machine` | boolean | `false` | the mesh also pushes the host as `dck-host` (your user, port 22): agents inside can reach it when Remote Login is on and your key is in your `authorized_keys`. dck configures nothing on the host itself ([SECURITY.md](SECURITY.md)) |
 | `labels.machine` | string | `{repo}` | same placeholders as `herdr.label` |
 | `ssh.identity` | string | `~/.config/dck/ssh/id_ed25519` | `~` expands to `$HOME` |
 

@@ -4,7 +4,9 @@
 
 | Version | Supported |
 | --- | --- |
-| `v0.2.0` (latest), `v0.1.6` | yes |
+| `v0.2.1` (latest) | yes |
+| `v0.2.0` | no — upgrade (mesh agent forwarding, root-owned skill directories; see CHANGELOG) |
+| `v0.1.6` | yes |
 | `v0.1.5` | no — upgrade (no code security fix since; newer editor pin) |
 | `v0.1.4` | no — upgrade (no code security fix since; newer editor pin) |
 | `v0.1.3` | no — upgrade (no code security fix since; newer editor pin) |

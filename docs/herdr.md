@@ -97,8 +97,8 @@ sessions keep running) and the include block.
 - edit Herdr's own files (`~/.config/herdr`, `~/.local/state/herdr`, its
   endpoint catalogs) — it only calls the `herdr` CLI;
 - copy a private key into a container, or authorize "every `~/.ssh/*.pub`";
-- add a host-as-machine listener on your host (the host profile's
-  `host_machine` key is reserved and reported only in v0.1).
+- add a listener or an `authorized_keys` entry on your host (`host_machine`
+  only tells the mesh about your host's own sshd, when you run one).
 
 ## Inside the container
 
@@ -118,8 +118,12 @@ own skill, matching the pinned binary, is installed next to it. At every
 start the entrypoint links both skills into each agent's skill directory
 (`~/.agents/skills`, `~/.claude/skills`, and the others that exist).
 
-`dck up` runs `dck herdr mesh` after `dck herdr add`, and you can run it
-again at any time:
+`dck up` runs `dck herdr mesh` after `dck herdr add` (unless `[herdr] mesh =
+false`), and you can run it again at any time. The mesh works with Docker
+Desktop: on a Linux host the peers' sshd ports are published on 127.0.0.1,
+which a container cannot reach through `host-gateway`, so `dck herdr mesh`
+says so and skips. It widens trust between your containers — read
+[SECURITY.md](SECURITY.md) first for untrusted repositories.
 
 ```bash
 dck herdr mesh      # make every other dck container (and the host, with host_machine) reachable from inside
@@ -135,7 +139,7 @@ dck ask dck-other:w1:p2 "Which test covers the parser?"   # herdr-peers ask, wit
   - its Herdr label.
 
   Inside, `dck_mesh_apply` writes `~/.ssh/config.d/dck-peers`
-  (`HostName host.docker.internal`, `ForwardAgent yes`, strict host keys),
+  (`HostName host.docker.internal`, `ForwardAgent no`, strict host keys),
   the pinned `known_hosts.dck-peers` and a Herdr machine per peer.
 - **The host as a peer.** Set `host_machine = true` in your host profile.
   The host is then reachable as `dck-host` (`host.docker.internal:22`, your
@@ -143,9 +147,10 @@ dck ask dck-other:w1:p2 "Which test covers the parser?"   # herdr-peers ask, wit
   host, and your key in its `authorized_keys`.
 - **Credentials.** No private key enters the container. Hops out of it
   authenticate with keys held by the host's ssh-agent, reached through
-  agent forwarding (Herdr and `dck ssh` sessions) or the Docker Desktop
-  agent socket (exec sessions). `dck herdr add` loads the dck key into
-  that agent (`--apple-use-keychain` on macOS) and says so.
+  agent forwarding (Herdr and `dck ssh` sessions) or the mounted agent
+  socket (exec sessions). `dck herdr mesh` loads the dck key into that
+  agent (never into the macOS Keychain) and says so; `ssh-add -d
+  ~/.config/dck/ssh/id_ed25519` takes it out.
 - **When the container's Herdr server is not running yet**, the Herdr
   machines are registered on the next `dck herdr mesh`. The ssh side is
   always written.

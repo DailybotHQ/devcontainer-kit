@@ -43,7 +43,8 @@ test_agents_layer_enabled() {
   done
   assert_not_contains "$c" "  cursor: {}" "kinds not requested get no volume"
   assert_no_match "$d$c" '--dangerously|--yolo|--always-approve|--force' "the template spells no CLI autonomy flag (they live in coding-agents-kit)"
-  assert_contains "$c" "# AGENTKIT_PERMISSIONS=ask   # opt-out: agents ask before acting" "compose documents the opt-out"
+  assert_contains "$c" "set AGENTKIT_PERMISSIONS=ask in ./app/.env" "compose documents the opt-out (through the service .env)"
+  assert_no_match "$c" '^[[:space:]]*#[[:space:]]*AGENTKIT_PERMISSIONS=' "no commented line that would be invalid YAML when uncommented"
   assert_no_match "$c" '^[[:space:]]+AGENTKIT_PERMISSIONS:' "compose sets no permission posture (ak's default, autonomy)"
   local t; t="$(cat "$REPO/.devcontainer/dck.toml")"
   assert_contains "$t" "agents = true" "dck.toml records the layer on"

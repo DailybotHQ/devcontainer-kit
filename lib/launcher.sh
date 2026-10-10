@@ -125,12 +125,13 @@ load_context() {
   DCK_HERDR_LABEL=""; DCK_PORTS=""; DCK_SSH_IDENTITY=""; DCK_FLAVOUR=""
   export DCK_HOST_MACHINE="0"  # read by lib/herdr.sh (herdr_mesh)
   export DCK_HERDR_LAYOUT="standard"  # read by lib/herdr.sh (herdr_layout)
+  export DCK_HERDR_MESH="1"  # read by lib/herdr.sh (dck_herdr_after_up)
   while IFS= read -r line; do
     k="${line%%=*}"; v="${line#*=}"
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HERDR_LAYOUT|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out
@@ -292,12 +293,29 @@ EOF
 }
 
 # ensure_git_identity_env — copy the host's git identity (user.name, user.email
-# and the signing settings, when set) into each service .env as DCK_GIT_*, only
-# where the key is absent. Values are written, never printed.
+# and, for SSH signing only, the signing settings) into each service .env as
+# DCK_GIT_*, only where the key is absent. Values are written, never printed.
+# Signing is copied only when it can work inside: gpg.format=ssh with a
+# `key::` literal or a readable public-key file (sent as `key::<contents>`),
+# since the container holds no gpg key and no host path.
 ensure_git_identity_env() {
   GIT_ID_SET=0
   command -v git >/dev/null 2>&1 || return 0
-  local f target pair key var value
+  local f target pair key var value sign_ok=0 sign_key=""
+  if [ "$(git config --global --get gpg.format 2>/dev/null || true)" = "ssh" ]; then
+    sign_key="$(git config --global --get user.signingkey 2>/dev/null || true)"
+    case "$sign_key" in
+      key::*) sign_ok=1 ;;
+      '') ;;
+      *) case "$sign_key" in \~/*) sign_key="$HOME/${sign_key#\~/}" ;; esac
+         if [ -f "$sign_key" ] && [ ! -L "$sign_key" ] && [ "${sign_key%.pub}" != "$sign_key" ]; then
+           sign_key="key::$(head -n 1 "$sign_key" | tr -d '\r')"; sign_ok=1
+         fi ;;
+    esac
+  fi
+  if [ "$sign_ok" -eq 0 ] && [ "$(git config --global --get commit.gpgsign 2>/dev/null || true)" = "true" ]; then
+    note "setup: commit signing is not copied into the container (only SSH signing with a public key works there); commits inside are unsigned unless you set DCK_GIT_* in the service .env"
+  fi
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     target="${f%.example}"
@@ -306,7 +324,11 @@ ensure_git_identity_env() {
                 gpg.format=DCK_GIT_GPG_FORMAT commit.gpgsign=DCK_GIT_COMMIT_GPGSIGN; do
       key="${pair%%=*}"; var="${pair#*=}"
       grep -q "^${var}=" "$target" && continue
-      value="$(git config --global --get "$key" 2>/dev/null || true)"
+      case "$key" in
+        user.signingkey|gpg.format|commit.gpgsign) [ "$sign_ok" -eq 1 ] || continue ;;
+      esac
+      if [ "$key" = user.signingkey ]; then value="$sign_key"
+      else value="$(git config --global --get "$key" 2>/dev/null || true)"; fi
       [ -n "$value" ] || continue
       case "$value" in *"
 "*) continue ;; esac
@@ -338,12 +360,21 @@ warn_empty_ssh_agent() {
 }
 
 # export_host_ssh_agent — the compose file mounts ${DCK_HOST_SSH_AUTH_SOCK} as the
-# container's SSH agent. Docker Desktop's default path needs nothing; on a Linux
-# host it is the user's own agent socket.
+# container's SSH agent (a bind that never creates a missing host path).
+# Docker Desktop's default path needs nothing; on a Linux host it is the user's
+# own agent socket, or /dev/null (no agent inside) when there is none. Every
+# verb that creates containers calls it.
 export_host_ssh_agent() {
   [ -n "${DCK_HOST_SSH_AUTH_SOCK:-}" ] && return 0
-  if [ "$(uname -s)" = "Linux" ] && [ -S "${SSH_AUTH_SOCK:-}" ]; then
+  if [ "$(uname -s)" != "Linux" ]; then
+    export DCK_HOST_SSH_AUTH_SOCK=/run/host-services/ssh-auth.sock
+    return 0
+  fi
+  if [ -S "${SSH_AUTH_SOCK:-}" ]; then
     export DCK_HOST_SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+  else
+    export DCK_HOST_SSH_AUTH_SOCK=/dev/null
+    warn "no ssh-agent socket on this host: git over SSH inside the container will have no keys (start an agent, then: dck rebuild)"
   fi
   return 0
 }
@@ -662,6 +693,7 @@ cmd_build() {
 cmd_rebuild() {
   parse_build_flags "$@"
   fast_check
+  export_host_ssh_agent
   resolve_backend
   selected_services ${BUILD_SERVICES[@]+"${BUILD_SERVICES[@]}"}
   if [ "$BACKEND" = devcontainer ] && [ "${#BUILD_SERVICES[@]}" -eq 0 ]; then

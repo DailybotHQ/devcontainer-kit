@@ -20,7 +20,8 @@ in your images, and your Herdr machines.
 | the repository's files → dck | **no** — you may run dck on a repository you just cloned | dck parses them (JSONC, TOML, compose); never writes or reads secrets through a symlink they plant; never imports a module from them; never forwards your agent to an address they choose |
 | the repository's container configuration → your Docker daemon | **only after review** | `up`/`start`/`build`/`rebuild` hand the repository's compose file and `devcontainer.json` to Docker (and the devcontainer CLI). Anything in them that reaches the host — `initializeCommand`, `privileged`, `cap_add`, host namespaces, devices, the Docker socket, bind mounts outside the repository, a compose file outside it — is refused until you pass `--trust` (or `DCK_TRUST=1`). dck-rendered setups contain none of these. Treat `--trust` like "trust this folder" in an editor |
 | the repository → its own container | yes, by design | the container exists to run the repository's code; its hook and its Dockerfile run there, with the dev user's sudo |
-| the container → your host | **no** | the container reaches the host only through what you publish (loopback ports) and what you forward (your SSH agent, for the session you open) |
+| the container → your host | **no** | the container reaches the host through what you publish (loopback ports) and through your SSH agent: forwarded on the sessions you open, and — with `ssh_agent = true`, the default — its socket mounted for the container's lifetime. Code in the container can *use* the agent's keys (sign, never read them) while it runs: for git that is the point; for sensitive keys use `ssh-add -c` (confirm each use) or set `ssh_agent = false`. With `host_machine = true` and your key in your own `authorized_keys`, that also means a shell on the host |
+| one dck container → another dck container | **only through the mesh** | `[herdr] mesh = true` (the default; Docker Desktop only) loads the dck key into your agent so agents inside can ask agents in the other containers. Every container with the agent socket can then log in to every other dck container (they all authorize the dck key) and read what it holds (`.env`, logins). Only run untrusted repositories with `mesh = false` and `ssh_agent = false`, and remove the key from the agent (`ssh-add -d ~/.config/dck/ssh/id_ed25519`). The mesh never forwards the agent further (`ForwardAgent no`) |
 | other machines on your network → the container | **no** | nothing listens beyond 127.0.0.1 unless `bind` says so |
 | the network → the image build | **no** | every base-image download is pinned and checksum-verified; the opt-in layers install coding-agents-kit from its sha256-verified release tarball and resolve the Dailybot CLI's dependencies with uv (see Supply chain) |
 
@@ -63,6 +64,21 @@ own edit, outside dck's managed blocks, and its own decision.
   in the container can *use* your agent (not read keys) — prefer an agent that
   confirms each use (`ssh-add -c`) for sensitive keys.
 - No "authorize every `~/.ssh/*.pub`": the container trusts exactly the dck key.
+- **The agent socket.** With `ssh_agent = true` the template binds the host
+  agent's socket (Docker Desktop's `/run/host-services/ssh-auth.sock`, or
+  `$SSH_AUTH_SOCK` on Linux, exported by `dck up` and `dck rebuild`) at
+  `/run/dck/ssh-agent.sock`, never a key file, never `~/.ssh`. The bind never
+  creates a missing host path (`create_host_path: false`); with no agent on a
+  Linux host, `/dev/null` is mounted instead. dck always sets
+  `DCK_HOST_SSH_AUTH_SOCK` itself, and `--trust` is required when a
+  repository's compose `.env` tries to set it. The entrypoint gives the dev
+  user access only to Docker Desktop's root-owned socket; a Linux host's own
+  socket is left as it is.
+- **The mesh.** `dck herdr mesh` loads the dck key into your agent (never into
+  the macOS Keychain) and pushes only public data into the container: peer
+  aliases, ports, users, labels and pinned host keys. Peers are reached with
+  strict host keys and `ForwardAgent no`. See the trust boundaries above for
+  what it opens.
 - **Host keys** are generated at runtime into the per-project `state` volume
   (ed25519, 0600, directory 0700 root), never baked into an image (the build
   deletes the package's keys and generates none), so one image never ships one
@@ -173,8 +189,10 @@ only writable host path is the repository, it holds no host private key (SSH
 goes through the host agent) and its ports bind to loopback. dck, the template
 and the layers never spell an autonomy flag; they live only in
 coding-agents-kit. To have agents ask before acting, set
-`AGENTKIT_PERMISSIONS=ask` in `docker/local/<service>/.env` (or uncomment it
-in compose), or pass `--ask` to one launch; the opt-out always wins.
+`AGENTKIT_PERMISSIONS=ask` in `docker/local/<service>/.env`, or
+pass `--ask` to one launch; the opt-out always wins. (The compose block that
+lists the agents layer is reconciled by `dck init`, so the opt-out lives in the
+service `.env`, which is yours.)
 
 ## Reporting
 

@@ -101,13 +101,15 @@ test_node_fixture_end_to_end() {
   assert_contains "$RUN_OUT" "dck-it-agent-key (ED25519)" "the host's agent is forwarded into ssh sessions"
   assert_match "$RUN_OUT" '^0$' "no file in the container contains the forwarded key"
   assert_contains "$RUN_OUT" "from-env-file" "ssh sessions see the container environment (env profile)"
-  d herdr mesh
+  # The apply path is the same on Linux (where dck skips the mesh: peers are unreachable there).
+  DCK_HOST_OS=Darwin d herdr mesh
   assert_rc 0 "dck herdr mesh applies the peer list inside"
-  dev shell -c 'test -f ~/.ssh/config.d/dck-peers && head -1 ~/.ssh/config; herdr-peers --help >/dev/null && echo peers-ok; command -v dck-herdr-layout; ls ~/.agents/skills'
+  dev shell -c 'test -f ~/.ssh/config.d/dck-peers && head -1 ~/.ssh/config; herdr-peers --help >/dev/null && echo peers-ok; command -v dck-herdr-layout; ls ~/.agents/skills; echo "owner:$(stat -c %U ~/.agents)"'
   assert_contains "$RUN_OUT" "Include config.d/dck-peers" "the peers ssh config is included"
   assert_contains "$RUN_OUT" "peers-ok" "herdr-peers runs inside"
   assert_contains "$RUN_OUT" "/usr/local/bin/dck-herdr-layout" "the layout script is installed"
   assert_contains "$RUN_OUT" "herdr-peers" "the herdr-peers skill is linked for the agents"
+  assert_contains "$RUN_OUT" "owner:dev" "~/.agents belongs to the container user"
 
   # 5. Git over SSH through the host agent in exec sessions (Linux: the sandbox
   #    agent; Docker Desktop: the host's own agent socket), and GitHub's keys.
@@ -136,7 +138,7 @@ test_node_fixture_end_to_end() {
   assert_match "$RUN_OUT" '/codex$' "codex is installed through ak"
   assert_match "$RUN_OUT" '/pi$' "pi is installed through ak"
   assert_contains "$RUN_OUT" "function" "the wrapper names are shell functions"
-  assert_contains "$(cat "$IT_REPO/docker/local/docker-compose.yaml")" "# AGENTKIT_PERMISSIONS=ask" "the opt-out is documented in compose"
+  assert_contains "$(cat "$IT_REPO/docker/local/docker-compose.yaml")" "set AGENTKIT_PERMISSIONS=ask in ./app/.env" "the opt-out is documented in compose"
 
   # 9. The editor: DeepWorkPlan Vim at its pinned tag, plugins built.
   local dtag; dtag="$(sed -n 's/^DWP_VIM_TAG=//p' "$DCK_REPO/images/versions.env")"
