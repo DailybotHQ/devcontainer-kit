@@ -5,11 +5,13 @@
 # devcontainer-kit {{dck_tag}}); no shared base image is involved.
 # >>> dck:base >>>
 # dck:managed {{dck_tag}} base
+# Both ARGs come before any FROM, so they are global (an ARG after a FROM is
+# scoped to that stage).
+ARG BASE_IMAGE={{base_image}}
 {% if is_python %}
 ARG UV_IMAGE={{uv_image}}
 FROM ${UV_IMAGE} AS uv
 {% endif %}
-ARG BASE_IMAGE={{base_image}}
 FROM ${BASE_IMAGE}
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 

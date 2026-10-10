@@ -22,6 +22,7 @@
 #   dck_layer_persist                        per-CLI volumes of the agents layer
 #   dck_git_identity                         global git [user] settings from DCK_GIT_* (no host file)
 #   dck_skills_link                          herdr-peers and Herdr skills into each agent's skills dir
+#   dck_ssh_agent_access                     the mounted host SSH agent socket usable by the user
 #   dck_mesh_apply                           peers pushed by `dck` (stdin): ssh config, pinned host
 #                                            keys and Herdr machines; no private key involved
 #   dck_start                                the standard sequence of the above
@@ -581,6 +582,20 @@ _dck_as_user() {
   fi
 }
 
+# dck_ssh_agent_access — the host's SSH agent socket (mounted at
+# /run/dck/ssh-agent.sock by the template) arrives root-owned, mode 0660, so only
+# root could use it. Give the container user's group access; nothing else (no
+# key material is involved: the socket only lets processes ask the host agent to
+# sign). Root only; a no-op when there is no socket.
+dck_ssh_agent_access() {
+  _dck_env
+  local sock="${DCK_SSH_AGENT_SOCK:-/run/dck/ssh-agent.sock}"
+  _dck_is_root || return 0
+  [ -S "$sock" ] || return 0
+  chgrp "$(_dck_group)" "$sock" 2>/dev/null && chmod 0660 "$sock" 2>/dev/null \
+    || dck_log "ssh agent: could not give $DCK_USER access to the host agent socket"
+}
+
 dck_start() {
   _dck_env
   dck_log "starting for user $DCK_USER (workspace $DCK_WORKSPACE)"
@@ -594,6 +609,7 @@ dck_start() {
   dck_persist state "$DCK_HOME/.bash_history" file || true
   dck_layer_persist || true
   dck_git_identity || true
+  dck_ssh_agent_access || true
   dck_skills_link || true
   dck_herdr_config || true
   dck_env_profile || true

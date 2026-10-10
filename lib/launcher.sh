@@ -319,6 +319,24 @@ EOF
   [ "$GIT_ID_SET" -eq 0 ] || note "setup: wrote $GIT_ID_SET git identity setting(s) from your git config into the service .env"
 }
 
+# warn_empty_ssh_agent — git over SSH inside the container signs with keys the
+# HOST's agent holds (no key is copied in). An agent with no identity means git
+# push will fail inside: say how to load the key, once, at setup.
+warn_empty_ssh_agent() {
+  command -v ssh-add >/dev/null 2>&1 || return 0
+  local rc=0
+  ssh-add -l >/dev/null 2>&1 || rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    1) if [ "$(uname -s)" = "Darwin" ]; then
+         warn "your ssh-agent holds no keys: git over SSH inside the container uses the host agent (no key is copied in). Load your git key once: ssh-add --apple-use-keychain ~/.ssh/<your key>"
+       else
+         warn "your ssh-agent holds no keys: git over SSH inside the container uses the host agent (no key is copied in). Load your git key: ssh-add ~/.ssh/<your key>"
+       fi ;;
+    *) warn "no ssh-agent is running on this host: git over SSH inside the container needs one (keys are never copied in)" ;;
+  esac
+}
+
 # export_host_ssh_agent — the compose file mounts ${DCK_HOST_SSH_AUTH_SOCK} as the
 # container's SSH agent. Docker Desktop's default path needs nothing; on a Linux
 # host it is the user's own agent socket.
@@ -455,6 +473,7 @@ cmd_setup() {
   changed=$((changed + ENV_CREATED))
   ensure_git_identity_env
   changed=$((changed + GIT_ID_SET))
+  warn_empty_ssh_agent
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     target="${f%.example}"
