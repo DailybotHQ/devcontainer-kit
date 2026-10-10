@@ -160,6 +160,11 @@
       "type": "boolean",
       "default": true,
       "description": "share the host's SSH agent with the container (git over SSH; keys never enter it)"
+    },
+    "ssh_host_config": {
+      "type": "boolean",
+      "default": true,
+      "description": "dck up makes the host's ~/.ssh/config aliases (public keys only) usable inside; needs ssh_agent"
     }
   }
 }

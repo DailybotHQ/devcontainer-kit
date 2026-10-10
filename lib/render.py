@@ -388,6 +388,7 @@ def context(values, repo_name, project, network, base_image, dck_tag, pins=None)
         "herdr_layout": values["herdr.layout"],
         "herdr_mesh": "true" if values["herdr.mesh"] else "false",
         "ssh_agent_on": values["ssh_agent"],
+        "ssh_host_config": "true" if values["ssh_host_config"] else "false",
         "ssh_agent": toml_value(values["ssh_agent"]),
         "herdr_label_fmt": raw_label,
         "rename_user": user != "dev",

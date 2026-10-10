@@ -34,6 +34,7 @@ workspace = "/workspace"       # workspaceFolder
 flavour = "node-24"            # python-3.13 | node-24 | debian (official image, digest-pinned)
 # base_image = "node:22.20.0-trixie-slim@sha256:<64 hex>"   # optional override, digest required
 ssh_agent = true               # share the host's SSH agent (git over SSH); keys never enter
+ssh_host_config = true         # your git aliases from ~/.ssh/config inside, public keys only
 ssh_port = 22040               # loopback-only host port for Herdr; 0 = no sshd
 ports = { web = 4321 }         # named loopback ports
 [layers]
@@ -58,6 +59,7 @@ mesh = true                    # dck up runs `dck herdr mesh` (Docker Desktop on
 | `flavour` | string | **required** | `python-3.13`, `node-24` or `debian` |
 | `base_image` | string | the flavour's pin in `versions.env` | an official image pinned by digest: `name[:tag]@sha256:<64 hex>`, no registry host |
 | `image_tag` | string | — | interface 1 only; ignored since v0.2.0 (warning), removed by `dck init` |
+| `ssh_host_config` | boolean | `true` | with `ssh_agent`: `dck up` and `dck rebuild` copy the concrete `Host` aliases of your `~/.ssh/config` (and its `Include` files) **for git hosting services** (GitHub, GitLab, Bitbucket, Azure DevOps, Codeberg, sourcehut) into the container — `HostName`, `Port`, `User`, the **public** half of each `IdentityFile` and the host keys you already trust. Only aliases whose key your agent holds are copied; on a terminal, dck offers to `ssh-add` a missing one (`--apple-use-keychain` on macOS). Skipped: wildcard patterns, `Match` blocks, `ProxyCommand`/`ProxyJump` hosts, loopback hosts, dck's own aliases. Inside, these aliases are included first, so they win over the container's own `~/.ssh/config` entries of the same name. Other hosts: `[ssh] host_extra` in your host profile |
 | `ssh_agent` | boolean | `true` | mount the host's SSH agent socket (Docker Desktop's, or `$SSH_AUTH_SOCK` on Linux) as `SSH_AUTH_SOCK` for exec sessions (`dev.sh shell`, editor terminals). On a Linux host OpenSSH's agent serves only its own uid, so this works when your uid is 1000 (the container user's); otherwise use `dck ssh` / Herdr sessions, which forward the agent. `dck up` and `dck rebuild` choose the socket by Docker provider: Docker Desktop and OrbStack share the host agent; a native Linux engine mounts `$SSH_AUTH_SOCK`; colima, podman and others get none (exec sessions have no agent; `dck ssh` and Herdr sessions forward it). When an editor opens the container itself, set `DCK_HOST_SSH_AUTH_SOCK` in its environment on those hosts (a missing path fails the start rather than being created) or set `ssh_agent = false` |
 | `ssh_port` | integer | `0` | `0` (no sshd) or 1024–65535; published on `bind` only |
 | `bind` | string | `127.0.0.1` | IPv4 address every published port binds to. Changing it exposes the container's ports beyond this machine — see [SECURITY.md](SECURITY.md). `dck ssh` and Herdr still connect only to 127.0.0.1 and refuse a `bind` that is neither loopback nor `0.0.0.0` |
@@ -90,6 +92,7 @@ host_machine = false               # the host as a mesh peer (dck-host); see doc
 machine = "{project} · {repo}"     # Herdr label when the repo sets none
 [ssh]
 identity = "~/.config/dck/ssh/id_ed25519"   # dedicated key dck authorizes in containers
+host_extra = []                    # aliases or host names beyond git services to copy inside (opt-in)
 ```
 
 | Key | Type | Default | Rule |
@@ -102,6 +105,7 @@ identity = "~/.config/dck/ssh/id_ed25519"   # dedicated key dck authorizes in co
 | `host_machine` | boolean | `false` | the mesh also pushes the host as `dck-host` (your user, port 22): agents inside can reach it when Remote Login is on and your key is in your `authorized_keys`. dck configures nothing on the host itself ([SECURITY.md](SECURITY.md)) |
 | `labels.machine` | string | `{repo}` | same placeholders as `herdr.label` |
 | `ssh.identity` | string | `~/.config/dck/ssh/id_ed25519` | `~` expands to `$HOME` |
+| `ssh.host_extra` | array of strings | `[]` | aliases or host names beyond the git hosting services whose `~/.ssh/config` blocks `ssh_host_config` also copies into containers. Host-side only — a repository's `dck.toml` cannot set it. Every container with the agent socket can then reach those hosts as you |
 
 ## Precedence
 

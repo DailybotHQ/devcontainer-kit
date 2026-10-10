@@ -7,6 +7,25 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-10-10
+
+### Added
+
+- **Your git SSH aliases inside the container** (`ssh_host_config`, default `true`). `dck up`
+  and `dck rebuild` copy the concrete `Host` blocks of the host's `~/.ssh/config` (and its
+  `Include` files) for git hosting services into the container — `HostName`, `Port`,
+  `User`, the **public** half of each `IdentityFile`, and the host keys you already trust —
+  so `git` with a remote such as `git@github.com-work:org/repo` uses the same key inside as
+  on the host, through the host's agent. Only aliases whose key the agent holds are copied;
+  on a terminal dck offers to `ssh-add` a missing one (`--apple-use-keychain` on macOS).
+  Other hosts are opt-in, in the host profile only (`[ssh] host_extra`). No private key, no `ProxyCommand`/`ProxyJump`,
+  no `Match` block and no loopback host ever reaches the container.
+
+### Fixed
+
+- Files the entrypoint writes into `~/.ssh` (the mesh, the aliases) belong to the container
+  user again: `~/.ssh` is a symlink into the state volume and `chown -R` did not follow it.
+
 ## [0.2.1] — 2026-10-09
 
 Fixes from the v0.2.0 local review. Upgrade with `dck init` (re-renders the compose agent
@@ -240,7 +259,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.2
 [0.2.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.1
 [0.2.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.0
 [0.1.6]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.6

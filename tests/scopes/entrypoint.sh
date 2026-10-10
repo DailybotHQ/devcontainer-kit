@@ -290,6 +290,37 @@ test_git_identity() {
   assert_contains "$RUN_ERR" "signing settings skipped" "and the log says why"
 }
 
+test_hostssh_apply() {
+  local payload
+  payload="$(printf '%s\n' \
+    'pub work ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIWorkKeyFakeOnlyForTests000000000000000' \
+    'pub ../evil ssh-ed25519 AAAA' \
+    'host github.com-work github.com 22 git work' \
+    'host plain github.com 22 - work' \
+    'host nopub example.org 22 git missing' \
+    'host bad;alias example.org 22 git work' \
+    'host local 127.0.0.1 22 git work' \
+    'kh github.com 22 ssh-ed25519 AAAAGitHubFake' \
+    'kh example.net 2222 ssh-ed25519 AAAAIncludedFake' \
+    'something else')"
+  mkdir -p "$DCK_HOME/.ssh/dck-host-keys" && : > "$DCK_HOME/.ssh/dck-host-keys/stale.pub"
+  run_cmd bash -c '. "$1"; printf "%s\n" "$2" | dck_hostssh_apply' _ "$LIB" "$payload"
+  assert_rc 0 "the host aliases apply"
+  local frag="$DCK_HOME/.ssh/config.d/dck-host"
+  assert_contains "$(cat "$frag")" "Host github.com-work" "an alias gets a Host block"
+  assert_contains "$(cat "$frag")" "IdentityFile $DCK_HOME/.ssh/dck-host-keys/work.pub" "it points at the public half"
+  assert_contains "$(cat "$frag")" "IdentitiesOnly yes" "only that key is offered"
+  assert_not_contains "$(cat "$frag")" "Host nopub" "an alias without its public key is refused"
+  assert_not_contains "$(cat "$frag")" "bad;alias" "an unsafe alias is refused"
+  assert_not_contains "$(cat "$frag")" "Host local" "a loopback host is refused"
+  assert_contains "$(cat "$DCK_HOME/.ssh/dck-host-keys/work.pub")" "ssh-ed25519 AAAAC3Nza" "the public key is written"
+  assert_eq "$(ls "$DCK_HOME/.ssh/dck-host-keys" | tr '\n' ' ')" "work.pub " "only valid key names are written, stale ones removed"
+  assert_contains "$(cat "$DCK_HOME/.ssh/known_hosts.dck-host")" "github.com ssh-ed25519 AAAAGitHubFake" "trusted host keys are pinned"
+  assert_contains "$(cat "$DCK_HOME/.ssh/known_hosts.dck-host")" "[example.net]:2222 ssh-ed25519 AAAAIncludedFake" "with their port"
+  assert_eq "$(head -1 "$DCK_HOME/.ssh/config")" "Include config.d/dck-host" "the aliases are included first"
+  assert_no_match "$(cat "$frag" "$DCK_HOME/.ssh/dck-host-keys/work.pub")" 'PRIVATE KEY' "no private key material"
+}
+
 test_mesh_apply() {
   local payload
   payload="$(printf '%s\n' \

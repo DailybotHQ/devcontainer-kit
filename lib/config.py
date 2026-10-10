@@ -58,6 +58,7 @@ REPO_RULES = {
     "agents.clis": ("kind_list", [], ("enum", AGENT_KINDS)),
     "herdr.machine": ("bool", False, None),
     "ssh_agent": ("bool", True, None),
+    "ssh_host_config": ("bool", True, None),
     "herdr.layout": ("str", "standard", ("enum", ("standard", "none"))),
     "herdr.mesh": ("bool", True, None),
     "herdr.label": ("label", "{repo}", ("placeholders", LABEL_PLACEHOLDERS)),
@@ -71,6 +72,10 @@ PROFILE_RULES = {
     "host_machine": ("bool", False, None),
     "labels.machine": ("label", "{repo}", ("placeholders", LABEL_PLACEHOLDERS)),
     "ssh.identity": ("path", "~/.config/dck/ssh/id_ed25519", None),
+    # Hosts beyond the git services whose ~/.ssh/config aliases dck copies into
+    # containers. A host preference, never a repository's: a cloned repository
+    # must not be able to ask for your server aliases.
+    "ssh.host_extra": ("host_list", [], ("pattern", r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$")),
 }
 TABLES = {"repo": ("layers", "agents", "herdr"), "profile": ("labels", "ssh")}
 
@@ -140,6 +145,14 @@ def _check(key, value, rule, problems):
                 bad("%s: port %s is already used by %s" % (name, port, seen[port]))
             else:
                 seen[port] = name
+    elif kind == "host_list":
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            return bad("expected an array of host names, got %s" % _type_name(value))
+        for item in value:
+            if not re.match(carg, item):
+                bad("invalid host %r (must match %s)" % (item, carg))
+        if len(value) > 64:
+            bad("at most 64 hosts")
     elif kind == "kind_list":
         if not isinstance(value, list):
             return bad("expected an array of strings, got %s" % _type_name(value))
@@ -306,6 +319,7 @@ def effective(repo, default_tag, profile_name=None, env=None):
         "alias": prof["alias_prefix"] + rslug,
         "host_machine": prof["host_machine"],
         "ssh_identity": expand_home(prof["ssh.identity"], env),
+        "ssh_host_extra": list(prof["ssh.host_extra"]),
     })
     merged["herdr.label"] = expand_label(label_fmt, {
         "repo": repo_name, "service": cfg["service"], "user": cfg["user"],

@@ -244,7 +244,7 @@ for kind, rules, fname in (("repo", c.REPO_RULES, "dck-config-v2.json"),
         elif default is not None and s.get("default", default) != default:
             problems.append("%s.%s default %r != schema %r" % (kind, key, default, s.get("default")))
         if cons and cons[0] == "pattern":
-            pat = s.get("pattern") or (s.get("propertyNames") or {}).get("pattern")
+            pat = s.get("pattern") or (s.get("propertyNames") or {}).get("pattern") or (s.get("items") or {}).get("pattern")
             if pat != cons[1]:
                 problems.append("%s.%s pattern differs" % (kind, key))
         if cons and cons[0] == "interface":

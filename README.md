@@ -41,7 +41,7 @@ Requires bash 3.2+ and python3 ≥ 3.11 on a Linux or macOS host; Docker (Deskto
 colima or Engine) with Compose v2 for the container verbs.
 
 ```bash
-git clone --branch v0.2.1 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.2.2 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh          # --no-rc for scripted installs, --uninstall to remove
 dck --version
 ```
@@ -99,7 +99,8 @@ each item is one check:
    host and the other containers, and an `herdr-peers ask` gets its reply back:
    `bash dev.sh agents`.
 5. **Git over SSH, no key inside** — `bash dev.sh shell -c 'ssh-add -l && git config user.name'`
-   shows your agent's keys and your identity; `ssh -T git@github.com` greets you.
+   shows your agent's keys and your identity; `ssh -T git@github.com` greets you, and your
+   `~/.ssh/config` aliases (`git@github.com-work:…`) work the same inside.
 6. **Every coding agent** — `bash dev.sh shell -c 'ak doctor'` lists the CLIs from
    `[agents].clis`, and `claudex` / `codex-glm` are shell functions.
 7. **Autonomy by default, opt-out documented** — `ak doctor --json` → `"permissions":

@@ -128,12 +128,14 @@ load_context() {
   export DCK_HERDR_LAYOUT="standard"  # read by lib/herdr.sh (herdr_layout)
   export DCK_HERDR_MESH="1"  # read by lib/herdr.sh (dck_herdr_after_up)
   export DCK_SSH_AGENT="1"  # read by export_host_ssh_agent
+  export DCK_SSH_HOST_CONFIG="1"  # read by host_ssh_identities
+  export DCK_SSH_HOST_EXTRA=""  # read by host_ssh_identities
   while IFS= read -r line; do
     k="${line%%=*}"; v="${line#*=}"
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out
@@ -361,6 +363,68 @@ warn_empty_ssh_agent() {
   esac
 }
 
+# host_ssh_identities — make the developer's own git SSH aliases work inside: the
+# concrete Host blocks of ~/.ssh/config for git hosting services (plus the opt-in
+# the host profile's [ssh] host_extra), with the PUBLIC half of each IdentityFile and the trusted host
+# keys (dck_hostssh_apply writes them). Only aliases whose key the host agent holds
+# are pushed, so IdentitiesOnly never strands git inside; a missing key is offered
+# for `ssh-add` on a terminal, with consent. Private keys never leave the host.
+host_ssh_identities() {
+  [ "${DCK_SSH_AGENT:-1}" = "1" ] && [ "${DCK_SSH_HOST_CONFIG:-1}" = "1" ] || return 0
+  [ -f "$HOME/.ssh/config" ] || return 0
+  container_running || return 0
+  if ! command -v ssh-add >/dev/null 2>&1 || [ -z "${SSH_AUTH_SOCK:-}" ]; then
+    note "ssh: no ssh-agent on this host; your SSH aliases are not set up inside"
+    return 0
+  fi
+  local payload name pub priv fp loaded flag="" ans keep="" n interactive=0
+  payload="$(dckpy sshconf host-identities --config "$HOME/.ssh/config" --home "$HOME" \
+      --extra "${DCK_SSH_HOST_EXTRA:-}")" || {
+    warn "ssh: could not read ~/.ssh/config; your SSH aliases are not set up inside"; return 0; }
+  [ -n "$payload" ] || return 0
+  [ "$(uname -s)" = "Darwin" ] && flag="--apple-use-keychain"
+  # Decided once, before the loop (whose stdin is the key list, not the terminal).
+  if [ -t 0 ] && [ "${DCK_NONINTERACTIVE:-0}" != "1" ] && { : </dev/tty; } 2>/dev/null; then interactive=1; fi
+  loaded="$(ssh-add -l 2>/dev/null || true)"
+  while IFS="$(printf '\t')" read -r _ name pub priv <&3; do
+    [ -n "$pub" ] && [ -f "$pub" ] || continue
+    fp="$(ssh-keygen -lf "$pub" 2>/dev/null | awk '{print $2}')"
+    [ -n "$fp" ] || continue
+    # The agent may hold a key whose private file is not on disk (1Password,
+    # Secretive, hardware keys): the public half decides.
+    case "$loaded" in *"$fp"*) keep="$keep $name " ; continue ;; esac
+    if [ "$priv" = "-" ] || [ ! -f "$priv" ]; then
+      warn "ssh: your ssh-agent does not hold the key for $pub; its git alias is not set up inside"
+      continue
+    fi
+    if [ "$interactive" = 1 ]; then
+      printf 'dck: ssh: your git alias needs %s, which your ssh-agent does not hold. Load it now (ssh-add%s)? [Y/n] ' \
+        "$priv" "${flag:+ $flag}" >&2
+      ans=""; read -r ans </dev/tty || ans=n
+      case "$ans" in n|N|no|NO) warn "ssh: skipped $name (git with its alias will not work inside)"; continue ;; esac
+      # Ctrl-C at the passphrase prompt cancels ssh-add only, never the whole up.
+      trap ':' INT
+      if ssh-add $flag "$priv" </dev/tty; then keep="$keep $name "
+      else warn "ssh: $name was not loaded (git with its alias will not work inside)"; fi
+      trap - INT
+    else
+      warn "ssh: your ssh-agent lacks $name, used by a git alias; load it once: ssh-add${flag:+ $flag} $priv"
+    fi
+  done 3<<EOF
+$(printf '%s\n' "$payload" | grep "^file$(printf '\t')" || true)
+EOF
+  payload="$(printf '%s\n' "$payload" | awk -v keep="$keep" '
+    $1 == "file" { next }
+    $1 == "pub"  { if (index(keep, " " $2 " ")) print; next }
+    $1 == "host" { if (index(keep, " " $6 " ")) print; next }
+    { print }')"
+  n="$(printf '%s\n' "$payload" | grep -c '^host ' || true)"
+  printf '%s\n' "$payload" | dc exec -T --user root "$DC_SERVICE" \
+    bash -c '. /usr/local/lib/dck/entrypoint.sh && dck_hostssh_apply' >/dev/null 2>&1 \
+    || { warn "ssh: could not write your SSH aliases inside $DC_SERVICE (rendered by devcontainer-kit v0.2.2+?)"; return 0; }
+  note "ssh: $n git alias(es) from ~/.ssh/config work inside (public keys only; signing goes through your agent)"
+}
+
 # export_host_ssh_agent — the compose file mounts ${DCK_HOST_SSH_AUTH_SOCK} as the
 # container's SSH agent (a bind that never creates a missing host path).
 # The path depends on the Docker provider: Docker Desktop (macOS, Windows,
@@ -574,6 +638,7 @@ cmd_up() {
       note "existing containers were left as they are; use --recreate to apply compose changes"
     fi
   fi
+  host_ssh_identities
   if [ "${DCK_HERDR_MACHINE:-0}" = "1" ] && declare -F dck_herdr_after_up >/dev/null 2>&1; then
     dck_herdr_after_up || warn "the container is up, but Herdr registration did not complete — run: dck herdr status"
   fi
@@ -724,6 +789,7 @@ cmd_rebuild() {
     note "recreating ${SERVICES[*]} with the new images"
     dc up -d --force-recreate "${SERVICES[@]}"
   fi
+  host_ssh_identities
   note "rebuild done — named volumes were kept; open a new shell so PATH reloads"
 }
 
