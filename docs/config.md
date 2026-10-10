@@ -57,7 +57,7 @@ layout = "standard"            # the sidebar dck up creates inside: standard | n
 | `flavour` | string | **required** | `python-3.13`, `node-24` or `debian` |
 | `base_image` | string | the flavour's pin in `versions.env` | an official image pinned by digest: `name[:tag]@sha256:<64 hex>`, no registry host |
 | `image_tag` | string | — | interface 1 only; ignored since v0.2.0 (warning), removed by `dck init` |
-| `ssh_agent` | boolean | `true` | mount the host's SSH agent socket (Docker Desktop's, or `$SSH_AUTH_SOCK` on Linux) as `SSH_AUTH_SOCK` |
+| `ssh_agent` | boolean | `true` | mount the host's SSH agent socket (Docker Desktop's, or `$SSH_AUTH_SOCK` on Linux) as `SSH_AUTH_SOCK` for exec sessions (`dev.sh shell`, editor terminals). On a Linux host OpenSSH's agent serves only its own uid, so this works when your uid is 1000 (the container user's); otherwise use `dck ssh` / Herdr sessions, which forward the agent |
 | `ssh_port` | integer | `0` | `0` (no sshd) or 1024–65535; published on `bind` only |
 | `bind` | string | `127.0.0.1` | IPv4 address every published port binds to. Changing it exposes the container's ports beyond this machine — see [SECURITY.md](SECURITY.md). `dck ssh` and Herdr still connect only to 127.0.0.1 and refuse a `bind` that is neither loopback nor `0.0.0.0` |
 | `ports` | table | `{}` | `name = port`; names `^[a-z][a-z0-9_-]{0,31}$`; ports unique and different from `ssh_port` |

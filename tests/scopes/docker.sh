@@ -114,8 +114,15 @@ test_node_fixture_end_to_end() {
   dev shell -c 'ssh-add -l >/dev/null 2>&1; echo "agent-rc=$?"; ssh-keygen -F github.com -f /etc/ssh/ssh_known_hosts >/dev/null && echo gh-known; git config --global user.name'
   assert_no_match "$RUN_OUT" 'agent-rc=2' "exec sessions reach the host's SSH agent (no key inside)"
   if [ "$(uname -s)" = "Linux" ]; then
-    dev shell -c 'ssh-add -l'
-    assert_contains "$RUN_OUT" "dck-it-agent-key (ED25519)" "on Linux, exec sessions see the host agent's key"
+    # OpenSSH's ssh-agent refuses a client of another uid (getpeereid), so on a
+    # Linux host the shared socket serves the container user (uid 1000) only
+    # when the host user is uid 1000 too; ssh sessions use forwarding instead.
+    if [ "$(id -u)" = "1000" ]; then
+      dev shell -c 'ssh-add -l'
+      assert_contains "$RUN_OUT" "dck-it-agent-key (ED25519)" "on Linux, exec sessions see the host agent's key"
+    else
+      unavailable "on Linux, exec sessions see the host agent's key" "host uid $(id -u) != container uid 1000: ssh-agent refuses other uids"
+    fi
   fi
   dev shell -c 'ssh-keygen -F github.com -f /etc/ssh/ssh_known_hosts >/dev/null && echo gh-known; git config --global user.name'
   assert_contains "$RUN_OUT" "gh-known" "GitHub's host keys are pinned"
