@@ -365,7 +365,7 @@ warn_empty_ssh_agent() {
 
 # host_ssh_identities — make the developer's own git SSH aliases work inside: the
 # concrete Host blocks of ~/.ssh/config for git hosting services (plus the opt-in
-# ssh_host_extra), with the PUBLIC half of each IdentityFile and the trusted host
+# the host profile's [ssh] host_extra), with the PUBLIC half of each IdentityFile and the trusted host
 # keys (dck_hostssh_apply writes them). Only aliases whose key the host agent holds
 # are pushed, so IdentitiesOnly never strands git inside; a missing key is offered
 # for `ssh-add` on a terminal, with consent. Private keys never leave the host.
@@ -386,7 +386,7 @@ host_ssh_identities() {
   # Decided once, before the loop (whose stdin is the key list, not the terminal).
   if [ -t 0 ] && [ "${DCK_NONINTERACTIVE:-0}" != "1" ] && { : </dev/tty; } 2>/dev/null; then interactive=1; fi
   loaded="$(ssh-add -l 2>/dev/null || true)"
-  while read -r _ name pub priv <&3; do
+  while IFS="$(printf '\t')" read -r _ name pub priv <&3; do
     [ -n "$pub" ] && [ -f "$pub" ] || continue
     fp="$(ssh-keygen -lf "$pub" 2>/dev/null | awk '{print $2}')"
     [ -n "$fp" ] || continue
@@ -411,7 +411,7 @@ host_ssh_identities() {
       warn "ssh: your ssh-agent lacks $name, used by a git alias; load it once: ssh-add${flag:+ $flag} $priv"
     fi
   done 3<<EOF
-$(printf '%s\n' "$payload" | grep '^file ' || true)
+$(printf '%s\n' "$payload" | grep "^file$(printf '\t')" || true)
 EOF
   payload="$(printf '%s\n' "$payload" | awk -v keep="$keep" '
     $1 == "file" { next }

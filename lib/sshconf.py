@@ -281,7 +281,7 @@ KEY_TYPES = ("ssh-ed25519", "ssh-rsa", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp3
              "ecdsa-sha2-nistp521", "sk-ssh-ed25519@openssh.com",
              "sk-ecdsa-sha2-nistp256@openssh.com")
 # Git hosting services: their aliases are made usable inside by default. Any other
-# host needs an explicit opt-in (ssh_host_extra), so a container never learns of —
+# host needs an explicit opt-in (the host profile's [ssh] host_extra), so a container never learns of —
 # and the agent is never loaded with keys for — servers it has no business with.
 GIT_HOSTS = ("github.com", "ssh.github.com", "gitlab.com", "altssh.gitlab.com",
              "bitbucket.org", "altssh.bitbucket.org", "ssh.dev.azure.com",
@@ -362,7 +362,7 @@ def host_identities(config_path, home, extra=()):
          host <alias> <hostname> <port> <user|-> <key>
          kh   <hostname> <port> <type> <base64>   (pinned host keys from ~/.ssh/known_hosts)
        plus, for the host side only (never pushed):
-         file <key> <public key path> <private key path, or - when absent>
+         file<TAB><key><TAB><public key path><TAB><private key path, or - when absent>
     """
     blocks, cur = [], None
     for ln in _sshconf_lines(config_path, home):
@@ -433,6 +433,7 @@ def host_identities(config_path, home, extra=()):
     out = ["pub %s %s %s" % (n, t, k) for n, (t, k) in sorted(pubs.items())]
     out += hosts[:200]
     out += _known_for(hosts[:200], os.path.join(home, ".ssh", "known_hosts"))
-    out += ["file %s %s %s" % (n, pubpaths[n], p) for n, p in sorted(files.items())
-            if "\n" not in p + pubpaths[n] and " " not in p + pubpaths[n]]
+    # Tab-separated: key paths may contain spaces.
+    out += ["file\t%s\t%s\t%s" % (n, pubpaths[n], p) for n, p in sorted(files.items())
+            if not any(c in p + pubpaths[n] for c in "\n\r\t")]
     return "\n".join(out) + ("\n" if out else "")

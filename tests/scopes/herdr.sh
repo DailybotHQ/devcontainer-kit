@@ -297,8 +297,8 @@ sys.stdout.write("".join(l + chr(10) for l in lines))
   assert_not_contains "$RUN_OUT" "local-machine" "loopback hosts are skipped"
   assert_not_contains "$RUN_OUT" "nokey" "a host whose key has no .pub is skipped"
   assert_not_contains "$RUN_OUT" "dck-repo" "dck-managed aliases are skipped"
-  assert_not_contains "$(printf '%s\n' "$RUN_OUT" | grep -v '^file ')" "$h/.ssh/work" "no private key path outside the host-only file lines"
-  assert_contains "$RUN_OUT" "file work $h/.ssh/work.pub $h/.ssh/work" "the host side learns which key each alias needs"
+  assert_not_contains "$(printf '%s\n' "$RUN_OUT" | grep -v '^file')" "$h/.ssh/work" "no private key path outside the host-only file lines"
+  assert_contains "$RUN_OUT" "$(printf 'file\twork\t%s\t%s' "$h/.ssh/work.pub" "$h/.ssh/work")" "the host side learns which key each alias needs"
   # Two keys with the same file name in different directories stay distinct.
   mkdir -p "$h/.ssh/team"
   printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITeamKeyFakeOnlyForTests000000000000000 t@host\n' > "$h/.ssh/team/work.pub"
@@ -308,6 +308,13 @@ sys.stdout.write("".join(l + chr(10) for l in lines))
   assert_contains "$RUN_OUT" "host github.com-work github.com 22 git work" "the first key keeps its name"
   assert_match "$RUN_OUT" '^host github.com-team github.com 22 - work-[0-9a-f]{8}$' "a second key with the same file name gets its own name"
   assert_contains "$RUN_OUT" "AAAAC3NzaC1lZDI1NTE5AAAAITeamKeyFakeOnlyForTests000000000000000" "and its own public key"
+  # A key path with a space keeps its alias (the host-side lines are tab-separated).
+  mkdir -p "$h/.ssh/sp ace"
+  printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAISpaceKeyFakeOnlyForTests00000000000000 s@host\n' > "$h/.ssh/sp ace/k.pub"
+  : > "$h/.ssh/sp ace/k"
+  printf 'Host ghs\n  HostName github.com\n  IdentityFile "~/.ssh/sp ace/k"\n' >> "$h/.ssh/config"
+  run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" sshconf host-identities --config "$h/.ssh/config" --home "$h"
+  assert_contains "$RUN_OUT" "$(printf 'file\tk\t%s\t%s' "$h/.ssh/sp ace/k.pub" "$h/.ssh/sp ace/k")" "a key path with a space is kept"
 }
 
 test_mesh_host_keys_by_alias() {
