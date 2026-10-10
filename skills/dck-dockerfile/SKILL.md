@@ -3,7 +3,7 @@ name: dck-dockerfile
 description: Create or regenerate a repository's own development container with devcontainer-kit — .devcontainer/devcontainer.json, docker/local/<service>/Dockerfile (official runtime image pinned by digest, DeepWorkPlan Vim, Herdr, coding agents through agentkit), docker/local/docker-compose.yaml and dev.sh — then prove it with a real build. Use only when the user asks for a dev container, a devcontainer, a docker/local/<service>/Dockerfile or a `dev.sh up` container for a repository, or to regenerate or upgrade one made by devcontainer-kit. Do not use for production images, deployment, Kubernetes, CI runners, or merely because a repository contains a Dockerfile.
 license: MIT
 metadata:
-  version: 0.1.6
+  version: 0.2.0
   interface: 2
   homepage: https://github.com/DailybotHQ/devcontainer-kit
 ---
@@ -28,7 +28,7 @@ It speaks devcontainer-kit **interface 2**. Read `interface` in
 pinned install line. Do not install it without being asked:
 
 ```bash
-git clone --branch v0.1.6 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.2.0 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh
 ```
 
