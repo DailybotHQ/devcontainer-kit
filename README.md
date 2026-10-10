@@ -1,7 +1,7 @@
 # devcontainer-kit
 
-A standard, agent-ready development container for any repository — one template, one
-launcher (`dck`), agent-free base images, run from a plain terminal or your editor.
+A standard, agent-ready development container for any repository — rendered from one
+template into the repository itself, run with `bash dev.sh up` or opened by your editor.
 
 [![CI](https://github.com/DailybotHQ/devcontainer-kit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DailybotHQ/devcontainer-kit/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/DailybotHQ/devcontainer-kit?sort=semver)](https://github.com/DailybotHQ/devcontainer-kit/releases/latest)
@@ -15,16 +15,25 @@ ports open on every interface, private keys copied into containers. devcontainer
 that setup done once, as a tool, with safe defaults and tests. Built on the
 [Dev Containers](https://containers.dev) spec:
 
-- **a template** (`devcontainer.json` + compose + `docker/local/`) that `dck init` renders
-  into a repository — and reconciles later, never clobbering your edits;
-- **`dck`**, a launcher that runs it from a plain terminal (`setup`, `up`, `shell`,
-  `rebuild`, `ssh`, `doctor`, …), with or without VS Code / Cursor and the `devcontainer` CLI;
-- **base images** `ghcr.io/dailybothq/devcontainer-kit-base:{python-3.13,node-24,debian}-<tag>`
-  (amd64 + arm64) that ship **without** coding agents — agents are an opt-in layer;
-- **an entrypoint library** (persistent volumes, SSH, environment for SSH sessions)
-  instead of a hand-copied entrypoint per repository;
-- **Herdr machines**: each container can join [Herdr](https://herdr.dev) over a loopback
-  sshd with SSH agent forwarding.
+- **a template** that `dck init` renders into each repository — and reconciles later,
+  never clobbering your edits: `.devcontainer/devcontainer.json`,
+  `docker/local/<service>/Dockerfile` (FROM the runtime's official image pinned by
+  digest — node, python or debian — with every download verified),
+  `docker/local/docker-compose.yaml` and `dev.sh`. No shared base image is involved;
+- **`dck`**, the launcher behind `dev.sh` (`up`, `shell`, `rebuild`, `ssh`, `doctor`, …),
+  with or without VS Code / Cursor and the `devcontainer` CLI;
+- **inside every container**: DeepWorkPlan Vim, Herdr and
+  [herdr-peers](https://github.com/DailybotHQ/herdr-peers), gh, git over SSH through the
+  host's agent (no key copied in), and — opt-in — every coding agent through
+  [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit) (`ak`, autonomy by
+  default, with the familiar `claudex` / `codex-glm` names);
+- **Herdr, both ways**: the host Herdr attaches the container as a machine and it opens
+  with the standard sidebar (Home · Editor · Development · Agents); agents inside can ask
+  agents on the host and in other containers;
+- **the `dck-dockerfile` skill**: an agent creates or regenerates a repository's
+  container on request and proves it with a real build;
+- **an entrypoint library** (persistent volumes, SSH, environment for SSH sessions,
+  git identity) instead of a hand-copied entrypoint per repository.
 
 ## Install
 
@@ -45,28 +54,63 @@ carries `SHA256SUMS` for the shipped files.
 
 ```bash
 cd your-repo
-dck init --port web=4321   # renders .devcontainer/ + docker/local/ (shows a plan; asks before changing files)
-dck setup                  # .env files from their examples (0600), networks, the dck SSH key
-dck up                     # start the container (and register it in Herdr, if dck.toml says so)
-dck shell                  # a login shell as the dev user in /workspace
-dck ssh                    # or SSH in, with your agent forwarded
-dck doctor                 # what is wrong, if anything (--json for tools and agents)
+dck init --port web=4321   # renders the layout (shows a plan; asks before changing files)
+bash dev.sh up             # first run: .env files, the dck SSH key; then build and start
+bash dev.sh shell          # a login shell as the dev user in /workspace
+bash dev.sh doctor         # what is wrong, if anything (dck doctor --json for tools and agents)
 ```
 
-Configuration lives in `.devcontainer/dck.toml`:
+Or ask your agent: `dck --skill dck-dockerfile` is the skill that detects the runtime and
+ports, renders the container and validates it with a real build.
+
+Configuration lives in `.devcontainer/dck.toml` (interface 2):
 
 ```toml
-interface = 1
+interface = 2
 service = "app"
-flavour = "node-24"        # python-3.13 | node-24 | debian
+flavour = "node-24"        # python-3.13 | node-24 | debian (official image, pinned by digest)
+ssh_agent = true           # git over SSH through the host's agent; keys never enter
 ssh_port = 22040           # loopback-only; 0 = no sshd
 ports = { web = 4321 }     # published on 127.0.0.1
 [layers]
-agents = false             # coding-agents-kit + the CLIs in [agents].clis
-editor = true              # nvim + deepworkplan-vim
+agents = true              # coding-agents-kit (ak) + the CLIs in [agents].clis
+editor = true              # nvim + DeepWorkPlan Vim
+[agents]
+clis = ["claude", "codex"]
 [herdr]
-machine = true             # register as a Herdr machine on `dck up`
+machine = true             # register as a Herdr machine on `dev.sh up`
+layout = "standard"        # Home · Editor · Development · Agents ("none" to skip)
 ```
+
+### Acceptance checklist
+
+What every rendered container gives you. After `bash dev.sh up` in your repository,
+each item is one check:
+
+1. **Layout** — `.devcontainer/devcontainer.json`, `docker/local/<service>/Dockerfile`
+   (+ `dck/`), `docker/local/docker-compose.yaml` and `dev.sh` exist, and
+   `devcontainer.json` names the same service as compose: `dck doctor --json` →
+   `repo.vendored` is `current`.
+2. **One entry point** — `bash dev.sh up` builds, starts and (with `[herdr] machine`)
+   registers the container: `bash dev.sh ps`.
+3. **Herdr attaches** — the host's Herdr lists the machine and its remote server answers:
+   `dck herdr status`.
+4. **Agents talk across machines** — inside, `herdr-peers list` shows the agents on the
+   host and the other containers, and an `herdr-peers ask` gets its reply back:
+   `bash dev.sh agents`.
+5. **Git over SSH, no key inside** — `bash dev.sh shell -c 'ssh-add -l && git config user.name'`
+   shows your agent's keys and your identity; `ssh -T git@github.com` greets you.
+6. **Every coding agent** — `bash dev.sh shell -c 'ak doctor'` lists the CLIs from
+   `[agents].clis`, and `claudex` / `codex-glm` are shell functions.
+7. **Autonomy by default, opt-out documented** — `ak doctor --json` → `"permissions":
+   "auto"`; `AGENTKIT_PERMISSIONS=ask` in `docker/local/<service>/.env` makes agents ask.
+8. **Persistence** — after `bash dev.sh rebuild`, the CLIs' logins, `gh auth status`, the
+   Herdr config, agentkit's keys and your git identity are still there.
+9. **Editor** — `bash dev.sh shell -c 'git -C ~/.config/nvim describe --tags'` prints the
+   pinned DeepWorkPlan Vim tag and `nvim` starts ready.
+10. **The standard sidebar** — the attached machine opens with Home · Editor ·
+    Development (server | tests) · Agents (Agent 1..4): `bash dev.sh herdr-layout --keep`
+    recreates what is missing.
 
 ## Documentation
 
@@ -75,20 +119,22 @@ machine = true             # register as a Herdr machine on `dck up`
 | The launcher, verbs, exit codes | [docs/launcher.md](docs/launcher.md) |
 | `dck init` and the template | [docs/init.md](docs/init.md) |
 | `dck.toml` and the host profile | [docs/config.md](docs/config.md) |
-| Base images and pins | [docs/images.md](docs/images.md) |
+| Pins, and the optional published base images | [docs/images.md](docs/images.md) |
 | Opt-in layers (agents, dailybot, editor) | [docs/layers.md](docs/layers.md) |
 | Entrypoint library | [docs/entrypoint.md](docs/entrypoint.md) |
 | Herdr machines | [docs/herdr.md](docs/herdr.md) |
 | `dck doctor --json` | [docs/doctor.md](docs/doctor.md) |
 | Threat model and defaults | [docs/SECURITY.md](docs/SECURITY.md) |
 | Tests | [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md) |
-| Agent skill | [skills/dck/SKILL.md](skills/dck/SKILL.md) (`dck --skill`) |
+| Agent skills | [skills/dck/SKILL.md](skills/dck/SKILL.md) (`dck --skill`), [skills/dck-dockerfile/SKILL.md](skills/dck-dockerfile/SKILL.md) (`dck --skill dck-dockerfile`) |
 | Changes | [CHANGELOG.md](CHANGELOG.md) |
 
 ## Security
 
-Loopback-only ports; SSH agent forwarding, never key copies; host keys generated at
-runtime, never baked; no `cap_add`/`privileged`/Docker socket in the template; `.env`
+Loopback-only ports; the host's SSH agent (forwarded or the Docker Desktop socket),
+never key copies or a mounted `~/.ssh`; host keys generated at runtime, never baked;
+coding agents in autonomy by default inside the container — the sandbox — with an
+`AGENTKIT_PERMISSIONS=ask` opt-out; no `cap_add`/`privileged`/Docker socket in the template; `.env`
 files 0600 and never printed; every image input pinned by version and checksum;
 repository configuration that reaches the host needs `--trust`. Report vulnerabilities
 privately — see [SECURITY.md](SECURITY.md).

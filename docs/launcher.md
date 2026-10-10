@@ -32,7 +32,7 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
 | `config` | what dck resolved: files, project and where its name came from, backend, user, workspace, overlay, ssh, Herdr |
 | `ports` | the published loopback ports and whether the service runs |
 | `ssh [cmd…]` | SSH into the container with **agent forwarding** (see below) |
-| `doctor [--json]` | environment and repository health, interface 1 ([doctor.md](doctor.md)) |
+| `doctor [--json]` | environment and repository health, interface 2 ([doctor.md](doctor.md)) |
 | `herdr add\|status\|repair\|remove` | the container as a Herdr machine ([herdr.md](herdr.md)) |
 | `--skill`, `--version`, `help` | the bundled agent skill, the version, usage |
 

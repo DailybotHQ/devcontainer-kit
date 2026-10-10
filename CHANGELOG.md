@@ -7,6 +7,49 @@ and the interface number).
 
 ## [Unreleased]
 
+**Interface 2.** A repository's container is self-contained: no shared base image.
+
+### Changed — breaking
+
+- **The template renders a repository's own container.** `docker/local/<service>/Dockerfile`
+  starts FROM the flavour's official image pinned by digest (node 24, python 3.13 or
+  debian; `base_image` in dck.toml overrides it with another digest pin) and copies the
+  build steps vendored into `docker/local/<service>/dck/` (byte copies of the kit's files,
+  stamped with its version). Compose passes no base image; nothing depends on
+  `ghcr.io/dailybothq/devcontainer-kit-base`, whose publishing stays optional.
+- **dck.toml schema v2.** A v1 file is migrated by `dck init` (interface line, `image_tag`
+  removed). New keys: `base_image`, `ssh_agent`, `herdr.layout`. `--image-tag` is gone;
+  `--no-digest` is accepted and ignored.
+- **doctor schema v2.** `repo.kit_version` and `repo.vendored` replace `image_tag` and
+  `digest_match`; drift compares the kit a repository was rendered with.
+- **Agents in autonomy by default.** The agents layer installs coding-agents-kit
+  **v0.3.0** from its release tarball verified against a pinned sha256 (no git clone),
+  the CLIs through `ak install` (pinned and verified by ak), and turns on the `classic`
+  (`claudex`, …) and `providers` (`claude-glm`, `codex-glm`, …) presets. ak launches
+  agents in autonomy by default — the container is the sandbox; the template spells no
+  autonomy flag and documents the `AGENTKIT_PERMISSIONS=ask` opt-out.
+
+### Added
+
+- **`dev.sh`**, rendered at the repository root: `bash dev.sh up` (setup on the first
+  run), `shell`, `rebuild`, `herdr`, `herdr-layout`, `agents`, `ask`, … over `dck`. A
+  repository's own `dev.sh` without dck markers is kept.
+- **Git over SSH through the host's agent**: the Docker Desktop socket (or
+  `$SSH_AUTH_SOCK` on Linux) as `SSH_AUTH_SOCK`; the git identity from `DCK_GIT_*`, which
+  `dck setup` fills from the host's git config; GitHub's published host keys pinned.
+  No key file, no host `~/.ssh` or `~/.gitconfig` mount.
+- **Herdr both ways**: herdr-peers (verified against its release `SHA256SUMS`) and Herdr's
+  skill in every image, linked into each agent's skills; `dck herdr mesh` (run by
+  `dck up`) makes the other dck containers — and the host, with `host_machine` — reachable
+  from inside with no private key in the container; `dck agents` / `dck ask`.
+- **The standard Herdr sidebar** inside every container — Home · Editor · Development
+  (server | tests) · Agents (Agent 1..4) — via `dck herdr layout [--keep|--reset]`, run
+  by `dck up` with `--keep`; `[herdr] layout = "none"` turns it off.
+- **The `dck-dockerfile` skill** (`dck --skill dck-dockerfile`): detect or ask the
+  runtime, ports and agents, render, validate with a real build, report.
+- Non-login shells (docker exec, editor terminals) get the user tool PATH (`ak`, `nvim`).
+- README: the **acceptance checklist** a repository verifies after `bash dev.sh up`.
+
 ## [0.1.6] — 2026-10-09
 
 Interface stays **1**. Editor plugins pinned to commits (deepworkplan-vim v0.5.1).

@@ -1,7 +1,13 @@
-# Base images
+# Base images (optional) and pins
 
-`ghcr.io/dailybothq/devcontainer-kit-base:<flavour>-<tag>` — three flavours
-chosen by the **project's** runtime, identical otherwise.
+Since v0.2.0 a repository's container needs **no** shared base image: `dck init` renders
+`docker/local/<service>/Dockerfile` FROM the runtime's official image pinned by digest
+and copies the same build steps into `docker/local/<service>/dck/`, so the image is
+built from the repository itself. The published
+`ghcr.io/dailybothq/devcontainer-kit-base:<flavour>-<tag>` images below remain optional:
+they are built from the same steps, for teams that want a prebuilt image, and nothing in
+dck depends on them. The three flavours are chosen by the **project's** runtime,
+identical otherwise.
 
 | Flavour | FROM (pinned tag + digest) | Project runtime | Extra |
 | --- | --- | --- | --- |

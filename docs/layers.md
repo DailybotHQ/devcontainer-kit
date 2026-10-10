@@ -110,10 +110,11 @@ with the dispatcher `/usr/local/bin/dck-layer`. They run only during the
 **repository's** image build. Every download goes through one verified
 `fetch`; nothing is piped into a shell.
 
-## Status in v0.1.x
+## Status in v0.2.x
 
-The `agents` layer is verified end to end with coding-agents-kit `v0.1.1`
-(`ak` interface 1, permissions `ask`; `ak install codex` in real python-3.13 and
-node-24 images; the `docker` test scope installs the kit on every CI run). Each
+The `agents` layer is verified end to end with coding-agents-kit `v0.3.0`
+(installed from its sha256-verified release tarball; `ak` interface 1, permissions
+`auto` by default; `ak install codex pi`, the `classic` and `providers` presets; the
+`docker` test scope builds a rendered node fixture with the layer on every CI run). Each
 vendor CLI's own behaviour belongs to the ecosystem field test. The `dailybot`
 and `editor` layers are verified end to end.
