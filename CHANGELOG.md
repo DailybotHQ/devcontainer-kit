@@ -7,6 +7,8 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-09
+
 **Interface 2.** A repository's container is self-contained: no shared base image.
 
 ### Changed — breaking
@@ -198,7 +200,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.0
 [0.1.6]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.6
 [0.1.5]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.5
 [0.1.4]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.1.4

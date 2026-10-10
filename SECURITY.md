@@ -4,7 +4,8 @@
 
 | Version | Supported |
 | --- | --- |
-| `v0.1.6` (latest), `v0.1.5` | yes |
+| `v0.2.0` (latest), `v0.1.6` | yes |
+| `v0.1.5` | no — upgrade (no code security fix since; newer editor pin) |
 | `v0.1.4` | no — upgrade (no code security fix since; newer editor pin) |
 | `v0.1.3` | no — upgrade (no code security fix since; newer editor pin) |
 | `v0.1.2` | no — upgrade (no code security fix since; newer editor pin and doctor fix) |
