@@ -280,6 +280,10 @@ sys.stdout.write("".join(l + chr(10) for l in lines))
 ' > "$h/.ssh/known_hosts"
   run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" sshconf host-identities --config "$h/.ssh/config" --home "$h"
   assert_rc 0 "host-identities reads ~/.ssh/config"
+  assert_not_contains "$RUN_OUT" "host included" "a host that is not a git service needs the opt-in"
+  assert_not_contains "$RUN_OUT" "AAAAIncludedFake" "and its host key is not sent either"
+  run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" sshconf host-identities --config "$h/.ssh/config" --home "$h" --extra "included"
+  assert_rc 0 "host-identities with ssh_host_extra"
   assert_contains "$RUN_OUT" "host github.com github.com 22 - id_rsa" "a plain host with its key"
   assert_contains "$RUN_OUT" "host github.com-work github.com 22 git work" "an alias with HostName and User"
   assert_contains "$RUN_OUT" "host gh-work github.com 22 git work" "every name of a multi-name Host line"
@@ -295,6 +299,15 @@ sys.stdout.write("".join(l + chr(10) for l in lines))
   assert_not_contains "$RUN_OUT" "dck-repo" "dck-managed aliases are skipped"
   assert_not_contains "$(printf '%s\n' "$RUN_OUT" | grep -v '^file ')" "$h/.ssh/work" "no private key path outside the host-only file lines"
   assert_contains "$RUN_OUT" "file work $h/.ssh/work" "the host side learns which private key each alias needs"
+  # Two keys with the same file name in different directories stay distinct.
+  mkdir -p "$h/.ssh/team"
+  printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITeamKeyFakeOnlyForTests000000000000000 t@host\n' > "$h/.ssh/team/work.pub"
+  : > "$h/.ssh/team/work"
+  printf 'Host github.com-team\n  HostName github.com\n  IdentityFile ~/.ssh/team/work\n' >> "$h/.ssh/config"
+  run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" sshconf host-identities --config "$h/.ssh/config" --home "$h"
+  assert_contains "$RUN_OUT" "host github.com-work github.com 22 git work" "the first key keeps its name"
+  assert_match "$RUN_OUT" '^host github.com-team github.com 22 - work-[0-9a-f]{8}$' "a second key with the same file name gets its own name"
+  assert_contains "$RUN_OUT" "AAAAC3NzaC1lZDI1NTE5AAAAITeamKeyFakeOnlyForTests000000000000000" "and its own public key"
 }
 
 test_mesh_host_keys_by_alias() {

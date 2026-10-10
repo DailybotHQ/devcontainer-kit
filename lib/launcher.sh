@@ -129,12 +129,13 @@ load_context() {
   export DCK_HERDR_MESH="1"  # read by lib/herdr.sh (dck_herdr_after_up)
   export DCK_SSH_AGENT="1"  # read by export_host_ssh_agent
   export DCK_SSH_HOST_CONFIG="1"  # read by host_ssh_identities
+  export DCK_SSH_HOST_EXTRA=""  # read by host_ssh_identities
   while IFS= read -r line; do
     k="${line%%=*}"; v="${line#*=}"
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out
@@ -362,42 +363,58 @@ warn_empty_ssh_agent() {
   esac
 }
 
-# host_ssh_identities — make the developer's own SSH aliases work inside: push the
-# concrete Host blocks of ~/.ssh/config with the PUBLIC half of each IdentityFile
-# (dck_hostssh_apply writes them), then make sure the host agent holds the private
-# halves — loading a missing one with ssh-add (macOS: --apple-use-keychain, so the
-# passphrase is asked once). Private keys never leave the host. Best-effort.
+# host_ssh_identities — make the developer's own git SSH aliases work inside: the
+# concrete Host blocks of ~/.ssh/config for git hosting services (plus the opt-in
+# ssh_host_extra), with the PUBLIC half of each IdentityFile and the trusted host
+# keys (dck_hostssh_apply writes them). Only aliases whose key the host agent holds
+# are pushed, so IdentitiesOnly never strands git inside; a missing key is offered
+# for `ssh-add` on a terminal, with consent. Private keys never leave the host.
 host_ssh_identities() {
   [ "${DCK_SSH_AGENT:-1}" = "1" ] && [ "${DCK_SSH_HOST_CONFIG:-1}" = "1" ] || return 0
   [ -f "$HOME/.ssh/config" ] || return 0
   container_running || return 0
-  local payload n name path fp loaded flag=""
-  payload="$(dckpy sshconf host-identities --config "$HOME/.ssh/config" --home "$HOME")" || {
-    warn "ssh: could not read ~/.ssh/config; your SSH aliases are not available inside"; return 0; }
+  if ! command -v ssh-add >/dev/null 2>&1 || [ -z "${SSH_AUTH_SOCK:-}" ]; then
+    note "ssh: no ssh-agent on this host; your SSH aliases are not set up inside"
+    return 0
+  fi
+  local payload name path fp loaded flag="" ans keep="" n
+  payload="$(dckpy sshconf host-identities --config "$HOME/.ssh/config" --home "$HOME" \
+      --extra "${DCK_SSH_HOST_EXTRA:-}")" || {
+    warn "ssh: could not read ~/.ssh/config; your SSH aliases are not set up inside"; return 0; }
   [ -n "$payload" ] || return 0
-  n="$(printf '%s\n' "$payload" | grep -c '^host ' || true)"
-  printf '%s\n' "$payload" | grep -v '^file ' | dc exec -T --user root "$DC_SERVICE" \
-    bash -c '. /usr/local/lib/dck/entrypoint.sh && dck_hostssh_apply' >/dev/null 2>&1 \
-    || { warn "ssh: could not write your SSH aliases inside $DC_SERVICE (rendered by devcontainer-kit v0.2.2+?)"; return 0; }
-  note "ssh: $n alias(es) from ~/.ssh/config work inside (public keys only; signing goes through your agent)"
-  command -v ssh-add >/dev/null 2>&1 && [ -n "${SSH_AUTH_SOCK:-}" ] || return 0
   [ "$(uname -s)" = "Darwin" ] && flag="--apple-use-keychain"
-  [ "$(uname -s)" = "Darwin" ] && ssh-add --apple-load-keychain >/dev/null 2>&1 || true
   loaded="$(ssh-add -l 2>/dev/null || true)"
   while read -r _ name path; do
     [ -n "$path" ] && [ -f "$path" ] || continue
     fp="$(ssh-keygen -lf "$path.pub" 2>/dev/null | awk '{print $2}')"
     [ -n "$fp" ] || continue
-    case "$loaded" in *"$fp"*) continue ;; esac
-    if [ -t 0 ]; then
-      note "ssh: loading $name into your ssh-agent (it is used by an alias in ~/.ssh/config)"
-      ssh-add $flag "$path" || warn "ssh: $name was not loaded; git with its alias will fail inside until you run: ssh-add $flag $path"
-    elif ! ssh-add $flag "$path" </dev/null >/dev/null 2>&1; then
-      warn "ssh: $name is not in your ssh-agent; run once: ssh-add $flag $path"
+    case "$loaded" in *"$fp"*) keep="$keep $name " ; continue ;; esac
+    if [ -t 0 ] && [ "${DCK_NONINTERACTIVE:-0}" != "1" ]; then
+      printf 'dck: ssh: your git alias needs %s, which your ssh-agent does not hold. Load it now (ssh-add%s)? [Y/n] ' \
+        "$path" "${flag:+ $flag}" >&2
+      ans=""; read -r ans </dev/tty || ans=n
+      case "$ans" in n|N|no|NO) warn "ssh: skipped $name (git with its alias will not work inside)"; continue ;; esac
+      # Ctrl-C at the passphrase prompt cancels ssh-add only, never the whole up.
+      trap ':' INT
+      if ssh-add $flag "$path"; then keep="$keep $name "
+      else warn "ssh: $name was not loaded (git with its alias will not work inside)"; fi
+      trap - INT
+    else
+      warn "ssh: your ssh-agent lacks $name, used by a git alias; load it once: ssh-add${flag:+ $flag} $path"
     fi
   done <<EOF
 $(printf '%s\n' "$payload" | grep '^file ' || true)
 EOF
+  payload="$(printf '%s\n' "$payload" | awk -v keep="$keep" '
+    $1 == "file" { next }
+    $1 == "pub"  { if (index(keep, " " $2 " ")) print; next }
+    $1 == "host" { if (index(keep, " " $6 " ")) print; next }
+    { print }')"
+  n="$(printf '%s\n' "$payload" | grep -c '^host ' || true)"
+  printf '%s\n' "$payload" | dc exec -T --user root "$DC_SERVICE" \
+    bash -c '. /usr/local/lib/dck/entrypoint.sh && dck_hostssh_apply' >/dev/null 2>&1 \
+    || { warn "ssh: could not write your SSH aliases inside $DC_SERVICE (rendered by devcontainer-kit v0.2.2+?)"; return 0; }
+  note "ssh: $n git alias(es) from ~/.ssh/config work inside (public keys only; signing goes through your agent)"
 }
 
 # export_host_ssh_agent — the compose file mounts ${DCK_HOST_SSH_AUTH_SOCK} as the

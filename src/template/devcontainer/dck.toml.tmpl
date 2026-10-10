@@ -16,9 +16,9 @@ flavour = "{{flavour}}"
 
 # Share the host's SSH agent with the container (git over SSH; keys never enter it).
 ssh_agent = {{ssh_agent}}
-# Your host SSH config aliases inside (github.com-work, …): `dck up` copies the Host
-# blocks and PUBLIC keys only (never a key file or a mount), and loads missing keys
-# into your agent.
+# Your host SSH config aliases for git hosts inside (github.com-work, …): `dck up`
+# copies the Host blocks and PUBLIC keys only (never a key file or a mount), and
+# offers to ssh-add a missing key. Other hosts: ssh_host_extra = ["alias", …].
 ssh_host_config = {{ssh_host_config}}
 
 # Loopback-only host port for the container's sshd (Herdr, `dck ssh`); 0 = no sshd.

@@ -234,7 +234,8 @@ def cmd_sshconf(args):
             print(sshconf.ensure_include(opt(args, "--config")))
             return EXIT_OK
         if sub == "host-identities":
-            sys.stdout.write(sshconf.host_identities(opt(args, "--config"), opt(args, "--home")))
+            extra = (opt(args, "--extra") or "").split()
+            sys.stdout.write(sshconf.host_identities(opt(args, "--config"), opt(args, "--home"), extra))
             return EXIT_OK
         if sub == "peers":
             labels = {}

@@ -17,8 +17,13 @@ in is untrusted input on the host; the threat model is `docs/SECURITY.md`.
   calls python without `-I` (a repository's `json.py`/`shlex.py` would be imported).
   Files: `lib/launcher.sh`, `lib/common.sh` (`dckpy`), `lib/entrypoint.sh`.
 - **Always `critical`:** SSH agent forwarding or `ForwardAgent yes` towards an address
-  that is not `127.0.0.1`, or an `IdentityFile` other than the dedicated dck key.
+  that is not `127.0.0.1`, or an `IdentityFile` other than the dedicated dck key in the
+  **host-side** include dck writes (`~/.ssh/config.d/dck`).
   Files: `lib/launcher.sh` (`cmd_ssh`), `lib/herdr.sh`, `lib/sshconf.py` (`RE_HOST`).
+  The container-side `config.d/dck-host` (`ssh_host_config`) points `IdentityFile` at the
+  **public** halves of the developer's own git keys with no forwarding — expected; flag
+  instead any private key, `ProxyCommand`/`ProxyJump`, non-git host without
+  `ssh_host_extra`, or `ssh-add` without a terminal and consent.
 - **Accepted by the owner (v0.2.1), do not flag:** the mesh being on by default
   (`[herdr] mesh = true` with `ssh_agent = true`), which lets a dck container log in to
   the other dck containers through the dck key in the host agent. Agents talking across

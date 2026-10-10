@@ -365,23 +365,33 @@ test_setup_writes_git_identity() {
 
 test_up_pushes_host_ssh_aliases() {
   mk_repo || return 0
+  command -v ssh-agent >/dev/null 2>&1 || { pass "no ssh-agent here: host alias push untested"; return 0; }
   mkdir -p "$HOME/.ssh"
-  printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIWorkKeyFakeOnlyForTests000000000000000 me@host\n' > "$HOME/.ssh/work.pub"
-  printf 'PRIVATE-KEY-PLACEHOLDER\n' > "$HOME/.ssh/work"
-  printf 'Host github.com-work\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/work\n' > "$HOME/.ssh/config"
+  ssh-keygen -q -t ed25519 -N '' -C work -f "$HOME/.ssh/work"
+  ssh-keygen -q -t ed25519 -N '' -C other -f "$HOME/.ssh/other"
+  printf 'Host github.com-work\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/work\nHost github.com-other\n  HostName github.com\n  IdentityFile ~/.ssh/other\nHost prod\n  HostName prod.example.org\n  IdentityFile ~/.ssh/work\n' > "$HOME/.ssh/config"
+  # A short socket path: macOS limits Unix socket paths to 104 bytes.
+  local sock="/tmp/dck-lt-$$.sock"; rm -f "$sock"
+  eval "$(ssh-agent -a "$sock" -s)" >/dev/null
+  ssh-add -q "$HOME/.ssh/work" 2>/dev/null
   echo "proj-app-1" > "$DCK_FAKE_STATE/ps"
   : > "$DCK_FAKE_STATE/exec_stdin"
-  d up
+  DCK_NONINTERACTIVE=1 d up
   assert_rc 0 "up succeeds"
-  assert_contains "$(cat "$DCK_FAKE_STATE/exec_stdin")" "host github.com-work github.com 22 git work" "up pushes the host's SSH aliases"
-  assert_not_contains "$(cat "$DCK_FAKE_STATE/exec_stdin")" "file " "the private key path stays on the host"
-  assert_not_contains "$(cat "$DCK_FAKE_STATE/exec_stdin")" "PRIVATE-KEY-PLACEHOLDER" "no private key content is pushed"
-  assert_contains "$RUN_OUT" "alias(es) from ~/.ssh/config work inside" "and says so"
+  local s; s="$(cat "$DCK_FAKE_STATE/exec_stdin")"
+  assert_contains "$s" "host github.com-work github.com 22 git work" "up pushes a git alias whose key the agent holds"
+  assert_not_contains "$s" "github.com-other" "an alias whose key the agent lacks is not pushed (git keeps working with the agent's keys)"
+  assert_not_contains "$s" "prod" "a host that is not a git service is not pushed without ssh_host_extra"
+  assert_not_contains "$s" "file " "the private key path stays on the host"
+  assert_no_match "$s" 'PRIVATE KEY' "no private key content is pushed"
+  assert_contains "$RUN_OUT$RUN_ERR" "lacks other" "the missing key is named, with the ssh-add command"
+  assert_eq "$(ssh-add -l | grep -c other || true)" "0" "nothing is loaded into the agent without a terminal"
   sed -i.orig 's/^ssh_host_config = true/ssh_host_config = false/' "$REPO/.devcontainer/dck.toml" && rm -f "$REPO/.devcontainer/dck.toml.orig"
   : > "$DCK_FAKE_STATE/exec_stdin"
   d up
   assert_eq "$(cat "$DCK_FAKE_STATE/exec_stdin")" "" "ssh_host_config = false pushes nothing"
-  rm -f "$HOME/.ssh/config" "$HOME/.ssh/work" "$HOME/.ssh/work.pub" "$DCK_FAKE_STATE/ps"
+  ssh-agent -k >/dev/null 2>&1; unset SSH_AUTH_SOCK SSH_AGENT_PID; rm -f "$sock"
+  rm -f "$HOME/.ssh/config" "$DCK_FAKE_STATE/ps"
 }
 
 test_setup_copies_only_working_signing() {

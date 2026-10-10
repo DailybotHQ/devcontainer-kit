@@ -165,6 +165,16 @@
       "type": "boolean",
       "default": true,
       "description": "dck up makes the host's ~/.ssh/config aliases (public keys only) usable inside; needs ssh_agent"
+    },
+    "ssh_host_extra": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$"
+      },
+      "maxItems": 64,
+      "default": [],
+      "description": "aliases or host names beyond the git hosting services whose ~/.ssh/config blocks ssh_host_config also makes usable inside (opt-in)"
     }
   }
 }

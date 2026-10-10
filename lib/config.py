@@ -59,6 +59,7 @@ REPO_RULES = {
     "herdr.machine": ("bool", False, None),
     "ssh_agent": ("bool", True, None),
     "ssh_host_config": ("bool", True, None),
+    "ssh_host_extra": ("host_list", [], ("pattern", r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$")),
     "herdr.layout": ("str", "standard", ("enum", ("standard", "none"))),
     "herdr.mesh": ("bool", True, None),
     "herdr.label": ("label", "{repo}", ("placeholders", LABEL_PLACEHOLDERS)),
@@ -141,6 +142,14 @@ def _check(key, value, rule, problems):
                 bad("%s: port %s is already used by %s" % (name, port, seen[port]))
             else:
                 seen[port] = name
+    elif kind == "host_list":
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            return bad("expected an array of host names, got %s" % _type_name(value))
+        for item in value:
+            if not re.match(carg, item):
+                bad("invalid host %r (must match %s)" % (item, carg))
+        if len(value) > 64:
+            bad("at most 64 hosts")
     elif kind == "kind_list":
         if not isinstance(value, list):
             return bad("expected an array of strings, got %s" % _type_name(value))

@@ -303,6 +303,7 @@ test_hostssh_apply() {
     'kh github.com 22 ssh-ed25519 AAAAGitHubFake' \
     'kh example.net 2222 ssh-ed25519 AAAAIncludedFake' \
     'something else')"
+  mkdir -p "$DCK_HOME/.ssh/dck-host-keys" && : > "$DCK_HOME/.ssh/dck-host-keys/stale.pub"
   run_cmd bash -c '. "$1"; printf "%s\n" "$2" | dck_hostssh_apply' _ "$LIB" "$payload"
   assert_rc 0 "the host aliases apply"
   local frag="$DCK_HOME/.ssh/config.d/dck-host"
@@ -313,7 +314,7 @@ test_hostssh_apply() {
   assert_not_contains "$(cat "$frag")" "bad;alias" "an unsafe alias is refused"
   assert_not_contains "$(cat "$frag")" "Host local" "a loopback host is refused"
   assert_contains "$(cat "$DCK_HOME/.ssh/dck-host-keys/work.pub")" "ssh-ed25519 AAAAC3Nza" "the public key is written"
-  assert_eq "$(ls "$DCK_HOME/.ssh/dck-host-keys" | tr '\n' ' ')" "work.pub " "only valid key names are written"
+  assert_eq "$(ls "$DCK_HOME/.ssh/dck-host-keys" | tr '\n' ' ')" "work.pub " "only valid key names are written, stale ones removed"
   assert_contains "$(cat "$DCK_HOME/.ssh/known_hosts.dck-host")" "github.com ssh-ed25519 AAAAGitHubFake" "trusted host keys are pinned"
   assert_contains "$(cat "$DCK_HOME/.ssh/known_hosts.dck-host")" "[example.net]:2222 ssh-ed25519 AAAAIncludedFake" "with their port"
   assert_eq "$(head -1 "$DCK_HOME/.ssh/config")" "Include config.d/dck-host" "the aliases are included first"

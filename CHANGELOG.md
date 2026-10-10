@@ -11,15 +11,20 @@ and the interface number).
 
 ### Added
 
-- **Your SSH aliases inside the container** (`ssh_host_config`, default `true`). `dck up` and
-  `dck rebuild` copy the concrete `Host` blocks of the host's `~/.ssh/config` (and its
-  `Include` files) into the container — `HostName`, `Port`, `User`, the **public** half of
-  each `IdentityFile`, and the host keys you already trust — so `git` with a remote such as
-  `git@github.com-work:org/repo` uses the same key as on the host, through the host's agent.
-  Any key an alias needs that the agent lacks is loaded on the host with `ssh-add`
-  (`--apple-use-keychain` on macOS: the passphrase is asked at most once). No private key,
-  no `ProxyCommand`/`ProxyJump`, no `Match` block and no loopback host ever reaches the
-  container.
+- **Your git SSH aliases inside the container** (`ssh_host_config`, default `true`). `dck up`
+  and `dck rebuild` copy the concrete `Host` blocks of the host's `~/.ssh/config` (and its
+  `Include` files) for git hosting services into the container — `HostName`, `Port`,
+  `User`, the **public** half of each `IdentityFile`, and the host keys you already trust —
+  so `git` with a remote such as `git@github.com-work:org/repo` uses the same key inside as
+  on the host, through the host's agent. Only aliases whose key the agent holds are copied;
+  on a terminal dck offers to `ssh-add` a missing one (`--apple-use-keychain` on macOS).
+  Other hosts are opt-in (`ssh_host_extra`). No private key, no `ProxyCommand`/`ProxyJump`,
+  no `Match` block and no loopback host ever reaches the container.
+
+### Fixed
+
+- Files the entrypoint writes into `~/.ssh` (the mesh, the aliases) belong to the container
+  user again: `~/.ssh` is a symlink into the state volume and `chown -R` did not follow it.
 
 ## [0.2.1] — 2026-10-09
 

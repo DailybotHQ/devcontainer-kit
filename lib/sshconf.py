@@ -280,6 +280,12 @@ HOSTID_KEY = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
 KEY_TYPES = ("ssh-ed25519", "ssh-rsa", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384",
              "ecdsa-sha2-nistp521", "sk-ssh-ed25519@openssh.com",
              "sk-ecdsa-sha2-nistp256@openssh.com")
+# Git hosting services: their aliases are made usable inside by default. Any other
+# host needs an explicit opt-in (ssh_host_extra), so a container never learns of —
+# and the agent is never loaded with keys for — servers it has no business with.
+GIT_HOSTS = ("github.com", "ssh.github.com", "gitlab.com", "altssh.gitlab.com",
+             "bitbucket.org", "altssh.bitbucket.org", "ssh.dev.azure.com",
+             "vs-ssh.visualstudio.com", "codeberg.org", "git.sr.ht")
 _SKIP_KEYS = ("proxycommand", "proxyjump", "localcommand", "remotecommand",
               "permitlocalcommand", "knownhostscommand")
 
@@ -304,8 +310,12 @@ def _sshconf_lines(path, home, depth=0, seen=None):
         if not m:
             out.append(ln)
             continue
-        for pat in m.group(1).split():
-            pat = pat.strip('"')
+        import shlex
+        try:
+            pats = shlex.split(m.group(1))
+        except ValueError:
+            pats = []
+        for pat in pats:
             if pat.startswith("~/"):
                 pat = os.path.join(home, pat[2:])
             elif not os.path.isabs(pat):
@@ -346,7 +356,7 @@ def _known_for(hosts, known_hosts):
     return out[:400]
 
 
-def host_identities(config_path, home):
+def host_identities(config_path, home, extra=()):
     """Payload for dck_hostssh_apply (one line each):
          pub  <key> <type> <base64>
          host <alias> <hostname> <port> <user|-> <key>
@@ -370,7 +380,9 @@ def host_identities(config_path, home):
             cur = None
         elif cur is not None and key not in cur["opts"]:
             cur["opts"][key] = val
-    pubs, hosts, files = {}, [], {}
+    import hashlib
+    extra = set(extra or ())
+    pubs, hosts, files, names = {}, [], {}, {}
     for b in blocks:
         o = b["opts"]
         if any(k in o for k in _SKIP_KEYS) or "identityfile" not in o:
@@ -389,9 +401,17 @@ def host_identities(config_path, home):
             continue
         if len(parts) < 2 or parts[0] not in KEY_TYPES or not re.match(r"^[A-Za-z0-9+/=]+$", parts[1]):
             continue
-        name = os.path.basename(pub)[:-4]
-        if not re.match(HOSTID_KEY, name):
+        priv = ident[:-4] if ident.endswith(".pub") else ident
+        if os.path.realpath(pub) == os.path.realpath(priv):
             continue
+        name = names.get(priv)
+        if name is None:
+            base = re.sub(r"[^A-Za-z0-9._-]", "_", os.path.basename(priv))[:48] or "key"
+            if not re.match(r"^[A-Za-z0-9]", base):
+                base = "k" + base
+            name = base if base not in names.values() else "%s-%s" % (
+                base, hashlib.sha256(priv.encode()).hexdigest()[:8])
+            names[priv] = name
         port = o.get("port", "22")
         user = o.get("user", "-")
         if not re.match(r"^[0-9]{1,5}$", port) or not 1 <= int(port) <= 65535:
@@ -404,8 +424,10 @@ def host_identities(config_path, home):
             hostname = o.get("hostname", alias)
             if "%" in hostname or not re.match(HOSTID_NAME, hostname) or _loopback(hostname):
                 continue
+            if hostname.lower() not in GIT_HOSTS and alias not in extra and hostname not in extra:
+                continue
             pubs[name] = (parts[0], parts[1])
-            files[name] = ident[:-4] if ident.endswith(".pub") else ident
+            files[name] = priv
             hosts.append("host %s %s %s %s %s" % (alias, hostname, port, user, name))
     out = ["pub %s %s %s" % (n, t, k) for n, (t, k) in sorted(pubs.items())]
     out += hosts[:200]

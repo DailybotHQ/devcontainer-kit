@@ -604,6 +604,8 @@ dck_hostssh_apply() {
   known="$ssh_dir/known_hosts.dck-host"
   mkdir -p "$ssh_dir/config.d" "$keydir"
   ktmp="$(mktemp "$known.XXXXXX")"
+  # A fresh set each time: keys the host no longer sends do not linger.
+  find "$keydir" -maxdepth 1 -type f -name '*.pub' -delete 2>/dev/null || true
   while read -r kind a b c d e; do
     case "$kind" in
       pub)
