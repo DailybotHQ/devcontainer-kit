@@ -21,8 +21,13 @@ services:
 {% if ssh_agent_on %}
       # The host's SSH agent (git over SSH, signing) — never a key file. Docker
       # Desktop exposes it at this path; on a Linux host set DCK_HOST_SSH_AUTH_SOCK
-      # (dck up does it from $SSH_AUTH_SOCK).
-      - ${DCK_HOST_SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}:/run/dck/ssh-agent.sock
+      # (dck up and dck rebuild do it from $SSH_AUTH_SOCK). A missing host path
+      # fails the start instead of being created.
+      - type: bind
+        source: ${DCK_HOST_SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}
+        target: /run/dck/ssh-agent.sock
+        bind:
+          create_host_path: false
 {% endif %}
 {% if has_ports %}
     ports:
@@ -43,9 +48,9 @@ services:
 {% if layers_agents_on %}
       # Agents layer: one named volume per CLI home (persisted by the entrypoint);
       # ak profiles live on the agentkit volume. Every agent launched through ak
-      # runs in autonomy (this container is the sandbox). To have agents ask
-      # before acting instead, uncomment the opt-out:
-      # AGENTKIT_PERMISSIONS=ask   # opt-out: agents ask before acting
+      # runs in autonomy (this container is the sandbox). Opt-out — agents ask
+      # before acting: set AGENTKIT_PERMISSIONS=ask in ./{{service}}/.env (this
+      # block is reconciled by `dck init`; the .env is yours).
       DCK_AGENTS: "{{agents_clis_space}}"
       AGENTKIT_PROFILES_DIR: /home/{{user}}/.dck/volumes/agentkit/profiles
 {% endif %}

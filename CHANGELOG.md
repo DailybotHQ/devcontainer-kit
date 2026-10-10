@@ -7,6 +7,46 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-10-09
+
+Fixes from the v0.2.0 local review. Upgrade with `dck init` (re-renders the compose agent
+socket block and the vendored scripts) then `bash dev.sh rebuild`.
+
+### Security
+
+- **The mesh never forwards the agent.** Peers inside a container get `ForwardAgent no`;
+  each container already reaches the host agent through its own socket.
+- **The trust path between containers is documented and switchable.** `docs/SECURITY.md`
+  now lists the agent socket (container → host) and the mesh (container → other dck
+  containers) as trust boundaries. New `[herdr] mesh` (default `true`) turns the mesh off;
+  the dck key is loaded into the agent only by the mesh, never into the macOS Keychain.
+- **The agent socket bind never creates a host path** (`create_host_path: false`). dck
+  always sets `DCK_HOST_SSH_AUTH_SOCK` itself, by Docker provider: Docker Desktop and
+  OrbStack share the host agent, a native Linux engine mounts `$SSH_AUTH_SOCK`, other
+  providers (colima, podman) get `/dev/null` with a note. A repository compose `.env` that
+  sets it, or the bind with `ssh_agent = false`, needs `--trust`.
+- On a Linux host the entrypoint no longer changes the host agent socket's group and mode.
+- herdr-peers: every installed file must be listed in the release `SHA256SUMS`; symlinks
+  are refused.
+
+### Fixed
+
+- `dck herdr mesh` pushes the peers' host keys: they are read under the `HostKeyAlias`
+  dck pins with (plain or hashed), not only as `[127.0.0.1]:<port>`.
+- `dck rebuild` exports the host agent socket on Linux like `dck up`.
+- Commit signing is copied into the container only when it can work there (SSH signing; a
+  `.pub` path becomes a `key::` literal), and the entrypoint skips signing settings that
+  cannot work inside (a `.env` written by v0.2.0). openpgp signing no longer breaks every
+  commit.
+- The skill directories are created as the container user; v0.2.0's root-owned
+  `~/.agents` / `~/.claude` are given back at the next start.
+- The agents-layer opt-out lives in the service `.env` (the commented compose line was
+  invalid YAML when uncommented).
+- The mesh is skipped on a Linux host, where peers' loopback ports are unreachable from a
+  container, instead of reporting them reachable.
+- Host users with a dot (`jane.doe`) are accepted on both sides of the mesh.
+- `host_machine` is documented as what it does since v0.2.0.
+
 ## [0.2.0] — 2026-10-09
 
 **Interface 2.** A repository's container is self-contained: no shared base image.

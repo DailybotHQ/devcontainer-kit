@@ -362,3 +362,28 @@ test_setup_writes_git_identity() {
   assert_contains "$(cat "$REPO/docker/local/app/.env")" "DCK_GIT_EMAIL=kept@example.invalid" "an existing key is never overwritten"
   git config --global --unset user.name; git config --global --unset user.email
 }
+
+test_setup_copies_only_working_signing() {
+  mk_repo || return 0
+  local env="$REPO/docker/local/app/.env"
+  # openpgp signing: no gpg key exists inside, so nothing is copied.
+  git config --global user.signingkey ABCDEF0123456789
+  git config --global commit.gpgsign true
+  d setup
+  assert_rc 0 "setup succeeds with openpgp signing on the host"
+  assert_no_match "$(cat "$env")" '^DCK_GIT_SIGNINGKEY=' "an openpgp key id is not copied"
+  assert_no_match "$(cat "$env")" '^DCK_GIT_COMMIT_GPGSIGN=' "gpgsign is not turned on inside"
+  assert_contains "$RUN_OUT$RUN_ERR" "commit signing is not copied" "setup says why"
+  # ssh signing with a public-key file: sent as a key:: literal (no host path inside).
+  rm -f "$env"
+  mkdir -p "$HOME/.ssh"
+  printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAISigningKeyFakeOnlyForTests000000000000 me@host\n' > "$HOME/.ssh/signing.pub"
+  git config --global gpg.format ssh
+  git config --global user.signingkey "~/.ssh/signing.pub"
+  d setup
+  assert_contains "$(cat "$env")" "DCK_GIT_SIGNINGKEY=key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAISigningKeyFakeOnlyForTests000000000000 me@host" "an ssh .pub path becomes a key:: literal"
+  assert_contains "$(cat "$env")" "DCK_GIT_GPG_FORMAT=ssh" "gpg.format ssh is copied"
+  assert_contains "$(cat "$env")" "DCK_GIT_COMMIT_GPGSIGN=true" "gpgsign is copied when it can work"
+  assert_not_contains "$(cat "$env")" "$HOME" "no host path reaches the container"
+  git config --global --unset user.signingkey; git config --global --unset commit.gpgsign; git config --global --unset gpg.format
+}

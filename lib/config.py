@@ -59,6 +59,7 @@ REPO_RULES = {
     "herdr.machine": ("bool", False, None),
     "ssh_agent": ("bool", True, None),
     "herdr.layout": ("str", "standard", ("enum", ("standard", "none"))),
+    "herdr.mesh": ("bool", True, None),
     "herdr.label": ("label", "{repo}", ("placeholders", LABEL_PLACEHOLDERS)),
 }
 PROFILE_RULES = {

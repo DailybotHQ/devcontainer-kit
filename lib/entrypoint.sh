@@ -462,9 +462,18 @@ HOMES
 dck_git_identity() {
   _dck_env
   local pairs="user.name=DCK_GIT_NAME user.email=DCK_GIT_EMAIL user.signingkey=DCK_GIT_SIGNINGKEY gpg.format=DCK_GIT_GPG_FORMAT commit.gpgsign=DCK_GIT_COMMIT_GPGSIGN"
-  local pair key var value set=0
+  local pair key var value set=0 sign_ok=0
+  # Only SSH signing with a key:: literal works inside (no gpg key, no host
+  # path); anything else — e.g. a .env written by v0.2.0 — is skipped.
+  if [ "${DCK_GIT_GPG_FORMAT:-}" = "ssh" ]; then
+    case "${DCK_GIT_SIGNINGKEY:-}" in key::*) sign_ok=1 ;; esac
+  fi
+  if [ "$sign_ok" -eq 0 ] && [ -n "${DCK_GIT_SIGNINGKEY:-}${DCK_GIT_COMMIT_GPGSIGN:-}" ]; then
+    dck_log "git identity: signing settings skipped (only gpg.format=ssh with a key:: signing key works here)"
+  fi
   for pair in $pairs; do
     key="${pair%%=*}"; var="${pair#*=}"
+    case "$key" in user.signingkey|gpg.format|commit.gpgsign) [ "$sign_ok" -eq 1 ] || continue ;; esac
     value="${!var:-}"
     [ -n "$value" ] || continue
     case "$value" in *"
@@ -486,13 +495,19 @@ dck_git_identity() {
 # directory the user put there.
 dck_skills_link() {
   _dck_env
-  local src="${DCK_SKILLS_SRC:-/usr/local/share/dck/skills}" dir skill target
+  local src="${DCK_SKILLS_SRC:-/usr/local/share/dck/skills}" dir skill target top
   [ -d "$src" ] || return 0
+  # v0.2.0 created these parents as root; give them back to the user.
+  for top in "$DCK_HOME/.agents" "$DCK_HOME/.claude"; do
+    if [ -d "$top" ] && [ ! -L "$top" ] && [ "$(stat -c %u "$top" 2>/dev/null)" = "0" ] && [ "$DCK_USER" != "root" ]; then
+      _dck_chown "$DCK_USER:$(_dck_group)" "$top"
+    fi
+  done
   for dir in "$DCK_HOME/.agents/skills" "$DCK_HOME/.claude/skills" "$DCK_HOME/.codex/skills" \
              "$DCK_HOME/.cursor/skills" "$DCK_HOME/.config/opencode/skill"; do
     case "$dir" in
-      "$DCK_HOME/.agents/skills"|"$DCK_HOME/.claude/skills") mkdir -p "$dir" ;;
-      *) [ -d "$(dirname "$dir")" ] || continue; mkdir -p "$dir" ;;
+      "$DCK_HOME/.agents/skills"|"$DCK_HOME/.claude/skills") _dck_as_user mkdir -p "$dir" || continue ;;
+      *) [ -d "$(dirname "$dir")" ] || continue; _dck_as_user mkdir -p "$dir" || continue ;;
     esac
     for skill in "$src"/*; do
       [ -d "$skill" ] || continue
@@ -506,14 +521,14 @@ dck_skills_link() {
 
 # dck_mesh_apply — read the peer list `dck` pushes from the host (stdin) and
 # make every peer reachable from inside: an ssh config fragment
-# (~/.ssh/config.d/dck-peers, HostName host.docker.internal, ForwardAgent yes,
+# (~/.ssh/config.d/dck-peers, HostName host.docker.internal, ForwardAgent no,
 # strict host keys), the pinned known_hosts for them, and a Herdr machine per
 # peer. Input lines (anything else is refused):
 #   peer <alias> <port> <user> <label...>
 #   hostkey <port> <keytype> <base64-key>
 # Runs as root (dck exec) or as the user; writes as the user. Authentication
-# uses the host's agent (forwarded, or the Docker Desktop socket): no private
-# key is read, written or required here.
+# uses the host's agent socket mounted in this container: no private key is
+# read, written or required here, and the agent is never forwarded onward.
 dck_mesh_apply() {
   _dck_env
   local ssh_dir="$DCK_HOME/.ssh" frag known cfg tmp_frag tmp_known kind a b c d rest n=0
@@ -530,8 +545,8 @@ dck_mesh_apply() {
         case "$a" in ''|*[![:alnum:]._-]*) dck_log "mesh: refusing alias"; continue ;; esac
         case "$b" in ''|*[!0-9]*) dck_log "mesh: refusing port for $a"; continue ;; esac
         [ "$b" -ge 1 ] && [ "$b" -le 65535 ] || { dck_log "mesh: refusing port for $a"; continue; }
-        case "$c" in ''|*[![:lower:][:digit:]_-]*) dck_log "mesh: refusing user for $a"; continue ;; esac
-        printf 'Host %s\n  HostName host.docker.internal\n  Port %s\n  User %s\n  ForwardAgent yes\n  IdentitiesOnly no\n  UserKnownHostsFile %s\n  StrictHostKeyChecking yes\n\n' \
+        case "$c" in ''|[![:lower:]_]*|*[![:lower:][:digit:]_.-]*) dck_log "mesh: refusing user for $a"; continue ;; esac
+        printf 'Host %s\n  HostName host.docker.internal\n  Port %s\n  User %s\n  ForwardAgent no\n  IdentitiesOnly no\n  UserKnownHostsFile %s\n  StrictHostKeyChecking yes\n\n' \
           "$a" "$b" "$c" "$known" >> "$tmp_frag"
         labels="$labels$a $(printf '%s %s' "$d" "$rest" | tr -cd '[:alnum:] ._:@()/-' | sed 's/ *$//')
 "
@@ -592,6 +607,9 @@ dck_ssh_agent_access() {
   local sock="${DCK_SSH_AGENT_SOCK:-/run/dck/ssh-agent.sock}"
   _dck_is_root || return 0
   [ -S "$sock" ] || return 0
+  # A Linux host's own agent socket arrives with the host's owner: leave the
+  # host file's metadata alone (OpenSSH's agent checks the peer uid anyway).
+  [ "$(stat -c %u "$sock" 2>/dev/null)" = "0" ] || return 0
   chgrp "$(_dck_group)" "$sock" 2>/dev/null && chmod 0660 "$sock" 2>/dev/null \
     || dck_log "ssh agent: could not give $DCK_USER access to the host agent socket"
 }

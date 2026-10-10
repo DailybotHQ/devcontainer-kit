@@ -275,10 +275,19 @@ test_git_identity() {
   assert_rc 0 "the git identity is written"
   assert_eq "$(HOME="$DCK_HOME" git config --global user.name)" "Dev Example" "user.name comes from DCK_GIT_NAME"
   assert_eq "$(HOME="$DCK_HOME" git config --global user.email)" "$fake" "user.email comes from DCK_GIT_EMAIL"
-  assert_eq "$(HOME="$DCK_HOME" git config --global gpg.format)" "ssh" "signing settings are written when set"
+  assert_eq "$(HOME="$DCK_HOME" git config --global gpg.format || true)" "" "gpg.format alone (no key:: signing key) is not written"
   assert_eq "$(HOME="$DCK_HOME" git config --global user.signingkey || true)" "" "an unset variable leaves its key alone"
   assert_not_contains "$RUN_OUT$RUN_ERR" "$fake" "values are never printed"
-  assert_contains "$RUN_ERR" "3 setting(s) written" "only a count is logged"
+  assert_contains "$RUN_ERR" "2 setting(s) written" "only a count is logged"
+  # SSH signing with a key:: literal is written; an openpgp key id (a v0.2.0 .env) is not.
+  run_cmd env DCK_GIT_GPG_FORMAT=ssh DCK_GIT_SIGNINGKEY="key::ssh-ed25519 AAAAFake" DCK_GIT_COMMIT_GPGSIGN=true \
+    bash -c '. "$1"; dck_git_identity' _ "$LIB"
+  assert_eq "$(HOME="$DCK_HOME" git config --global gpg.format)" "ssh" "ssh signing settings are written"
+  assert_eq "$(HOME="$DCK_HOME" git config --global commit.gpgsign)" "true" "gpgsign is written with a key:: key"
+  HOME="$DCK_HOME" git config --global --unset gpg.format; HOME="$DCK_HOME" git config --global --unset commit.gpgsign; HOME="$DCK_HOME" git config --global --unset user.signingkey
+  run_cmd env DCK_GIT_SIGNINGKEY=ABCDEF0123456789 DCK_GIT_COMMIT_GPGSIGN=true bash -c '. "$1"; dck_git_identity' _ "$LIB"
+  assert_eq "$(HOME="$DCK_HOME" git config --global commit.gpgsign || true)" "" "openpgp signing from an old .env is skipped"
+  assert_contains "$RUN_ERR" "signing settings skipped" "and the log says why"
 }
 
 test_mesh_apply() {
@@ -298,7 +307,8 @@ test_mesh_apply() {
   local frag="$DCK_HOME/.ssh/config.d/dck-peers" known="$DCK_HOME/.ssh/known_hosts.dck-peers"
   assert_contains "$(cat "$frag")" "Host dck-other" "a valid peer gets an ssh host"
   assert_contains "$(cat "$frag")" "HostName host.docker.internal" "peers are reached through the host gateway"
-  assert_contains "$(cat "$frag")" "ForwardAgent yes" "the agent is forwarded (no key inside)"
+  assert_contains "$(cat "$frag")" "ForwardAgent no" "the agent is never forwarded to a peer (no key inside)"
+  assert_not_contains "$(cat "$frag")" "ForwardAgent yes" "no peer gets agent forwarding"
   assert_contains "$(cat "$frag")" "StrictHostKeyChecking yes" "host keys are strict"
   assert_contains "$(cat "$frag")" "Host dck-host" "the host is a peer when pushed"
   assert_not_contains "$(cat "$frag")" "bad" "invalid aliases, ports and users are refused"

@@ -341,7 +341,8 @@ test_ssh_agent_and_known_hosts() {
   r="$(new_repo agent)"
   init_repo "$r" --no-herdr --yes
   c="$(cat "$r/docker/local/docker-compose.yaml")"
-  assert_contains "$c" '- ${DCK_HOST_SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}:/run/dck/ssh-agent.sock' "the host SSH agent socket is mounted (no key file)"
+  assert_contains "$c" 'source: ${DCK_HOST_SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}' "the host SSH agent socket is mounted (no key file)"
+  assert_contains "$c" 'create_host_path: false' "a missing agent socket is never created on the host"
   assert_contains "$c" "SSH_AUTH_SOCK: /run/dck/ssh-agent.sock" "exec sessions see the agent"
   assert_contains "$(cat "$r/.devcontainer/dck.toml")" "ssh_agent = true" "dck.toml records the agent sharing"
   assert_contains "$(cat "$r/docker/local/app/dck/github_known_hosts")" "github.com ssh-ed25519 " "GitHub's host keys are vendored"

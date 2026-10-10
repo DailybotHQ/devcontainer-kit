@@ -78,8 +78,9 @@ RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}
   launches every CLI in autonomy; the container is the sandbox (Codex's
   bubblewrap sandbox cannot create user namespaces inside a container, for
   example). The layer itself spells no autonomy flag. To have agents ask,
-  set `AGENTKIT_PERMISSIONS=ask` in `docker/local/<service>/.env` or
-  uncomment it in compose; `ak <kind> --ask` opts out for one launch.
+  set `AGENTKIT_PERMISSIONS=ask` in `docker/local/<service>/.env` (the
+  compose block is reconciled by `dck init`; the `.env` is yours);
+  `ak <kind> --ask` opts out for one launch.
 - **The wrapper names.** The layer turns on ak's `classic` preset (`claudex`,
   `codexx`, `cursorx`, `opencodex`, `pix`, `clinex`, `grokx`) and `providers`
   preset (`claude-glm`, `codex-glm`, `codex-azure`, `codex-xai`, …), loaded by

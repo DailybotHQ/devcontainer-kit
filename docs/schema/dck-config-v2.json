@@ -143,6 +143,11 @@
           ],
           "default": "standard",
           "description": "the Herdr sidebar dck up creates inside the container"
+        },
+        "mesh": {
+          "type": "boolean",
+          "default": true,
+          "description": "dck up runs dck herdr mesh (Docker Desktop only): agents inside reach the other dck containers and, with host_machine, the host"
         }
       }
     },

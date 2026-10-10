@@ -156,16 +156,53 @@ def has_alias(path, alias):
         return False
 
 
+# A user name dck accepts on both sides of the mesh (lib/entrypoint.sh
+# dck_mesh_apply uses the same class).
+USER_RE = r"[a-z_][a-z0-9_.-]*"
+
+
+def _hashed_match(field, name):
+    """True when `field` is an OpenSSH hashed host (|1|salt|hash) of `name`."""
+    import base64
+    import hashlib
+    import hmac
+    try:
+        _, kind, salt, digest = field.split("|")
+        if kind != "1":
+            return False
+        mac = hmac.new(base64.b64decode(salt), name.encode(), hashlib.sha1).digest()
+        return hmac.compare_digest(mac, base64.b64decode(digest))
+    except (ValueError, TypeError):
+        return False
+
+
+def _known_port(hosts, by_alias, ports):
+    """The peer port a known_hosts host field belongs to, or None."""
+    for host in hosts.split(","):
+        if host.startswith("|1|"):
+            for alias, port in by_alias.items():
+                if _hashed_match(host, alias):
+                    return port
+            continue
+        if host in by_alias:
+            return by_alias[host]
+        m = re.match(r"^\[127\.0\.0\.1\]:(\d+)$", host)
+        if m and m.group(1) in ports:
+            return m.group(1)
+    return None
+
+
 def peers(path, known_hosts, exclude="", labels=None, host_user="", host_key_file=""):
     """The mesh payload `dck_mesh_apply` reads inside a container: one
     `peer <alias> <port> <user> <label>` line per managed block of the include
     except `exclude`, one `hostkey <port> <type> <key>` line per pinned host key
-    of those ports (from dck's known_hosts, `[127.0.0.1]:<port>` entries), and,
+    of those peers (from dck's known_hosts: entries for the alias — dck pins
+    with HostKeyAlias — plain or hashed, or legacy `[127.0.0.1]:<port>`), and,
     when host_user is set, the host itself (`dck-host`, port 22) with its own
     host key. Public data only: aliases, ports, users, labels, public keys."""
     labels = labels or {}
     lines = _read_owned(path) if os.path.exists(path) else []
-    out, ports = [], set()
+    out, ports, by_alias = [], set(), {}
     for alias, start, end in _blocks(lines):
         if alias == exclude:
             continue
@@ -174,20 +211,29 @@ def peers(path, known_hosts, exclude="", labels=None, host_user="", host_key_fil
             m = re.match(r"^\s+Port\s+(\d+)\s*$", ln)
             if m:
                 port = m.group(1)
-            m = re.match(r"^\s+User\s+([a-z_][a-z0-9_-]*)\s*$", ln)
+            m = re.match(r"^\s+User\s+(%s)\s*$" % USER_RE, ln)
             if m:
                 user = m.group(1)
         if port and user:
             out.append("peer %s %s %s %s" % (alias, port, user, labels.get(alias, alias)))
             ports.add(port)
+            by_alias[alias] = port
     if known_hosts and os.path.exists(known_hosts):
+        seen = set()
         with open(known_hosts) as fh:
             for ln in fh:
-                m = re.match(r"^\[127\.0\.0\.1\]:(\d+)\s+(\S+)\s+([A-Za-z0-9+/=]+)\s*$", ln.strip())
-                if m and m.group(1) in ports:
-                    out.append("hostkey %s %s %s" % m.groups())
+                parts = ln.split()
+                if len(parts) < 3 or parts[0].startswith(("#", "@")):
+                    continue
+                port = _known_port(parts[0], by_alias, ports)
+                if not port or not re.match(r"^[A-Za-z0-9+/=]+$", parts[2]):
+                    continue
+                entry = "hostkey %s %s %s" % (port, parts[1], parts[2])
+                if entry not in seen:
+                    seen.add(entry)
+                    out.append(entry)
     if host_user:
-        if not re.match(r"^[a-z_][a-z0-9_.-]*$", host_user):
+        if not re.match(r"^%s$" % USER_RE, host_user):
             raise SshConfError("invalid host user %r" % host_user, 2)
         out.append("peer dck-host 22 %s %s" % (host_user, labels.get("dck-host", "host")))
         if host_key_file and os.path.exists(host_key_file):

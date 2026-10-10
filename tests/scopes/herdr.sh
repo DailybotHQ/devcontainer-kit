@@ -220,9 +220,10 @@ test_mesh_pushes_the_peers() {
   mk_repo proj 22040
   d herdr add
   mkdir -p "$HOME/.config/dck/ssh"
-  printf '[127.0.0.1]:22041 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPeerHostKeyFakeOnlyForTests000000000000\n' >> "$HOME/.config/dck/ssh/known_hosts"
+  # What ssh really writes for a dck block (HostKeyAlias <alias>).
+  printf 'dck-other ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPeerHostKeyFakeOnlyForTests000000000000\n' >> "$HOME/.config/dck/ssh/known_hosts"
   : > "$DCK_FAKE_STATE/exec_stdin"
-  d herdr mesh
+  DCK_HOST_OS=Darwin d herdr mesh
   assert_rc 0 "herdr mesh succeeds"
   local s; s="$(cat "$DCK_FAKE_STATE/exec_stdin")"
   assert_contains "$s" "peer dck-other 22041 dev other" "the other container is a peer, with its Herdr label"
@@ -231,6 +232,34 @@ test_mesh_pushes_the_peers() {
   assert_no_match "$s" 'PRIVATE KEY|id_ed25519' "no private key material or key path is pushed"
   assert_contains "$(fake_calls docker)" "exec -T --user root app bash -c . /usr/local/lib/dck/entrypoint.sh && dck_mesh_apply" "the payload is applied inside the container"
   assert_contains "$RUN_OUT" "mesh: 1 peer(s) reachable from inside app" "the peer count is reported"
+  assert_not_contains "$(cat "$DCK_REPO/lib/herdr.sh")" "--apple-use-keychain" "the dck key never goes into the macOS Keychain"
+  : > "$DCK_FAKE_STATE/exec_stdin"
+  DCK_HOST_OS=Linux d herdr mesh
+  assert_rc 0 "on a Linux host the mesh is skipped, not an error"
+  assert_contains "$RUN_OUT" "mesh: skipped on a Linux host" "and says why"
+  assert_eq "$(cat "$DCK_FAKE_STATE/exec_stdin")" "" "nothing is pushed on Linux"
+}
+
+test_mesh_host_keys_by_alias() {
+  local d="$SANDBOX/kh"; mkdir -p "$d"
+  printf '# dck-provenance: v1\n# >>> dck:dck-a >>>\nHost dck-a\n  Port 22051\n  User dev\n# <<< dck:dck-a <<<\n# >>> dck:dck-b >>>\nHost dck-b\n  Port 22052\n  User jane.doe\n# <<< dck:dck-b <<<\n# >>> dck:dck-c >>>\nHost dck-c\n  Port 22053\n  User dev\n# <<< dck:dck-c <<<\n' > "$d/dck"
+  # dck-a plain, dck-b hashed (HashKnownHosts yes), dck-c legacy [127.0.0.1]:port, plus noise.
+  python3 -I -c '
+import base64, hashlib, hmac, sys
+salt = b"0123456789abcdefghij"
+h = base64.b64encode(hmac.new(salt, b"dck-b", hashlib.sha1).digest()).decode()
+lines = ["dck-a ssh-ed25519 AAAAKeyA", "|1|%s|%s ssh-ed25519 AAAAKeyB" % (base64.b64encode(salt).decode(), h),
+         "[127.0.0.1]:22053 ssh-ed25519 AAAAKeyC", "@revoked dck-a ssh-ed25519 AAAARevoked", "unrelated ssh-ed25519 AAAAOther"]
+sys.stdout.write("".join(l + chr(10) for l in lines))
+' > "$d/known_hosts"
+  run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" sshconf peers --file "$d/dck" --known-hosts "$d/known_hosts" --exclude ""
+  assert_rc 0 "peers reads the include and known_hosts"
+  assert_contains "$RUN_OUT" "hostkey 22051 ssh-ed25519 AAAAKeyA" "a key pinned under the alias is found"
+  assert_contains "$RUN_OUT" "hostkey 22052 ssh-ed25519 AAAAKeyB" "a hashed entry is matched to its alias"
+  assert_contains "$RUN_OUT" "hostkey 22053 ssh-ed25519 AAAAKeyC" "a legacy [127.0.0.1]:port entry still counts"
+  assert_contains "$RUN_OUT" "peer dck-b 22052 jane.doe" "a host-style user with a dot is accepted"
+  assert_not_contains "$RUN_OUT" "AAAARevoked" "marker lines are ignored"
+  assert_not_contains "$RUN_OUT" "AAAAOther" "keys of other hosts are not pushed"
 }
 
 test_agents_and_ask() {
@@ -320,4 +349,14 @@ test_layout_runs_inside_the_container() {
   : > "$DCK_FAKE_LOG"
   d up
   assert_not_contains "$(fake_calls docker)" "dck-herdr-layout" "layout = none skips it"
+}
+
+test_up_mesh_off() {
+  mk_repo
+  sed -i.orig 's/^mesh = true$/mesh = false/' "$REPO/.devcontainer/dck.toml" && rm -f "$REPO/.devcontainer/dck.toml.orig"
+  assert_contains "$(cat "$REPO/.devcontainer/dck.toml")" "mesh = false" "dck.toml carries the mesh switch"
+  : > "$DCK_FAKE_STATE/exec_stdin"
+  DCK_HOST_OS=Darwin d up
+  assert_rc 0 "up succeeds with the mesh off"
+  assert_not_contains "$(fake_calls docker)" "dck_mesh_apply" "mesh = false skips the mesh on up"
 }

@@ -41,7 +41,7 @@ Requires bash 3.2+ and python3 ≥ 3.11 on a Linux or macOS host; Docker (Deskto
 colima or Engine) with Compose v2 for the container verbs.
 
 ```bash
-git clone --branch v0.2.0 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.2.1 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh          # --no-rc for scripted installs, --uninstall to remove
 dck --version
 ```
