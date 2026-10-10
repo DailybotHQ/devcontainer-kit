@@ -59,7 +59,6 @@ REPO_RULES = {
     "herdr.machine": ("bool", False, None),
     "ssh_agent": ("bool", True, None),
     "ssh_host_config": ("bool", True, None),
-    "ssh_host_extra": ("host_list", [], ("pattern", r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$")),
     "herdr.layout": ("str", "standard", ("enum", ("standard", "none"))),
     "herdr.mesh": ("bool", True, None),
     "herdr.label": ("label", "{repo}", ("placeholders", LABEL_PLACEHOLDERS)),
@@ -73,6 +72,10 @@ PROFILE_RULES = {
     "host_machine": ("bool", False, None),
     "labels.machine": ("label", "{repo}", ("placeholders", LABEL_PLACEHOLDERS)),
     "ssh.identity": ("path", "~/.config/dck/ssh/id_ed25519", None),
+    # Hosts beyond the git services whose ~/.ssh/config aliases dck copies into
+    # containers. A host preference, never a repository's: a cloned repository
+    # must not be able to ask for your server aliases.
+    "ssh.host_extra": ("host_list", [], ("pattern", r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$")),
 }
 TABLES = {"repo": ("layers", "agents", "herdr"), "profile": ("labels", "ssh")}
 
@@ -316,6 +319,7 @@ def effective(repo, default_tag, profile_name=None, env=None):
         "alias": prof["alias_prefix"] + rslug,
         "host_machine": prof["host_machine"],
         "ssh_identity": expand_home(prof["ssh.identity"], env),
+        "ssh_host_extra": list(prof["ssh.host_extra"]),
     })
     merged["herdr.label"] = expand_label(label_fmt, {
         "repo": repo_name, "service": cfg["service"], "user": cfg["user"],

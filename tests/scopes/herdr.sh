@@ -298,7 +298,7 @@ sys.stdout.write("".join(l + chr(10) for l in lines))
   assert_not_contains "$RUN_OUT" "nokey" "a host whose key has no .pub is skipped"
   assert_not_contains "$RUN_OUT" "dck-repo" "dck-managed aliases are skipped"
   assert_not_contains "$(printf '%s\n' "$RUN_OUT" | grep -v '^file ')" "$h/.ssh/work" "no private key path outside the host-only file lines"
-  assert_contains "$RUN_OUT" "file work $h/.ssh/work" "the host side learns which private key each alias needs"
+  assert_contains "$RUN_OUT" "file work $h/.ssh/work.pub $h/.ssh/work" "the host side learns which key each alias needs"
   # Two keys with the same file name in different directories stay distinct.
   mkdir -p "$h/.ssh/team"
   printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITeamKeyFakeOnlyForTests000000000000000 t@host\n' > "$h/.ssh/team/work.pub"

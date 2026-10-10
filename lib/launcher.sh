@@ -377,32 +377,40 @@ host_ssh_identities() {
     note "ssh: no ssh-agent on this host; your SSH aliases are not set up inside"
     return 0
   fi
-  local payload name path fp loaded flag="" ans keep="" n
+  local payload name pub priv fp loaded flag="" ans keep="" n interactive=0
   payload="$(dckpy sshconf host-identities --config "$HOME/.ssh/config" --home "$HOME" \
       --extra "${DCK_SSH_HOST_EXTRA:-}")" || {
     warn "ssh: could not read ~/.ssh/config; your SSH aliases are not set up inside"; return 0; }
   [ -n "$payload" ] || return 0
   [ "$(uname -s)" = "Darwin" ] && flag="--apple-use-keychain"
+  # Decided once, before the loop (whose stdin is the key list, not the terminal).
+  if [ -t 0 ] && [ "${DCK_NONINTERACTIVE:-0}" != "1" ] && { : </dev/tty; } 2>/dev/null; then interactive=1; fi
   loaded="$(ssh-add -l 2>/dev/null || true)"
-  while read -r _ name path; do
-    [ -n "$path" ] && [ -f "$path" ] || continue
-    fp="$(ssh-keygen -lf "$path.pub" 2>/dev/null | awk '{print $2}')"
+  while read -r _ name pub priv <&3; do
+    [ -n "$pub" ] && [ -f "$pub" ] || continue
+    fp="$(ssh-keygen -lf "$pub" 2>/dev/null | awk '{print $2}')"
     [ -n "$fp" ] || continue
+    # The agent may hold a key whose private file is not on disk (1Password,
+    # Secretive, hardware keys): the public half decides.
     case "$loaded" in *"$fp"*) keep="$keep $name " ; continue ;; esac
-    if [ -t 0 ] && [ "${DCK_NONINTERACTIVE:-0}" != "1" ]; then
+    if [ "$priv" = "-" ] || [ ! -f "$priv" ]; then
+      warn "ssh: your ssh-agent does not hold the key for $pub; its git alias is not set up inside"
+      continue
+    fi
+    if [ "$interactive" = 1 ]; then
       printf 'dck: ssh: your git alias needs %s, which your ssh-agent does not hold. Load it now (ssh-add%s)? [Y/n] ' \
-        "$path" "${flag:+ $flag}" >&2
+        "$priv" "${flag:+ $flag}" >&2
       ans=""; read -r ans </dev/tty || ans=n
       case "$ans" in n|N|no|NO) warn "ssh: skipped $name (git with its alias will not work inside)"; continue ;; esac
       # Ctrl-C at the passphrase prompt cancels ssh-add only, never the whole up.
       trap ':' INT
-      if ssh-add $flag "$path"; then keep="$keep $name "
+      if ssh-add $flag "$priv" </dev/tty; then keep="$keep $name "
       else warn "ssh: $name was not loaded (git with its alias will not work inside)"; fi
       trap - INT
     else
-      warn "ssh: your ssh-agent lacks $name, used by a git alias; load it once: ssh-add${flag:+ $flag} $path"
+      warn "ssh: your ssh-agent lacks $name, used by a git alias; load it once: ssh-add${flag:+ $flag} $priv"
     fi
-  done <<EOF
+  done 3<<EOF
 $(printf '%s\n' "$payload" | grep '^file ' || true)
 EOF
   payload="$(printf '%s\n' "$payload" | awk -v keep="$keep" '

@@ -81,8 +81,9 @@ own edit, outside dck's managed blocks, and its own decision.
   agent. No private key, no `ProxyCommand`/`ProxyJump`, no `Match` block and no loopback
   host is copied, and an alias is copied only when your agent already holds its key (on
   a terminal dck asks before running `ssh-add`; never without one, never the whole
-  Keychain). Other hosts need `ssh_host_extra`, because any process in any container
-  with the agent socket can use the agent's keys. Turn it off with
+  Keychain). Other hosts need `[ssh] host_extra` in your host profile (never a repository's
+  `dck.toml`), because any process in any container with the agent socket can use the
+  agent's keys. Turn it off with
   `ssh_host_config = false`.
 - **The mesh.** `dck herdr mesh` loads the dck key into your agent (never into
   the macOS Keychain) and pushes only public data into the container: peer

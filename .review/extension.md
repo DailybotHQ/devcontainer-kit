@@ -22,8 +22,8 @@ in is untrusted input on the host; the threat model is `docs/SECURITY.md`.
   Files: `lib/launcher.sh` (`cmd_ssh`), `lib/herdr.sh`, `lib/sshconf.py` (`RE_HOST`).
   The container-side `config.d/dck-host` (`ssh_host_config`) points `IdentityFile` at the
   **public** halves of the developer's own git keys with no forwarding — expected; flag
-  instead any private key, `ProxyCommand`/`ProxyJump`, non-git host without
-  `ssh_host_extra`, or `ssh-add` without a terminal and consent.
+  instead any private key, `ProxyCommand`/`ProxyJump`, non-git host without the
+  host profile's `[ssh] host_extra`, or that key read from a repository's `dck.toml`, or `ssh-add` without a terminal and consent.
 - **Accepted by the owner (v0.2.1), do not flag:** the mesh being on by default
   (`[herdr] mesh = true` with `ssh_agent = true`), which lets a dck container log in to
   the other dck containers through the dck key in the host agent. Agents talking across

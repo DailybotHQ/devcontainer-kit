@@ -58,6 +58,16 @@
           "minLength": 1,
           "default": "~/.config/dck/ssh/id_ed25519",
           "description": "Dedicated key dck authorizes in containers"
+        },
+        "host_extra": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$"
+          },
+          "maxItems": 64,
+          "default": [],
+          "description": "aliases or host names beyond the git hosting services whose ~/.ssh/config blocks ssh_host_config also copies into containers (opt-in, host-side only)"
         }
       }
     }

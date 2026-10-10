@@ -18,7 +18,7 @@ and the interface number).
   so `git` with a remote such as `git@github.com-work:org/repo` uses the same key inside as
   on the host, through the host's agent. Only aliases whose key the agent holds are copied;
   on a terminal dck offers to `ssh-add` a missing one (`--apple-use-keychain` on macOS).
-  Other hosts are opt-in (`ssh_host_extra`). No private key, no `ProxyCommand`/`ProxyJump`,
+  Other hosts are opt-in, in the host profile only (`[ssh] host_extra`). No private key, no `ProxyCommand`/`ProxyJump`,
   no `Match` block and no loopback host ever reaches the container.
 
 ### Fixed

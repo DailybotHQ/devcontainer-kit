@@ -362,7 +362,7 @@ def host_identities(config_path, home, extra=()):
          host <alias> <hostname> <port> <user|-> <key>
          kh   <hostname> <port> <type> <base64>   (pinned host keys from ~/.ssh/known_hosts)
        plus, for the host side only (never pushed):
-         file <key> <private key path>
+         file <key> <public key path> <private key path, or - when absent>
     """
     blocks, cur = [], None
     for ln in _sshconf_lines(config_path, home):
@@ -382,7 +382,7 @@ def host_identities(config_path, home, extra=()):
             cur["opts"][key] = val
     import hashlib
     extra = set(extra or ())
-    pubs, hosts, files, names = {}, [], {}, {}
+    pubs, hosts, files, names, pubpaths = {}, [], {}, {}, {}
     for b in blocks:
         o = b["opts"]
         if any(k in o for k in _SKIP_KEYS) or "identityfile" not in o:
@@ -427,10 +427,12 @@ def host_identities(config_path, home, extra=()):
             if hostname.lower() not in GIT_HOSTS and alias not in extra and hostname not in extra:
                 continue
             pubs[name] = (parts[0], parts[1])
-            files[name] = priv
+            files[name] = priv if os.path.isfile(priv) else "-"
+            pubpaths[name] = pub
             hosts.append("host %s %s %s %s %s" % (alias, hostname, port, user, name))
     out = ["pub %s %s %s" % (n, t, k) for n, (t, k) in sorted(pubs.items())]
     out += hosts[:200]
     out += _known_for(hosts[:200], os.path.join(home, ".ssh", "known_hosts"))
-    out += ["file %s %s" % (n, p) for n, p in sorted(files.items()) if "\n" not in p]
+    out += ["file %s %s %s" % (n, pubpaths[n], p) for n, p in sorted(files.items())
+            if "\n" not in p + pubpaths[n] and " " not in p + pubpaths[n]]
     return "\n".join(out) + ("\n" if out else "")

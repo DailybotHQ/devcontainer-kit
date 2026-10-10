@@ -386,6 +386,35 @@ test_up_pushes_host_ssh_aliases() {
   assert_no_match "$s" 'PRIVATE KEY' "no private key content is pushed"
   assert_contains "$RUN_OUT$RUN_ERR" "lacks other" "the missing key is named, with the ssh-add command"
   assert_eq "$(ssh-add -l | grep -c other || true)" "0" "nothing is loaded into the agent without a terminal"
+  # A key the agent holds with only its public half on disk (1Password, Secretive, hardware keys).
+  ssh-keygen -q -t ed25519 -N '' -C vault -f "$SANDBOX/vault"
+  ssh-add -q "$SANDBOX/vault" 2>/dev/null
+  cp "$SANDBOX/vault.pub" "$HOME/.ssh/vault.pub"
+  printf 'Host github.com-vault\n  HostName github.com\n  IdentityFile ~/.ssh/vault.pub\n' >> "$HOME/.ssh/config"
+  : > "$DCK_FAKE_STATE/exec_stdin"
+  DCK_NONINTERACTIVE=1 d up
+  assert_contains "$(cat "$DCK_FAKE_STATE/exec_stdin")" "host github.com-vault github.com 22 - vault" "a key held by the agent with only its .pub on disk works"
+  # A repository cannot widen the host list: ssh_host_extra is a host-profile key.
+  printf 'ssh_host_extra = ["prod"]\n' >> "$REPO/.devcontainer/dck.toml"
+  : > "$DCK_FAKE_STATE/exec_stdin"
+  DCK_NONINTERACTIVE=1 d up
+  assert_not_contains "$(cat "$DCK_FAKE_STATE/exec_stdin")" "prod" "ssh_host_extra in the repository's dck.toml is ignored"
+  sed -i.orig '/^ssh_host_extra/d' "$REPO/.devcontainer/dck.toml" && rm -f "$REPO/.devcontainer/dck.toml.orig"
+  # On a terminal, dck offers ssh-add for a missing key (and loads it on "y"). The answer
+  # is typed after the prompt appears, as a person would.
+  if command -v script >/dev/null 2>&1; then
+    local cmd="cd '$REPO' && DCK_NONINTERACTIVE=0 '$DCK' up"
+    if script -qec true /dev/null >/dev/null 2>&1; then
+      { sleep 3; printf 'y\n'; sleep 2; } | script -qec "$cmd" /dev/null >"$SANDBOX/tty.out" 2>&1 || true
+    else
+      { sleep 3; printf 'y\n'; sleep 2; } | script -q /dev/null bash -c "$cmd" >"$SANDBOX/tty.out" 2>&1 || true
+    fi
+    assert_contains "$(cat "$SANDBOX/tty.out")" "Load it now" "on a terminal, dck asks before ssh-add"
+    assert_eq "$(ssh-add -l | grep -c other || true)" "1" "and loads the key on yes"
+    assert_contains "$(cat "$DCK_FAKE_STATE/exec_stdin")" "github.com-other" "then pushes its alias"
+  else
+    pass "no script(1) here: the terminal prompt is untested"
+  fi
   sed -i.orig 's/^ssh_host_config = true/ssh_host_config = false/' "$REPO/.devcontainer/dck.toml" && rm -f "$REPO/.devcontainer/dck.toml.orig"
   : > "$DCK_FAKE_STATE/exec_stdin"
   d up
