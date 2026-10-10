@@ -85,6 +85,9 @@ test_node_fixture_end_to_end() {
   IT_AGENT_PID="$SSH_AGENT_PID"
   ssh-keygen -q -t ed25519 -N '' -C dck-it-agent-key -f "$SANDBOX/agentkey"
   ssh-add -q "$SANDBOX/agentkey" 2>/dev/null
+  # The developer's own alias in the sandbox HOME's ~/.ssh/config (ssh_host_config).
+  mkdir -p "$HOME/.ssh"
+  printf 'Host github.com-it\n  HostName github.com\n  User git\n  IdentityFile %s\n' "$SANDBOX/agentkey" > "$HOME/.ssh/config"
 
   # 2. dev.sh up is the entry point (setup on the first run, then build and start).
   with_lock dev up
@@ -94,6 +97,12 @@ test_node_fixture_end_to_end() {
   assert_eq "$RUN_OUT" "127.0.0.1:$port" "sshd is published on 127.0.0.1 only"
   dev shell -c 'printf "%s|%s|%s" "$(whoami)" "$(pwd)" "$(test -f package.json && echo repo-mounted)"'
   assert_eq "$RUN_OUT" "dev|/workspace|repo-mounted" "dev.sh shell runs as the dev user in the mounted workspace"
+
+  # The host's SSH aliases work inside, with the public half only.
+  dev shell -c 'ssh -G github.com-it | grep -E "^(hostname|user|identityfile|identitiesonly) "; ls ~/.ssh/dck-host-keys; grep -rl "PRIVATE KEY" ~/.ssh 2>/dev/null | wc -l | tr -d " "'
+  assert_contains "$RUN_OUT" "hostname github.com" "a host alias from ~/.ssh/config resolves inside"
+  assert_contains "$RUN_OUT" "dck-host-keys/agentkey.pub" "it selects the agent key through its public half"
+  assert_match "$RUN_OUT" '^0$' "no private key file is in the container's ~/.ssh"
 
   # 3 + 4. Herdr: sshd with agent forwarding, the mesh and the layout script.
   d ssh 'ssh-add -l; grep -rl dck-it-agent-key /home /root /tmp /etc 2>/dev/null | wc -l | tr -d " "; echo "$IT_MARKER"'

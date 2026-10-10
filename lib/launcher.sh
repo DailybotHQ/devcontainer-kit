@@ -128,12 +128,13 @@ load_context() {
   export DCK_HERDR_LAYOUT="standard"  # read by lib/herdr.sh (herdr_layout)
   export DCK_HERDR_MESH="1"  # read by lib/herdr.sh (dck_herdr_after_up)
   export DCK_SSH_AGENT="1"  # read by export_host_ssh_agent
+  export DCK_SSH_HOST_CONFIG="1"  # read by host_ssh_identities
   while IFS= read -r line; do
     k="${line%%=*}"; v="${line#*=}"
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out
@@ -361,6 +362,44 @@ warn_empty_ssh_agent() {
   esac
 }
 
+# host_ssh_identities — make the developer's own SSH aliases work inside: push the
+# concrete Host blocks of ~/.ssh/config with the PUBLIC half of each IdentityFile
+# (dck_hostssh_apply writes them), then make sure the host agent holds the private
+# halves — loading a missing one with ssh-add (macOS: --apple-use-keychain, so the
+# passphrase is asked once). Private keys never leave the host. Best-effort.
+host_ssh_identities() {
+  [ "${DCK_SSH_AGENT:-1}" = "1" ] && [ "${DCK_SSH_HOST_CONFIG:-1}" = "1" ] || return 0
+  [ -f "$HOME/.ssh/config" ] || return 0
+  container_running || return 0
+  local payload n name path fp loaded flag=""
+  payload="$(dckpy sshconf host-identities --config "$HOME/.ssh/config" --home "$HOME")" || {
+    warn "ssh: could not read ~/.ssh/config; your SSH aliases are not available inside"; return 0; }
+  [ -n "$payload" ] || return 0
+  n="$(printf '%s\n' "$payload" | grep -c '^host ' || true)"
+  printf '%s\n' "$payload" | grep -v '^file ' | dc exec -T --user root "$DC_SERVICE" \
+    bash -c '. /usr/local/lib/dck/entrypoint.sh && dck_hostssh_apply' >/dev/null 2>&1 \
+    || { warn "ssh: could not write your SSH aliases inside $DC_SERVICE (rendered by devcontainer-kit v0.2.2+?)"; return 0; }
+  note "ssh: $n alias(es) from ~/.ssh/config work inside (public keys only; signing goes through your agent)"
+  command -v ssh-add >/dev/null 2>&1 && [ -n "${SSH_AUTH_SOCK:-}" ] || return 0
+  [ "$(uname -s)" = "Darwin" ] && flag="--apple-use-keychain"
+  [ "$(uname -s)" = "Darwin" ] && ssh-add --apple-load-keychain >/dev/null 2>&1 || true
+  loaded="$(ssh-add -l 2>/dev/null || true)"
+  while read -r _ name path; do
+    [ -n "$path" ] && [ -f "$path" ] || continue
+    fp="$(ssh-keygen -lf "$path.pub" 2>/dev/null | awk '{print $2}')"
+    [ -n "$fp" ] || continue
+    case "$loaded" in *"$fp"*) continue ;; esac
+    if [ -t 0 ]; then
+      note "ssh: loading $name into your ssh-agent (it is used by an alias in ~/.ssh/config)"
+      ssh-add $flag "$path" || warn "ssh: $name was not loaded; git with its alias will fail inside until you run: ssh-add $flag $path"
+    elif ! ssh-add $flag "$path" </dev/null >/dev/null 2>&1; then
+      warn "ssh: $name is not in your ssh-agent; run once: ssh-add $flag $path"
+    fi
+  done <<EOF
+$(printf '%s\n' "$payload" | grep '^file ' || true)
+EOF
+}
+
 # export_host_ssh_agent — the compose file mounts ${DCK_HOST_SSH_AUTH_SOCK} as the
 # container's SSH agent (a bind that never creates a missing host path).
 # The path depends on the Docker provider: Docker Desktop (macOS, Windows,
@@ -574,6 +613,7 @@ cmd_up() {
       note "existing containers were left as they are; use --recreate to apply compose changes"
     fi
   fi
+  host_ssh_identities
   if [ "${DCK_HERDR_MACHINE:-0}" = "1" ] && declare -F dck_herdr_after_up >/dev/null 2>&1; then
     dck_herdr_after_up || warn "the container is up, but Herdr registration did not complete — run: dck herdr status"
   fi
@@ -724,6 +764,7 @@ cmd_rebuild() {
     note "recreating ${SERVICES[*]} with the new images"
     dc up -d --force-recreate "${SERVICES[@]}"
   fi
+  host_ssh_identities
   note "rebuild done — named volumes were kept; open a new shell so PATH reloads"
 }
 

@@ -113,6 +113,7 @@ def env_lines(repo, dck_tag, profile=None):
                 ("DCK_HERDR_LAYOUT", merged["herdr.layout"]),
                 ("DCK_HERDR_MESH", "1" if merged["herdr.mesh"] else "0"),
                 ("DCK_SSH_AGENT", "1" if merged["ssh_agent"] else "0"),
+                ("DCK_SSH_HOST_CONFIG", "1" if merged["ssh_host_config"] else "0"),
                 ("DCK_HERDR_LABEL", merged["herdr.label"]),
                 ("DCK_NETWORK", merged["network"]),
                 ("DCK_FLAVOUR", merged["flavour"]),

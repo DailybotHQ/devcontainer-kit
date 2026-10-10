@@ -58,6 +58,7 @@ REPO_RULES = {
     "agents.clis": ("kind_list", [], ("enum", AGENT_KINDS)),
     "herdr.machine": ("bool", False, None),
     "ssh_agent": ("bool", True, None),
+    "ssh_host_config": ("bool", True, None),
     "herdr.layout": ("str", "standard", ("enum", ("standard", "none"))),
     "herdr.mesh": ("bool", True, None),
     "herdr.label": ("label", "{repo}", ("placeholders", LABEL_PLACEHOLDERS)),

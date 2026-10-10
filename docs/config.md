@@ -34,6 +34,7 @@ workspace = "/workspace"       # workspaceFolder
 flavour = "node-24"            # python-3.13 | node-24 | debian (official image, digest-pinned)
 # base_image = "node:22.20.0-trixie-slim@sha256:<64 hex>"   # optional override, digest required
 ssh_agent = true               # share the host's SSH agent (git over SSH); keys never enter
+ssh_host_config = true         # your ~/.ssh/config aliases inside, public keys only
 ssh_port = 22040               # loopback-only host port for Herdr; 0 = no sshd
 ports = { web = 4321 }         # named loopback ports
 [layers]
@@ -58,6 +59,7 @@ mesh = true                    # dck up runs `dck herdr mesh` (Docker Desktop on
 | `flavour` | string | **required** | `python-3.13`, `node-24` or `debian` |
 | `base_image` | string | the flavour's pin in `versions.env` | an official image pinned by digest: `name[:tag]@sha256:<64 hex>`, no registry host |
 | `image_tag` | string | — | interface 1 only; ignored since v0.2.0 (warning), removed by `dck init` |
+| `ssh_host_config` | boolean | `true` | with `ssh_agent`: `dck up` and `dck rebuild` copy the concrete `Host` aliases of your `~/.ssh/config` (and its `Include` files) into the container — `HostName`, `Port`, `User`, the **public** half of each `IdentityFile` and the host keys you already trust — and load any missing private key into your agent (`ssh-add`, `--apple-use-keychain` on macOS). Skipped: wildcard patterns, `Match` blocks, `ProxyCommand`/`ProxyJump` hosts, loopback hosts, dck's own aliases |
 | `ssh_agent` | boolean | `true` | mount the host's SSH agent socket (Docker Desktop's, or `$SSH_AUTH_SOCK` on Linux) as `SSH_AUTH_SOCK` for exec sessions (`dev.sh shell`, editor terminals). On a Linux host OpenSSH's agent serves only its own uid, so this works when your uid is 1000 (the container user's); otherwise use `dck ssh` / Herdr sessions, which forward the agent. `dck up` and `dck rebuild` choose the socket by Docker provider: Docker Desktop and OrbStack share the host agent; a native Linux engine mounts `$SSH_AUTH_SOCK`; colima, podman and others get none (exec sessions have no agent; `dck ssh` and Herdr sessions forward it). When an editor opens the container itself, set `DCK_HOST_SSH_AUTH_SOCK` in its environment on those hosts (a missing path fails the start rather than being created) or set `ssh_agent = false` |
 | `ssh_port` | integer | `0` | `0` (no sshd) or 1024–65535; published on `bind` only |
 | `bind` | string | `127.0.0.1` | IPv4 address every published port binds to. Changing it exposes the container's ports beyond this machine — see [SECURITY.md](SECURITY.md). `dck ssh` and Herdr still connect only to 127.0.0.1 and refuse a `bind` that is neither loopback nor `0.0.0.0` |

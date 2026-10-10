@@ -217,7 +217,7 @@ def cmd_devc(args):
 def cmd_sshconf(args):
     import sshconf
     if not args:
-        return usage("sshconf needs a command: upsert | remove | has | include | peers")
+        return usage("sshconf needs a command: upsert | remove | has | include | peers | host-identities")
     sub = args.pop(0)
     try:
         if sub == "upsert":
@@ -232,6 +232,9 @@ def cmd_sshconf(args):
             return EXIT_OK if sshconf.has_alias(opt(args, "--file"), opt(args, "--alias")) else EXIT_FAIL
         if sub == "include":
             print(sshconf.ensure_include(opt(args, "--config")))
+            return EXIT_OK
+        if sub == "host-identities":
+            sys.stdout.write(sshconf.host_identities(opt(args, "--config"), opt(args, "--home")))
             return EXIT_OK
         if sub == "peers":
             labels = {}

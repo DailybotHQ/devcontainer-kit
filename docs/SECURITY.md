@@ -74,6 +74,13 @@ own edit, outside dck's managed blocks, and its own decision.
   repository's compose `.env` tries to set it. The entrypoint gives the dev
   user access only to Docker Desktop's root-owned socket; a Linux host's own
   socket is left as it is.
+- **Your SSH aliases.** With `ssh_host_config = true` (the default), `dck up` copies the
+  concrete `Host` blocks of your `~/.ssh/config` into the container with only the
+  **public** half of each key and the host keys you already trust, so `git` with an
+  alias such as `github.com-work` picks the same key through your agent. No private key,
+  no `ProxyCommand`/`ProxyJump`, no `Match` block and no loopback host is copied. A key
+  the agent lacks is loaded into it on the host (`ssh-add`, once, through the macOS
+  Keychain). Turn it off with `ssh_host_config = false`.
 - **The mesh.** `dck herdr mesh` loads the dck key into your agent (never into
   the macOS Keychain) and pushes only public data into the container: peer
   aliases, ports, users, labels and pinned host keys. Peers are reached with

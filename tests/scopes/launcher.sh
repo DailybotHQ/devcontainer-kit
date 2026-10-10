@@ -363,6 +363,27 @@ test_setup_writes_git_identity() {
   git config --global --unset user.name; git config --global --unset user.email
 }
 
+test_up_pushes_host_ssh_aliases() {
+  mk_repo || return 0
+  mkdir -p "$HOME/.ssh"
+  printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIWorkKeyFakeOnlyForTests000000000000000 me@host\n' > "$HOME/.ssh/work.pub"
+  printf 'PRIVATE-KEY-PLACEHOLDER\n' > "$HOME/.ssh/work"
+  printf 'Host github.com-work\n  HostName github.com\n  User git\n  IdentityFile ~/.ssh/work\n' > "$HOME/.ssh/config"
+  echo "proj-app-1" > "$DCK_FAKE_STATE/ps"
+  : > "$DCK_FAKE_STATE/exec_stdin"
+  d up
+  assert_rc 0 "up succeeds"
+  assert_contains "$(cat "$DCK_FAKE_STATE/exec_stdin")" "host github.com-work github.com 22 git work" "up pushes the host's SSH aliases"
+  assert_not_contains "$(cat "$DCK_FAKE_STATE/exec_stdin")" "file " "the private key path stays on the host"
+  assert_not_contains "$(cat "$DCK_FAKE_STATE/exec_stdin")" "PRIVATE-KEY-PLACEHOLDER" "no private key content is pushed"
+  assert_contains "$RUN_OUT" "alias(es) from ~/.ssh/config work inside" "and says so"
+  sed -i.orig 's/^ssh_host_config = true/ssh_host_config = false/' "$REPO/.devcontainer/dck.toml" && rm -f "$REPO/.devcontainer/dck.toml.orig"
+  : > "$DCK_FAKE_STATE/exec_stdin"
+  d up
+  assert_eq "$(cat "$DCK_FAKE_STATE/exec_stdin")" "" "ssh_host_config = false pushes nothing"
+  rm -f "$HOME/.ssh/config" "$HOME/.ssh/work" "$HOME/.ssh/work.pub" "$DCK_FAKE_STATE/ps"
+}
+
 test_setup_copies_only_working_signing() {
   mk_repo || return 0
   local env="$REPO/docker/local/app/.env"

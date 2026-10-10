@@ -240,6 +240,63 @@ test_mesh_pushes_the_peers() {
   assert_eq "$(cat "$DCK_FAKE_STATE/exec_stdin")" "" "nothing is pushed on Linux"
 }
 
+test_host_identities_parse() {
+  local h="$SANDBOX/hid"; mkdir -p "$h/.ssh/config.d"
+  printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIWorkKeyFakeOnlyForTests000000000000000 me@host\n' > "$h/.ssh/work.pub"
+  : > "$h/.ssh/work"
+  printf 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQPersonalFakeOnlyForTests me@host\n' > "$h/.ssh/id_rsa.pub"
+  : > "$h/.ssh/id_rsa"
+  cat > "$h/.ssh/config" <<EOF
+Include config.d/*
+Host github.com
+  IdentityFile ~/.ssh/id_rsa
+Host github.com-work gh-work
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/work
+Host *.internal
+  IdentityFile ~/.ssh/work
+Host tunnel
+  HostName example.org
+  ProxyCommand nc %h %p
+  IdentityFile ~/.ssh/work
+Host local-machine
+  HostName 127.0.0.1
+  Port 22040
+  IdentityFile ~/.ssh/work
+Host nokey
+  HostName example.org
+  IdentityFile ~/.ssh/missing
+Match host x
+  IdentityFile ~/.ssh/work
+EOF
+  printf 'Host dck-repo\n  HostName example.org\n  IdentityFile ~/.ssh/work\nHost included\n  HostName example.net\n  Port 2222\n  IdentityFile ~/.ssh/work\n' > "$h/.ssh/config.d/extra"
+  python3 -I -c '
+import base64, hashlib, hmac, sys
+salt = b"0123456789abcdefghij"
+h = base64.b64encode(hmac.new(salt, b"[example.net]:2222", hashlib.sha1).digest()).decode()
+lines = ["github.com ssh-ed25519 AAAAGitHubFake", "|1|%s|%s ssh-ed25519 AAAAIncludedFake" % (base64.b64encode(salt).decode(), h), "other.org ssh-ed25519 AAAAOtherFake"]
+sys.stdout.write("".join(l + chr(10) for l in lines))
+' > "$h/.ssh/known_hosts"
+  run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" sshconf host-identities --config "$h/.ssh/config" --home "$h"
+  assert_rc 0 "host-identities reads ~/.ssh/config"
+  assert_contains "$RUN_OUT" "host github.com github.com 22 - id_rsa" "a plain host with its key"
+  assert_contains "$RUN_OUT" "host github.com-work github.com 22 git work" "an alias with HostName and User"
+  assert_contains "$RUN_OUT" "host gh-work github.com 22 git work" "every name of a multi-name Host line"
+  assert_contains "$RUN_OUT" "host included example.net 2222 - work" "aliases from an Include file"
+  assert_contains "$RUN_OUT" "pub work ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIWorkKeyFakeOnlyForTests000000000000000" "the public half is sent"
+  assert_contains "$RUN_OUT" "kh github.com 22 ssh-ed25519 AAAAGitHubFake" "the trusted host key of a host"
+  assert_contains "$RUN_OUT" "kh example.net 2222 ssh-ed25519 AAAAIncludedFake" "a hashed [host]:port entry"
+  assert_not_contains "$RUN_OUT" "AAAAOtherFake" "keys of other hosts are not sent"
+  assert_not_contains "$RUN_OUT" "*.internal" "wildcard patterns are skipped"
+  assert_not_contains "$RUN_OUT" "tunnel" "ProxyCommand hosts are skipped (they run commands)"
+  assert_not_contains "$RUN_OUT" "local-machine" "loopback hosts are skipped"
+  assert_not_contains "$RUN_OUT" "nokey" "a host whose key has no .pub is skipped"
+  assert_not_contains "$RUN_OUT" "dck-repo" "dck-managed aliases are skipped"
+  assert_not_contains "$(printf '%s\n' "$RUN_OUT" | grep -v '^file ')" "$h/.ssh/work" "no private key path outside the host-only file lines"
+  assert_contains "$RUN_OUT" "file work $h/.ssh/work" "the host side learns which private key each alias needs"
+}
+
 test_mesh_host_keys_by_alias() {
   local d="$SANDBOX/kh"; mkdir -p "$d"
   printf '# dck-provenance: v1\n# >>> dck:dck-a >>>\nHost dck-a\n  Port 22051\n  User dev\n# <<< dck:dck-a <<<\n# >>> dck:dck-b >>>\nHost dck-b\n  Port 22052\n  User jane.doe\n# <<< dck:dck-b <<<\n# >>> dck:dck-c >>>\nHost dck-c\n  Port 22053\n  User dev\n# <<< dck:dck-c <<<\n' > "$d/dck"

@@ -264,3 +264,151 @@ def ensure_include(config_path, include="config.d/dck"):
         fh.write(new)
     os.replace(tmp, config_path)
     return "added"
+
+
+# --- the developer's own SSH aliases, public halves only -------------------------
+# `dck up` makes the host's `Host` aliases (github.com-work, …) usable inside the
+# container: each concrete alias with its HostName/Port/User and the PUBLIC half of
+# its IdentityFile, so OpenSSH inside asks the host agent for exactly that key. No
+# private key, no ProxyCommand/ProxyJump (they run commands or need other hosts),
+# no loopback alias (those are machines on the host), no dck-managed alias.
+
+HOSTID_ALIAS = r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$"
+HOSTID_NAME = r"^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$"
+HOSTID_USER = r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$"
+HOSTID_KEY = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+KEY_TYPES = ("ssh-ed25519", "ssh-rsa", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384",
+             "ecdsa-sha2-nistp521", "sk-ssh-ed25519@openssh.com",
+             "sk-ecdsa-sha2-nistp256@openssh.com")
+_SKIP_KEYS = ("proxycommand", "proxyjump", "localcommand", "remotecommand",
+              "permitlocalcommand", "knownhostscommand")
+
+
+def _sshconf_lines(path, home, depth=0, seen=None):
+    """The lines of an ssh config with its Include files spliced in (OpenSSH
+    resolves relative Include paths against ~/.ssh). Unreadable files are skipped."""
+    import glob
+    seen = seen if seen is not None else set()
+    real = os.path.realpath(path)
+    if depth > 4 or real in seen or not os.path.isfile(real):
+        return []
+    seen.add(real)
+    try:
+        with open(real, errors="replace") as fh:
+            raw = fh.read().splitlines()
+    except OSError:
+        return []
+    out = []
+    for ln in raw:
+        m = re.match(r"^\s*include\s*=?\s*(.+?)\s*$", ln, re.I)
+        if not m:
+            out.append(ln)
+            continue
+        for pat in m.group(1).split():
+            pat = pat.strip('"')
+            if pat.startswith("~/"):
+                pat = os.path.join(home, pat[2:])
+            elif not os.path.isabs(pat):
+                pat = os.path.join(home, ".ssh", pat)
+            for f in sorted(glob.glob(pat)):
+                out.extend(_sshconf_lines(f, home, depth + 1, seen))
+    return out
+
+
+def _loopback(name):
+    n = name.lower()
+    return n == "localhost" or n.startswith("127.") or n in ("::1", "0.0.0.0")
+
+
+def _known_for(hosts, known_hosts):
+    """`kh` lines: the host keys the developer already trusts for these hosts."""
+    want = {}
+    for h in hosts:
+        _, _, hostname, port, _, _ = h.split(" ")
+        want[hostname if port == "22" else "[%s]:%s" % (hostname, port)] = (hostname, port)
+    out, seen = [], set()
+    try:
+        lines = open(known_hosts, errors="replace").read().splitlines()
+    except OSError:
+        return out
+    for ln in lines:
+        parts = ln.split()
+        if len(parts) < 3 or parts[0].startswith(("#", "@")) or parts[1] not in KEY_TYPES:
+            continue
+        if not re.match(r"^[A-Za-z0-9+/=]+$", parts[2]):
+            continue
+        for field in parts[0].split(","):
+            for name, (hostname, port) in want.items():
+                if field == name or (field.startswith("|1|") and _hashed_match(field, name)):
+                    entry = "kh %s %s %s %s" % (hostname, port, parts[1], parts[2])
+                    if entry not in seen:
+                        seen.add(entry); out.append(entry)
+    return out[:400]
+
+
+def host_identities(config_path, home):
+    """Payload for dck_hostssh_apply (one line each):
+         pub  <key> <type> <base64>
+         host <alias> <hostname> <port> <user|-> <key>
+         kh   <hostname> <port> <type> <base64>   (pinned host keys from ~/.ssh/known_hosts)
+       plus, for the host side only (never pushed):
+         file <key> <private key path>
+    """
+    blocks, cur = [], None
+    for ln in _sshconf_lines(config_path, home):
+        s = ln.strip()
+        if not s or s.startswith("#"):
+            continue
+        m = re.match(r"^(\S+?)\s*(?:=\s*|\s+)(.*)$", s)
+        if not m:
+            continue
+        key, val = m.group(1).lower(), m.group(2).strip()
+        if key == "host":
+            cur = {"patterns": val.split(), "opts": {}}
+            blocks.append(cur)
+        elif key == "match":
+            cur = None
+        elif cur is not None and key not in cur["opts"]:
+            cur["opts"][key] = val
+    pubs, hosts, files = {}, [], {}
+    for b in blocks:
+        o = b["opts"]
+        if any(k in o for k in _SKIP_KEYS) or "identityfile" not in o:
+            continue
+        ident = o["identityfile"].strip('"')
+        if ident.startswith("~/"):
+            ident = os.path.join(home, ident[2:])
+        if "%" in ident or not os.path.isabs(ident):
+            continue
+        pub = ident if ident.endswith(".pub") else ident + ".pub"
+        if not os.path.isfile(pub):
+            continue
+        try:
+            parts = open(pub, errors="replace").read().split()
+        except OSError:
+            continue
+        if len(parts) < 2 or parts[0] not in KEY_TYPES or not re.match(r"^[A-Za-z0-9+/=]+$", parts[1]):
+            continue
+        name = os.path.basename(pub)[:-4]
+        if not re.match(HOSTID_KEY, name):
+            continue
+        port = o.get("port", "22")
+        user = o.get("user", "-")
+        if not re.match(r"^[0-9]{1,5}$", port) or not 1 <= int(port) <= 65535:
+            continue
+        if user != "-" and not re.match(HOSTID_USER, user):
+            continue
+        for alias in b["patterns"]:
+            if any(c in alias for c in "*?!") or alias.startswith("dck-") or not re.match(HOSTID_ALIAS, alias):
+                continue
+            hostname = o.get("hostname", alias)
+            if "%" in hostname or not re.match(HOSTID_NAME, hostname) or _loopback(hostname):
+                continue
+            pubs[name] = (parts[0], parts[1])
+            files[name] = ident[:-4] if ident.endswith(".pub") else ident
+            hosts.append("host %s %s %s %s %s" % (alias, hostname, port, user, name))
+    out = ["pub %s %s %s" % (n, t, k) for n, (t, k) in sorted(pubs.items())]
+    out += hosts[:200]
+    out += _known_for(hosts[:200], os.path.join(home, ".ssh", "known_hosts"))
+    out += ["file %s %s" % (n, p) for n, p in sorted(files.items()) if "\n" not in p]
+    return "\n".join(out) + ("\n" if out else "")
