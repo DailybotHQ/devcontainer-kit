@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DailybotHQ/devcontainer-kit/blob/v0.2.0/docs/schema/dck-config-v2.json",
+  "title": "devcontainer-kit per-repository config (.devcontainer/dck.toml), interface 2",
+  "description": "TOML document, described here as its JSON equivalent. Unknown keys are ignored with a warning.",
+  "type": "object",
+  "required": [
+    "interface",
+    "service",
+    "flavour"
+  ],
+  "properties": {
+    "interface": {
+      "enum": [
+        1,
+        2
+      ],
+      "description": "2; a version-1 file is read for migration only (dck init rewrites it)"
+    },
+    "service": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$",
+      "description": "Compose service the tools attach to"
+    },
+    "user": {
+      "type": "string",
+      "pattern": "^[a-z_][a-z0-9_-]{0,31}$",
+      "default": "dev",
+      "description": "remoteUser (uid 1000 in the base images)"
+    },
+    "workspace": {
+      "type": "string",
+      "pattern": "^/[A-Za-z0-9._/-]*$",
+      "default": "/workspace",
+      "description": "workspaceFolder"
+    },
+    "flavour": {
+      "enum": [
+        "python-3.13",
+        "node-24",
+        "debian"
+      ]
+    },
+    "image_tag": {
+      "type": "string",
+      "pattern": "^v\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.]+)?$",
+      "description": "interface 1 only: ignored since v0.2.0 (no shared base image); dck init removes it"
+    },
+    "ssh_port": {
+      "type": "integer",
+      "anyOf": [
+        {
+          "const": 0
+        },
+        {
+          "minimum": 1024,
+          "maximum": 65535
+        }
+      ],
+      "default": 0,
+      "description": "Loopback-only host port for the container sshd (Herdr); 0 = no sshd"
+    },
+    "bind": {
+      "type": "string",
+      "pattern": "^(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}$",
+      "default": "127.0.0.1",
+      "description": "Host address every published port binds to"
+    },
+    "ports": {
+      "type": "object",
+      "default": {},
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65535
+      },
+      "description": "Named ports published as <bind>:<port>:<port>"
+    },
+    "layers": {
+      "type": "object",
+      "properties": {
+        "agents": {
+          "type": "boolean",
+          "default": false,
+          "description": "Install coding-agents-kit (ak) at its pinned tag"
+        },
+        "dailybot": {
+          "type": "boolean",
+          "default": false,
+          "description": "Install the Dailybot CLI (only when the dailybot addon asks for it)"
+        },
+        "editor": {
+          "type": "boolean",
+          "default": true,
+          "description": "nvim + deepworkplan-vim as the default editor"
+        }
+      }
+    },
+    "agents": {
+      "type": "object",
+      "properties": {
+        "clis": {
+          "type": "array",
+          "uniqueItems": true,
+          "default": [],
+          "items": {
+            "enum": [
+              "claude",
+              "codex",
+              "cursor",
+              "opencode",
+              "pi",
+              "cline",
+              "grok"
+            ]
+          },
+          "description": "Kinds passed to `ak install` when layers.agents is true"
+        }
+      }
+    },
+    "herdr": {
+      "type": "object",
+      "properties": {
+        "machine": {
+          "type": "boolean",
+          "default": false,
+          "description": "Register the container as a Herdr machine on `dck up` (needs ssh_port)"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Placeholders: {repo} {service} {project} {user}",
+          "default": "{repo}"
+        },
+        "layout": {
+          "enum": [
+            "standard",
+            "none"
+          ],
+          "default": "standard",
+          "description": "the Herdr sidebar dck up creates inside the container"
+        }
+      }
+    },
+    "base_image": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+([._/-][a-z0-9]+)*(:[A-Za-z0-9._-]{1,128})?@sha256:[0-9a-f]{64}$",
+      "description": "optional: an official image for the runtime, pinned by digest; defaults to the flavour's pin in versions.env"
+    },
+    "ssh_agent": {
+      "type": "boolean",
+      "default": true,
+      "description": "share the host's SSH agent with the container (git over SSH; keys never enter it)"
+    }
+  }
+}

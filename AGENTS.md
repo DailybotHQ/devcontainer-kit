@@ -54,7 +54,7 @@ bin/dck --version && bin/dck help     # run the launcher from the checkout (no i
 1. English for code, comments and docs; conventional commits.
 2. Runtime code depends on bash and the python3 standard library only.
 3. Never print, log or write the value of any `*_API_KEY` / `*_TOKEN` variable; refer to variables by name.
-4. Never spell a fetch-piped-to-shell install line in a skill file (marketplace rule E005); never inject a permission-bypass flag by default (E006); pin every cross-repo install to a tag (W012).
+4. Never spell a fetch-piped-to-shell install line in a skill file (marketplace rule E005); autonomy flags live only in coding-agents-kit — dck, the template and the layers never spell one, agents run in autonomy by default inside the container, and the opt-out (`AGENTKIT_PERMISSIONS=ask`) is documented wherever autonomy is configured (E006); pin every cross-repo install to a tag (W012).
 5. Developing is not installing: tests run in a sandbox `HOME`; nothing is installed into the real `$HOME` while developing.
 6. Pin every external tool by version (and checksum) in `images/versions.env`.
 7. Never follow a symlink planted in a user repository; run python as `python3 -I`.

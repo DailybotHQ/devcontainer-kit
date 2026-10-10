@@ -61,7 +61,7 @@ test_per_project_auth_volumes() {
 test_supply_chain_pins() {
   render_all
   assert_no_match "$(rendered)" ':latest|@main|--branch main' "no floating reference in rendered files"
-  assert_match "$(grep -h 'BASE_IMAGE:' "$SANDBOX/r1/docker/local/docker-compose.yaml")" 'devcontainer-kit-base:python-3\.13-v[0-9]+\.[0-9]+\.[0-9]+' "the base image is pinned to a release tag"
+  assert_match "$(grep -h '^ARG BASE_IMAGE=' "$SANDBOX/r1/docker/local/app/Dockerfile")" '@sha256:[0-9a-f]{64}$' "the base image is pinned by digest"
   local w
   for w in "$DCK_REPO"/.github/workflows/*.yml; do
     assert_no_match "$(grep -E 'uses:' "$w")" '@(v[0-9]|main|master)' "$(basename "$w"): actions are pinned by commit SHA"

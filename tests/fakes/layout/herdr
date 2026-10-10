@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Stateful fake Herdr for the layout tests: workspaces, tabs and panes in a
+JSON file ($HERDR_FAKE_STATE). Commands: workspace list|create|close|focus,
+tab create|rename|list, pane split|rename|list. HERDR_FAKE_UNREADABLE=tab
+makes `tab list` print garbage (an unreadable read)."""
+import json, os, sys
+
+path = os.environ["HERDR_FAKE_STATE"]
+st = json.load(open(path)) if os.path.exists(path) else {"n": 0, "ws": []}
+log = os.environ.get("DCK_FAKE_LOG")
+if log:
+    open(log, "a").write("herdr %s\n" % " ".join(sys.argv[1:]))
+args = sys.argv[1:]
+
+
+def opt(name, default=None):
+    return args[args.index(name) + 1] if name in args else default
+
+
+def nid(prefix):
+    st["n"] += 1
+    return "%s%d" % (prefix, st["n"])
+
+
+def save():
+    json.dump(st, open(path, "w"))
+
+
+def out(obj):
+    print(json.dumps({"id": "fake", "result": obj}))
+
+
+def find_ws(wid):
+    return next(w for w in st["ws"] if w["id"] == wid)
+
+
+def find_pane(pid):
+    for w in st["ws"]:
+        for t in w["tabs"]:
+            if pid in t["panes"]:
+                return w, t
+    raise SystemExit("no pane %s" % pid)
+
+
+cmd = args[:2]
+if cmd == ["workspace", "list"]:
+    out({"workspaces": [{"workspace_id": w["id"], "label": w["label"]} for w in st["ws"]]})
+elif cmd == ["workspace", "create"]:
+    wid, tid, pid = nid("w"), nid("t"), nid("p")
+    st["ws"].append({"id": wid, "label": opt("--label"), "tabs": [{"id": tid, "label": "1", "panes": [pid]}]})
+    save()
+    out({"workspace": {"workspace_id": wid}, "tab": {"tab_id": tid}, "root_pane": {"pane_id": pid, "tab_id": tid}})
+elif cmd == ["workspace", "close"]:
+    st["ws"] = [w for w in st["ws"] if w["id"] != args[2]]
+    save(); out({})
+elif cmd == ["workspace", "focus"]:
+    st["focused"] = args[2]; save(); out({})
+elif cmd == ["tab", "create"]:
+    w = find_ws(opt("--workspace"))
+    tid, pid = nid("t"), nid("p")
+    w["tabs"].append({"id": tid, "label": opt("--label"), "panes": [pid]})
+    save(); out({"tab": {"tab_id": tid}, "root_pane": {"pane_id": pid}})
+elif cmd == ["tab", "rename"]:
+    for w in st["ws"]:
+        for t in w["tabs"]:
+            if t["id"] == args[2]:
+                t["label"] = args[3]
+    save(); out({})
+elif cmd == ["tab", "list"]:
+    if os.environ.get("HERDR_FAKE_UNREADABLE") == "tab":
+        print("garbage"); sys.exit(0)
+    w = find_ws(opt("--workspace"))
+    out({"tabs": [{"tab_id": t["id"], "label": t["label"]} for t in w["tabs"]]})
+elif cmd == ["pane", "split"]:
+    w, t = find_pane(args[2])
+    pid = nid("p"); t["panes"].append(pid)
+    st.setdefault("names", {})
+    save(); out({"pane": {"pane_id": pid}})
+elif cmd == ["pane", "rename"]:
+    st.setdefault("names", {})[args[2]] = args[3]; save(); out({})
+elif cmd == ["pane", "list"]:
+    w = find_ws(opt("--workspace"))
+    out({"panes": [{"pane_id": p} for t in w["tabs"] for p in t["panes"]]})
+else:
+    sys.stderr.write("fake herdr: unsupported %s\n" % args); sys.exit(2)

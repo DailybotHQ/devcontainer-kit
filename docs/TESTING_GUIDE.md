@@ -30,18 +30,18 @@ change touches shared code (`lib/common.sh`, `lib/dckpy.py`, `bin/dck`).
 | Scope | Covers | Needs Docker |
 | --- | --- | --- |
 | `harness` | `tests/run.sh`, `tests/lib.sh` | no |
-| `config` | `lib/config.py`, `docs/schema/dck-config-v1.json` | no |
+| `config` | `lib/config.py`, `docs/schema/dck-config-v2.json` | no |
 | `template` | `src/template/`, `lib/render.py`, `dck init` | no |
 | `images` | `images/`, `.github/workflows/images.yml` (static checks) | no |
 | `entrypoint` | `lib/entrypoint.sh` (sandbox root, fake `sshd`) | no |
 | `launcher` | `bin/dck`, `bin/devcontainer-kit`, `lib/*.sh`, `install.sh` (fake `docker`/`devcontainer`) | no |
 | `layers` | the agents/editor/dailybot layers in the template and entrypoint | no |
 | `herdr` | `lib/herdr.sh`, `lib/sshconf.py` (fake `herdr`/`ssh`/`docker`, sandbox `~/.ssh`) | no |
-| `doctor` | `lib/doctor.py`, `lib/doctor.sh`, `docs/schema/dck-doctor-v1.json` (validated by `tests/py/minischema.py`), `skills/dck/` | no |
+| `doctor` | `lib/doctor.py`, `lib/doctor.sh`, `docs/schema/dck-doctor-v2.json` (validated by `tests/py/minischema.py`), `skills/dck/` | no |
 | `security` | static posture checks over `src/template/`, `images/`, `lib/` | no |
 | `hygiene` | `scripts/check-public-hygiene.sh`, `.public-hygiene-allow` (every A3 rule, allow-list, secrets never echoed, this repo clean) | no |
 | `standard` | the public repository standard: README order/badges/footer, LICENSE, CHANGELOG (Keep a Changelog), CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, CLAUDE.md, .gitignore, `.github/` community files, CI; the release workflow with `scripts/release-sums.sh` and `scripts/release-notes.sh` | no |
-| `docker` | integration: build the node-24 image, `dck init` a fixture, `setup`, `up`, `shell -c`, sshd on loopback only, `ssh` with agent forwarding (throwaway key, sandbox agent), env profile in ssh sessions, host key stable across `up --recreate`, live `doctor --json` against the schema, `down`; the same `up`/`shell` through the real `devcontainer` CLI; the agents layer installing coding-agents-kit at its pin (interface 1, `ask`, npm prefix). Cleans up its containers, volumes and images | **yes** |
+| `docker` | integration on rendered fixtures (no base image): a node repository with the agents layer — `dev.sh up`, `shell`, sshd on loopback only, `ssh` with agent forwarding (throwaway key, sandbox agent), the host agent in exec sessions, `herdr mesh`, herdr-peers and the layout script inside, git identity, GitHub host keys, `ak` in autonomy with both presets, DeepWorkPlan Vim at its pin, persistence across `dev.sh rebuild`, live `doctor --json` against the schema, `down` — and a python repository (runtime, uv, editor, herdr-peers); the same `up`/`shell` through the real `devcontainer` CLI. Builds hold `DCK_BUILD_LOCK` when set. Cleans up its containers, volumes and images | **yes** |
 
 ## How a test is written
 

@@ -49,11 +49,19 @@ test_init_empty_repo_renders_layout() {
   assert_contains "$c" '"127.0.0.1:22040:22"' "sshd is published on loopback only"
   assert_contains "$c" '"127.0.0.1:4321:4321"' "named ports are published on loopback only"
   assert_not_contains "$c" "0.0.0.0" "nothing binds every interface"
-  assert_contains "$c" 'BASE_IMAGE: "ghcr.io/dailybothq/devcontainer-kit-base:node-24-v' "the base image is the flavour's kit image"
+  assert_not_contains "$c" "BASE_IMAGE" "compose passes no base image (no shared image)"
+  assert_not_contains "$c" "devcontainer-kit-base" "nothing refers to the shared base image"
   assert_contains "$c" "- state:/home/dev/.dck/volumes/state" "the state volume is per project"
   assert_not_contains "$c" "docker.sock" "no docker socket is mounted"
   assert_not_contains "$c" ".ssh" "no host ssh directory is mounted"
-  assert_match "$(cat "$r/docker/local/app/Dockerfile")" '^FROM \$\{BASE_IMAGE\}$' "the Dockerfile builds FROM the pinned base image"
+  assert_match "$(cat "$r/docker/local/app/Dockerfile")" '^ARG BASE_IMAGE=node:[0-9.]+-trixie-slim@sha256:[0-9a-f]{64}$' "the Dockerfile starts from the official node image pinned by digest"
+  assert_match "$(cat "$r/docker/local/app/Dockerfile")" '^FROM \$\{BASE_IMAGE\}$' "the Dockerfile builds FROM that pin"
+  local rel src
+  while read -r rel src; do
+    if cmp -s "$DCK_REPO/$src" "$r/docker/local/app/dck/$rel"; then pass "dck/$rel is a byte copy of $src"; else fail "dck/$rel is a byte copy of $src"; fi
+  done < <(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import render; [print(r, s) for r, s in render.VENDORED]' "$DCK_REPO/lib")
+  assert_eq "$(cat "$r/docker/local/app/dck/VERSION")" "devcontainer-kit v$(cat "$DCK_REPO/VERSION")" "dck/VERSION stamps the kit version"
+  assert_contains "$(cat "$r/docker/local/app/Dockerfile")" "# dck:managed v$(cat "$DCK_REPO/VERSION") base" "the base block carries the render stamp"
   run_cmd python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import jsonc; d=jsonc.load(sys.argv[2]); print(d["service"], d["runServices"], d["remoteUser"], d["workspaceFolder"], d["shutdownAction"], d["dockerComposeFile"])' "$DCK_REPO/lib" "$r/.devcontainer/devcontainer.json"
   assert_eq "$RUN_OUT" "app ['app'] dev /workspace none ../docker/local/docker-compose.yaml" "devcontainer.json carries the owned keys"
   assert_contains "$(cat "$r/.gitignore")" "docker/local/**/.env" "the .gitignore guard keeps .env files out of git"
@@ -193,23 +201,33 @@ test_invalid_flags() {
   assert_rc 2 "an unknown init flag is a usage error"
 }
 
-test_digest_pinning() {
-  local r
-  r="$(new_repo dig)"
-  printf 'sha256:%064d\n' 7 > "$DCK_FAKE_STATE/digest"
-  run_cmd env DCK_NONINTERACTIVE=1 "$DCK" init --repo "$r"
-  assert_match "$(cat "$r/docker/local/docker-compose.yaml")" 'BASE_IMAGE: "ghcr.io/dailybothq/devcontainer-kit-base:debian-v[0-9.]+@sha256:0{63}7"' "the base image digest is pinned in compose"
-  assert_contains "$(fake_calls docker)" "buildx imagetools inspect ghcr.io/dailybothq/devcontainer-kit-base:debian-v" "the digest is resolved from the registry"
-  rm -f "$DCK_FAKE_STATE/digest"
-  run_cmd env DCK_NONINTERACTIVE=1 "$DCK" init --repo "$r"
-  assert_rc 0 "an unreachable registry does not change a pinned digest"
-  assert_contains "$(cat "$r/docker/local/docker-compose.yaml")" "@sha256:" "a previously pinned digest is kept when lookup fails"
-  r="$(new_repo dig2)"
-  run_cmd env DCK_NONINTERACTIVE=1 "$DCK" init --repo "$r"
-  assert_contains "$RUN_ERR" "pinned by tag only" "an unresolvable digest is a warning, not a silent pass"
+test_runtimes_and_migration() {
+  local r f
+  for f in python-3.13 debian; do
+    r="$(new_repo "rt-$f")"
+    init_repo "$r" --flavour "$f" --no-herdr --yes
+    assert_rc 0 "init renders the $f runtime"
+    case "$f" in
+      python-3.13) assert_match "$(cat "$r/docker/local/app/Dockerfile")" '^ARG BASE_IMAGE=python:[0-9.]+-slim-trixie@sha256:[0-9a-f]{64}$' "python starts from the official python image by digest"
+                   assert_contains "$(cat "$r/docker/local/app/Dockerfile")" "COPY --from=uv /uv /uvx /usr/local/bin/" "python gets uv" ;;
+      debian) assert_match "$(cat "$r/docker/local/app/Dockerfile")" '^ARG BASE_IMAGE=debian:[a-z0-9.-]+@sha256:[0-9a-f]{64}$' "debian starts from the official debian image by digest" ;;
+    esac
+  done
+  r="$(new_repo base-override)"
+  mkdir -p "$r/.devcontainer"
+  printf 'interface = 2\nservice = "app"\nflavour = "node-24"\nbase_image = "node:22.20.0-trixie-slim@sha256:%064d"\n' 1 > "$r/.devcontainer/dck.toml"
+  init_repo "$r" --yes --no-herdr
+  assert_match "$(cat "$r/docker/local/app/Dockerfile")" '^ARG BASE_IMAGE=node:22\.20\.0-trixie-slim@sha256:0{63}1$' "dck.toml base_image overrides the flavour's pin"
+  r="$(new_repo v1)"
+  mkdir -p "$r/.devcontainer"
+  printf 'interface = 1\nservice = "app"\nflavour = "debian"\nimage_tag = "v0.1.6"\nssh_port = 22041\n' > "$r/.devcontainer/dck.toml"
   : > "$DCK_FAKE_LOG"
-  run_cmd env DCK_NONINTERACTIVE=1 "$DCK" init --repo "$r" --no-digest
-  assert_eq "$(fake_calls docker)" "" "--no-digest makes no registry call"
+  init_repo "$r" --yes --no-herdr
+  assert_rc 0 "a version-1 config migrates"
+  assert_contains "$(cat "$r/.devcontainer/dck.toml")" "interface = 2" "the interface line is rewritten"
+  assert_not_contains "$(cat "$r/.devcontainer/dck.toml")" "image_tag" "image_tag is removed"
+  assert_contains "$(cat "$r/.devcontainer/dck.toml")" "ssh_port = 22041" "the rest of the file is kept"
+  assert_eq "$(fake_calls docker)" "" "init makes no registry call"
 }
 
 test_profile_network_and_user_rename() {
@@ -316,4 +334,65 @@ mine
 # >>> dck:b >>>
 added
 # <<< dck:b <<<" "blocks are replaced, removed and added; user lines are kept"
+}
+
+test_ssh_agent_and_known_hosts() {
+  local r c
+  r="$(new_repo agent)"
+  init_repo "$r" --no-herdr --yes
+  c="$(cat "$r/docker/local/docker-compose.yaml")"
+  assert_contains "$c" '- ${DCK_HOST_SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}:/run/dck/ssh-agent.sock' "the host SSH agent socket is mounted (no key file)"
+  assert_contains "$c" "SSH_AUTH_SOCK: /run/dck/ssh-agent.sock" "exec sessions see the agent"
+  assert_contains "$(cat "$r/.devcontainer/dck.toml")" "ssh_agent = true" "dck.toml records the agent sharing"
+  assert_contains "$(cat "$r/docker/local/app/dck/github_known_hosts")" "github.com ssh-ed25519 " "GitHub's host keys are vendored"
+  assert_contains "$(cat "$r/docker/local/app/.env.example")" "# DCK_GIT_EMAIL=" "the env example documents the git identity"
+  assert_contains "$(cat "$r/docker/local/app/.env.example")" "# AGENTKIT_PERMISSIONS=ask" "the env example documents the opt-out"
+  sed -i.orig 's/^ssh_agent = true$/ssh_agent = false/' "$r/.devcontainer/dck.toml" && rm -f "$r/.devcontainer/dck.toml.orig"
+  init_repo "$r" --no-herdr --yes
+  assert_not_contains "$(cat "$r/docker/local/docker-compose.yaml")" "ssh-agent.sock" "ssh_agent = false shares no agent"
+}
+
+test_devsh() {
+  local r fake
+  r="$(new_repo devsh)"
+  init_repo "$r" --no-herdr --yes
+  assert_file "$r/dev.sh" "dev.sh is rendered"
+  assert_match "$(ls -l "$r/dev.sh")" '^-rwx' "dev.sh is executable"
+  run_cmd bash -n "$r/dev.sh"
+  assert_rc 0 "dev.sh is valid bash"
+  assert_contains "$(cat "$r/dev.sh")" "# >>> dck:devsh >>>" "dev.sh has a managed block"
+  fake="$SANDBOX/dckbin"; mkdir -p "$fake"
+  printf '#!/bin/sh\nif [ "$1" = --version ]; then echo "devcontainer-kit %s"; exit 0; fi\nprintf "dck %%s\\n" "$*" >> "%s"\n' "$(cat "$DCK_REPO/VERSION")" "$DCK_FAKE_LOG" > "$fake/dck"
+  chmod +x "$fake/dck"
+  : > "$DCK_FAKE_LOG"
+  local v
+  for v in down shell build rebuild logs ps doctor agents; do
+    run_cmd env PATH="$fake:$PATH" bash "$r/dev.sh" "$v"
+    assert_contains "$(fake_calls dck)" "dck $v" "dev.sh $v runs dck $v"
+  done
+  run_cmd env PATH="$fake:$PATH" bash "$r/dev.sh" up
+  assert_contains "$(fake_calls dck)" "dck setup" "dev.sh up runs dck setup first"
+  assert_contains "$(fake_calls dck)" "dck up" "then dck up"
+  run_cmd env PATH="$fake:$PATH" bash "$r/dev.sh" herdr
+  assert_contains "$(fake_calls dck)" "dck herdr add" "dev.sh herdr defaults to dck herdr add"
+  run_cmd env PATH="$fake:$PATH" bash "$r/dev.sh" ask dck-x:w1:p1 "a question"
+  assert_contains "$(fake_calls dck)" "dck ask dck-x:w1:p1 a question" "dev.sh ask passes the target and prompt"
+  run_cmd env PATH="$fake:$PATH" bash "$r/dev.sh" nope
+  assert_rc 2 "an unknown dev.sh command is a usage error"
+  run_cmd env PATH=/usr/bin:/bin bash "$r/dev.sh" up
+  assert_rc 4 "without dck, dev.sh says how to install it"
+  assert_contains "$RUN_ERR" "git clone --branch v$(cat "$DCK_REPO/VERSION") https://github.com/DailybotHQ/devcontainer-kit" "the install line is pinned"
+  r="$(new_repo devsh-own)"
+  printf '#!/usr/bin/env bash\necho mine\n' > "$r/dev.sh"
+  init_repo "$r" --no-herdr --yes
+  assert_eq "$(cat "$r/dev.sh")" "$(printf '#!/usr/bin/env bash\necho mine')" "a repository's own dev.sh is kept"
+}
+
+test_herdr_layout_in_the_template() {
+  local r
+  r="$(new_repo hlayout)"
+  init_repo "$r" --no-herdr --yes
+  assert_contains "$(cat "$r/.devcontainer/dck.toml")" 'layout = "standard"' "dck.toml defaults to the standard layout"
+  assert_contains "$(cat "$r/docker/local/app/Dockerfile")" "COPY dck/herdr-layout.sh /usr/local/bin/dck-herdr-layout" "the image carries the layout script"
+  assert_contains "$(cat "$r/dev.sh")" "herdr-layout) exec dck herdr layout" "dev.sh herdr-layout maps to dck herdr layout"
 }

@@ -156,6 +156,47 @@ def has_alias(path, alias):
         return False
 
 
+def peers(path, known_hosts, exclude="", labels=None, host_user="", host_key_file=""):
+    """The mesh payload `dck_mesh_apply` reads inside a container: one
+    `peer <alias> <port> <user> <label>` line per managed block of the include
+    except `exclude`, one `hostkey <port> <type> <key>` line per pinned host key
+    of those ports (from dck's known_hosts, `[127.0.0.1]:<port>` entries), and,
+    when host_user is set, the host itself (`dck-host`, port 22) with its own
+    host key. Public data only: aliases, ports, users, labels, public keys."""
+    labels = labels or {}
+    lines = _read_owned(path) if os.path.exists(path) else []
+    out, ports = [], set()
+    for alias, start, end in _blocks(lines):
+        if alias == exclude:
+            continue
+        port = user = None
+        for ln in lines[start:end]:
+            m = re.match(r"^\s+Port\s+(\d+)\s*$", ln)
+            if m:
+                port = m.group(1)
+            m = re.match(r"^\s+User\s+([a-z_][a-z0-9_-]*)\s*$", ln)
+            if m:
+                user = m.group(1)
+        if port and user:
+            out.append("peer %s %s %s %s" % (alias, port, user, labels.get(alias, alias)))
+            ports.add(port)
+    if known_hosts and os.path.exists(known_hosts):
+        with open(known_hosts) as fh:
+            for ln in fh:
+                m = re.match(r"^\[127\.0\.0\.1\]:(\d+)\s+(\S+)\s+([A-Za-z0-9+/=]+)\s*$", ln.strip())
+                if m and m.group(1) in ports:
+                    out.append("hostkey %s %s %s" % m.groups())
+    if host_user:
+        if not re.match(r"^[a-z_][a-z0-9_.-]*$", host_user):
+            raise SshConfError("invalid host user %r" % host_user, 2)
+        out.append("peer dck-host 22 %s %s" % (host_user, labels.get("dck-host", "host")))
+        if host_key_file and os.path.exists(host_key_file):
+            parts = open(host_key_file).read().split()
+            if len(parts) >= 2:
+                out.append("hostkey 22 %s %s" % (parts[0], parts[1]))
+    return "\n".join(out) + ("\n" if out else "")
+
+
 def ensure_include(config_path, include="config.d/dck"):
     """Put `Include <include>` at the top of ~/.ssh/config. Returns 'added' or 'present'."""
     line = "Include %s" % include

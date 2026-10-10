@@ -109,10 +109,11 @@ def env_lines(repo, dck_tag, profile=None):
                 ("DCK_ALIAS", merged["alias"]),
                 ("DCK_SSH_IDENTITY", merged["ssh_identity"]),
                 ("DCK_HERDR_MACHINE", "1" if merged["herdr.machine"] else "0"),
+                ("DCK_HOST_MACHINE", "1" if merged.get("host_machine") else "0"),
+                ("DCK_HERDR_LAYOUT", merged["herdr.layout"]),
                 ("DCK_HERDR_LABEL", merged["herdr.label"]),
                 ("DCK_NETWORK", merged["network"]),
                 ("DCK_FLAVOUR", merged["flavour"]),
-                ("DCK_IMAGE_TAG", merged["image_tag"]),
                 ("DCK_PORTS", " ".join("%s=%s" % kv for kv in sorted(merged["ports"].items()))),
                 ("DCK_TOML_USER", merged["user"])]
     else:

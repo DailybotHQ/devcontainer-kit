@@ -20,6 +20,8 @@ dck setup && dck up && dck shell  # see launcher.md
 | `docker/local/docker-compose.yaml` | dck owns the marked blocks `project`, `service`, `volumes`, `networks`; add backing services and anything else outside them |
 | `docker/local/<service>/Dockerfile` | dck owns the `base` and `layers` blocks; add project layers below them |
 | `docker/local/<service>/.env.example` | created once, then yours |
+| `docker/local/<service>/dck/` | dck owns it: the build scripts the Dockerfile copies, vendored as byte copies of the kit's files, and `VERSION` (the kit they came from) |
+| `dev.sh` | created when missing (executable); dck owns its `devsh` block. A repository's own `dev.sh` without dck markers is never touched |
 | `.gitignore` | dck owns the `gitignore` block: `docker/local/**/.env`, `docker/local/**/.env.*`, `!docker/local/**/.env.example`, `*.dck-bak-*` |
 
 A managed block is delimited by marker comments:

@@ -1,0 +1,473 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DailybotHQ/devcontainer-kit/blob/v0.2.0/docs/schema/dck-doctor-v2.json",
+  "title": "dck doctor --json, interface 2",
+  "description": "Integrators read `interface` first and refuse an unknown major. Keys may be added within interface 1; none is removed or retyped.",
+  "type": "object",
+  "required": [
+    "interface",
+    "version",
+    "runtime",
+    "repo",
+    "layers",
+    "ssh",
+    "herdr",
+    "drift",
+    "ok",
+    "problems"
+  ],
+  "properties": {
+    "interface": {
+      "const": 2
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.]+)?$"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "problems": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "os": {
+      "type": "object",
+      "required": [
+        "system",
+        "machine"
+      ]
+    },
+    "python": {
+      "type": "object",
+      "required": [
+        "version",
+        "ok"
+      ],
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "ok": {
+          "type": "boolean"
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "required": [
+        "name",
+        "source",
+        "valid"
+      ]
+    },
+    "runtime": {
+      "type": "object",
+      "required": [
+        "docker",
+        "provider",
+        "compose",
+        "devcontainer_cli"
+      ],
+      "properties": {
+        "docker": {
+          "type": "object",
+          "required": [
+            "cli",
+            "version",
+            "daemon",
+            "server_version",
+            "reason"
+          ],
+          "properties": {
+            "cli": {
+              "type": "boolean"
+            },
+            "daemon": {
+              "type": "boolean"
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "server_version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "provider": {
+          "enum": [
+            "docker-desktop",
+            "orbstack",
+            "colima",
+            "podman",
+            "docker-engine",
+            null
+          ]
+        },
+        "compose": {
+          "type": "object",
+          "required": [
+            "version"
+          ],
+          "properties": {
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        "devcontainer_cli": {
+          "type": "object",
+          "required": [
+            "installed",
+            "version"
+          ],
+          "properties": {
+            "installed": {
+              "type": "boolean"
+            },
+            "version": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "repo": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "path",
+        "config_valid",
+        "errors",
+        "warnings",
+        "flavour",
+        "base_image",
+        "digest_pinned",
+        "project",
+        "service",
+        "container",
+        "env_files",
+        "kit_version",
+        "vendored"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "config_valid": {
+          "type": "boolean"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "flavour": {
+          "enum": [
+            "python-3.13",
+            "node-24",
+            "debian",
+            null
+          ]
+        },
+        "base_image": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "digest_pinned": {
+          "type": "boolean"
+        },
+        "project": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "service": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "container": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "name",
+            "state"
+          ]
+        },
+        "env_files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "present",
+              "mode",
+              "private",
+              "keys_set"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "present": {
+                "type": "boolean"
+              },
+              "mode": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "private": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "keys_set": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                },
+                "description": "variable NAMES with a non-empty value; never values"
+              }
+            }
+          }
+        },
+        "kit_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "the devcontainer-kit tag the repository was rendered with (docker/local/<service>/dck/VERSION)"
+        },
+        "vendored": {
+          "enum": [
+            "current",
+            "modified",
+            null
+          ],
+          "description": "whether docker/local/<service>/dck/ equals the installed kit's files"
+        }
+      }
+    },
+    "layers": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "agents",
+        "clis",
+        "dailybot",
+        "editor"
+      ],
+      "properties": {
+        "agents": {
+          "type": "boolean"
+        },
+        "dailybot": {
+          "type": "boolean"
+        },
+        "editor": {
+          "type": "boolean"
+        },
+        "clis": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "claude",
+              "codex",
+              "cursor",
+              "opencode",
+              "pi",
+              "cline",
+              "grok"
+            ]
+          }
+        }
+      }
+    },
+    "ssh": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "required": [
+        "enabled",
+        "port",
+        "bind",
+        "identity",
+        "identity_present",
+        "answering",
+        "banner"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "port": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "bind": {
+          "type": "string"
+        },
+        "identity": {
+          "type": "string"
+        },
+        "identity_present": {
+          "type": "boolean"
+        },
+        "answering": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "banner": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "herdr": {
+      "type": "object",
+      "required": [
+        "installed",
+        "version",
+        "machine",
+        "alias",
+        "include_present",
+        "registered",
+        "enabled",
+        "server_answering"
+      ],
+      "properties": {
+        "installed": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "machine": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "alias": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "include_present": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "registered": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "server_answering": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "drift": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "pinned",
+          "installed",
+          "status",
+          "note"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "pinned": {
+            "type": "string"
+          },
+          "installed": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "drift",
+              "unknown"
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

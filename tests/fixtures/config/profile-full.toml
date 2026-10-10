@@ -1,4 +1,4 @@
-interface = 1
+interface = 2
 name = "acme"
 compose_project_prefix = "acme-"
 network = "acme-dev"

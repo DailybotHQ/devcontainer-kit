@@ -1,9 +1,8 @@
-interface = 1
+interface = 2
 service = "app"                # compose service the tools attach to
 user = "dev"
 workspace = "/workspace"
 flavour = "node-24"
-image_tag = "v0.1.0"
 ssh_port = 22040
 ports = { web = 4321, api = 8000 }
 [layers]

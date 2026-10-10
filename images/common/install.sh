@@ -50,6 +50,9 @@ sed -i 's/^# *\(en_US.UTF-8\)/\1/' /etc/locale.gen && locale-gen >/dev/null
 rm -f /etc/ssh/ssh_host_*
 mkdir -p /etc/ssh/sshd_config.d /run/sshd
 install -m 0644 "$BUILD_DIR/sshd_config.conf" /etc/ssh/sshd_config.d/10-dck.conf
+# GitHub's published host keys: `git` over SSH never asks to trust one.
+grep -v '^#' "$BUILD_DIR/github_known_hosts" >> /etc/ssh/ssh_known_hosts
+chmod 0644 /etc/ssh/ssh_known_hosts
 
 # --- GitHub CLI --------------------------------------------------------------
 fetch "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${ARCH}.tar.gz" "$GH_SHA" /tmp/gh.tgz
@@ -91,7 +94,10 @@ chmod 0700 "$home/.ssh"
 # Debian's "not interactive: return" guard, so commands see it too.
 [ -f "$home/.bashrc" ] || cp /etc/skel/.bashrc "$home/.bashrc"
 {
-  echo '# devcontainer-kit: the container environment, also for non-interactive ssh commands'
+  echo '# devcontainer-kit: the container environment, also for non-interactive ssh commands,'
+  echo '# and the user tool PATH (ak, nvim) for non-login shells (docker exec, editor terminals)'
+  # shellcheck disable=SC2016  # expanded by the user's shell, not here
+  echo '[ -r /etc/profile.d/00-dck.sh ] && . /etc/profile.d/00-dck.sh'
   # shellcheck disable=SC2016  # expanded by the user's shell, not here
   echo '[ -r "$HOME/.dck/env.sh" ] && . "$HOME/.dck/env.sh"'
   cat "$home/.bashrc"

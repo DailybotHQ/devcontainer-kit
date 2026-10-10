@@ -1,16 +1,21 @@
-# devcontainer-kit config for this repository (interface 1).
+# devcontainer-kit config for this repository (interface 2).
 # Reference: https://github.com/DailybotHQ/devcontainer-kit/blob/{{dck_tag}}/docs/config.md
 # Edit this file, then run `dck init` to reconcile the generated files.
-interface = 1
+interface = 2
 
 # Compose service the tools attach to, its user and workspace folder.
 service = "{{service}}"
 user = "{{user}}"
 workspace = "{{workspace}}"
 
-# Base image: flavour (python-3.13 | node-24 | debian) and devcontainer-kit-base tag.
+# Runtime: python-3.13 | node-24 | debian. The Dockerfile starts FROM that
+# runtime's official image, pinned by digest in docker/local/<service>/dck/versions.env.
 flavour = "{{flavour}}"
-image_tag = "{{image_tag}}"
+# Optional: a different official image for the runtime, pinned by digest, e.g.
+# base_image = "node:22.20.0-trixie-slim@sha256:<64 hex>"
+
+# Share the host's SSH agent with the container (git over SSH; keys never enter it).
+ssh_agent = {{ssh_agent}}
 
 # Loopback-only host port for the container's sshd (Herdr, `dck ssh`); 0 = no sshd.
 ssh_port = {{ssh_port}}
@@ -34,3 +39,6 @@ clis = [{{agents_clis_toml}}]
 # Register the container as a Herdr machine on `dck up` (needs ssh_port).
 machine = {{herdr_machine}}
 label = "{{herdr_label_fmt}}"
+# The sidebar `dck up` creates inside the container: "standard" (Home · Editor ·
+# Development · Agents) or "none".
+layout = "{{herdr_layout}}"

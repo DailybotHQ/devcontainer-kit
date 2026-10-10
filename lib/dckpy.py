@@ -129,7 +129,7 @@ def cmd_init(args):
     opts = {"repo": opt(args, "--repo"), "profile": opt(args, "--profile")}
     for name, key, conv in (("--flavour", "flavour", str), ("--service", "service", str),
                             ("--user", "user", str), ("--workspace", "workspace", str),
-                            ("--image-tag", "image_tag", str), ("--ssh-port", "ssh_port", int)):
+                            ("--ssh-port", "ssh_port", int)):
         value = opt(args, name)
         if value is not None:
             try:
@@ -154,9 +154,9 @@ def cmd_init(args):
             opts[key] = True
         if flag(args, off):
             opts[key] = False
+    flag(args, "--no-digest")  # accepted for compatibility: v0.2 resolves no registry digest
     opts["dry_run"] = flag(args, "--dry-run")
     opts["yes"] = flag(args, "--yes") or flag(args, "-y")
-    opts["no_digest"] = flag(args, "--no-digest") or os.environ.get("DCK_NO_DIGEST") == "1"
     if args:
         return usage("init: unexpected argument %r (see: dck help init)" % args[0])
     opts["interactive"] = (not opts["yes"]) and sys.stdin.isatty() and os.environ.get("DCK_NONINTERACTIVE") != "1"
@@ -217,7 +217,7 @@ def cmd_devc(args):
 def cmd_sshconf(args):
     import sshconf
     if not args:
-        return usage("sshconf needs a command: upsert | remove | has | include")
+        return usage("sshconf needs a command: upsert | remove | has | include | peers")
     sub = args.pop(0)
     try:
         if sub == "upsert":
@@ -232,6 +232,25 @@ def cmd_sshconf(args):
             return EXIT_OK if sshconf.has_alias(opt(args, "--file"), opt(args, "--alias")) else EXIT_FAIL
         if sub == "include":
             print(sshconf.ensure_include(opt(args, "--config")))
+            return EXIT_OK
+        if sub == "peers":
+            labels = {}
+            raw = sys.stdin.read() if "--labels-stdin" in args else ""
+            if "--labels-stdin" in args:
+                args.remove("--labels-stdin")
+            start = min([i for i in (raw.find("["), raw.find("{")) if i >= 0] or [-1])
+            try:
+                data = json.loads(raw[start:]) if start >= 0 else []
+            except ValueError:
+                data = []
+            if isinstance(data, dict):
+                data = (data.get("result") or {}).get("machines") or data.get("machines") or []
+            for m in data if isinstance(data, list) else []:
+                if isinstance(m, dict) and m.get("target") and m.get("label"):
+                    labels[str(m["target"])] = str(m["label"])
+            sys.stdout.write(sshconf.peers(opt(args, "--file"), opt(args, "--known-hosts"),
+                                           opt(args, "--exclude") or "", labels,
+                                           opt(args, "--host-user") or "", opt(args, "--host-key") or ""))
             return EXIT_OK
     except sshconf.SshConfError as exc:
         sys.stderr.write("dck: %s\n" % exc)

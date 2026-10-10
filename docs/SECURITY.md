@@ -22,7 +22,7 @@ in your images, and your Herdr machines.
 | the repository → its own container | yes, by design | the container exists to run the repository's code; its hook and its Dockerfile run there, with the dev user's sudo |
 | the container → your host | **no** | the container reaches the host only through what you publish (loopback ports) and what you forward (your SSH agent, for the session you open) |
 | other machines on your network → the container | **no** | nothing listens beyond 127.0.0.1 unless `bind` says so |
-| the network → the image build | **no** | every base-image download is pinned and checksum-verified; the opt-in layers pin coding-agents-kit by tag and resolve the Dailybot CLI's dependencies with uv (see Supply chain) |
+| the network → the image build | **no** | every base-image download is pinned and checksum-verified; the opt-in layers install coding-agents-kit from its sha256-verified release tarball and resolve the Dailybot CLI's dependencies with uv (see Supply chain) |
 
 **Out of scope.** A malicious repository *inside its own container* (it owns
 that container by design), a compromised Docker daemon or kernel, a host
@@ -163,12 +163,18 @@ possible only by an explicit edit outside the managed blocks.
 
 ## Coding agents
 
-The base images contain no coding-agent CLI. The opt-in agents layer installs
-coding-agents-kit, which is **pass-through by default**: no permission-bypass
-flag is injected by dck, the template or the layer. Autonomy is the kit's
-explicit opt-in (`ak <kind> --auto` or `AGENTKIT_PERMISSIONS=auto`). Choosing it
-inside a container is reasonable when the container is your sandbox — and it
-remains your decision.
+The opt-in agents layer installs coding-agents-kit from its release tarball,
+verified against the pinned sha256, and the CLIs through `ak install`, which
+pins and verifies each one. **Autonomy is the default:** every agent launched
+through `ak` runs with its CLI's own autonomy flag, so it can run any command
+the container's user can, without asking. Autonomy is meant for disposable or
+sandboxed environments, and the development container is exactly that: its
+only writable host path is the repository, it holds no host private key (SSH
+goes through the host agent) and its ports bind to loopback. dck, the template
+and the layers never spell an autonomy flag; they live only in
+coding-agents-kit. To have agents ask before acting, set
+`AGENTKIT_PERMISSIONS=ask` in `docker/local/<service>/.env` (or uncomment it
+in compose), or pass `--ask` to one launch; the opt-out always wins.
 
 ## Reporting
 

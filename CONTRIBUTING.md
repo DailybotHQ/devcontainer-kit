@@ -47,7 +47,9 @@ point them at your real home.
   check enforces the common cases. Fixtures that need secret-shaped strings must be
   obviously fake and listed in `.public-hygiene-allow` with a reason.
 - Pin every external tool by version and checksum in `images/versions.env`; never pipe a
-  download into a shell; never add a permission-bypass flag by default.
+  download into a shell; never spell a coding-agent autonomy flag (they live only in
+  coding-agents-kit, whose default is autonomy) and keep the `AGENTKIT_PERMISSIONS=ask`
+  opt-out documented.
 - Security issues: see [SECURITY.md](SECURITY.md) — report privately, not in an issue.
 
 AI coding agents working on this repository start at [AGENTS.md](AGENTS.md).

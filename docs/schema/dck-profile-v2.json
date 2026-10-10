@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DailybotHQ/devcontainer-kit/blob/v0.2.0/docs/schema/dck-profile-v2.json",
+  "title": "devcontainer-kit host profile (~/.config/dck/profile.toml or profiles/<name>.toml), interface 2",
+  "type": "object",
+  "properties": {
+    "interface": {
+      "enum": [
+        1,
+        2
+      ],
+      "default": 2
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$",
+      "default": "default"
+    },
+    "compose_project_prefix": {
+      "type": "string",
+      "pattern": "^([a-z0-9][a-z0-9_-]{0,31})?$",
+      "default": ""
+    },
+    "network": {
+      "type": "string",
+      "pattern": "^([A-Za-z0-9][A-Za-z0-9_.-]{0,62})?$",
+      "default": "",
+      "description": "Shared external docker network (empty = none)"
+    },
+    "alias_prefix": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,31}$",
+      "default": "dck-",
+      "description": "SSH alias = <alias_prefix><repo-slug>"
+    },
+    "host_machine": {
+      "type": "boolean",
+      "default": false,
+      "description": "Reserved: host-as-Herdr-machine preference (reported, not configured, in v0.1)"
+    },
+    "labels": {
+      "type": "object",
+      "properties": {
+        "machine": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Placeholders: {repo} {service} {project} {user}",
+          "default": "{repo}"
+        }
+      }
+    },
+    "ssh": {
+      "type": "object",
+      "properties": {
+        "identity": {
+          "type": "string",
+          "minLength": 1,
+          "default": "~/.config/dck/ssh/id_ed25519",
+          "description": "Dedicated key dck authorizes in containers"
+        }
+      }
+    }
+  }
+}

@@ -11,8 +11,6 @@ services:
     build:
       context: ./{{service}}
       dockerfile: Dockerfile
-      args:
-        BASE_IMAGE: "{{base_image}}"
     init: true
     working_dir: {{workspace}}
     command: ["sleep", "infinity"]
@@ -20,6 +18,12 @@ services:
       - ../..:{{workspace}}:cached
       # Per-project named volumes (compose prefixes them with the project name).
 {{volume_mounts}}
+{% if ssh_agent_on %}
+      # The host's SSH agent (git over SSH, signing) — never a key file. Docker
+      # Desktop exposes it at this path; on a Linux host set DCK_HOST_SSH_AUTH_SOCK
+      # (dck up does it from $SSH_AUTH_SOCK).
+      - ${DCK_HOST_SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}:/run/dck/ssh-agent.sock
+{% endif %}
 {% if has_ports %}
     ports:
       # Loopback only unless dck.toml sets `bind`.
@@ -33,10 +37,15 @@ services:
       DCK_WORKSPACE: {{workspace}}
       DCK_SSH: "{{ssh_enabled}}"
       DCK_EDITOR: "{{editor_enabled}}"
+{% if ssh_agent_on %}
+      SSH_AUTH_SOCK: /run/dck/ssh-agent.sock
+{% endif %}
 {% if layers_agents_on %}
       # Agents layer: one named volume per CLI home (persisted by the entrypoint);
-      # ak profiles live on the agentkit volume. Autonomy stays opt-in: set
-      # AGENTKIT_PERMISSIONS=auto in .env only if this container is your sandbox.
+      # ak profiles live on the agentkit volume. Every agent launched through ak
+      # runs in autonomy (this container is the sandbox). To have agents ask
+      # before acting instead, uncomment the opt-out:
+      # AGENTKIT_PERMISSIONS=ask   # opt-out: agents ask before acting
       DCK_AGENTS: "{{agents_clis_space}}"
       AGENTKIT_PROFILES_DIR: /home/{{user}}/.dck/volumes/agentkit/profiles
 {% endif %}

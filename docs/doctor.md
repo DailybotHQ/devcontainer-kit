@@ -2,7 +2,7 @@
 
 ```bash
 dck doctor            # human report
-dck doctor --json     # machine report, interface 1 (docs/schema/dck-doctor-v1.json)
+dck doctor --json     # machine report, interface 2 (docs/schema/dck-doctor-v2.json)
 dck doctor --strict   # exit 1 while `problems` is not empty (CI)
 ```
 
@@ -12,23 +12,24 @@ degrades to `null`/`false` with a reason instead of failing — a broken
 machine still gets an answer. Exit status is 0 (or 1 with `--strict` and
 problems), 2 on a usage error.
 
-## The JSON report (interface 1)
+## The JSON report (interface 2)
 
 Integrators (the DeepWorkPlan `devcontainer` addon, scripts, agents) read
 `interface` first and treat an unknown value as "not compatible" — one warning,
-never an error. Within interface 1 keys may be **added**, never removed or
-retyped.
+never an error. Within interface 2 keys may be **added**, never removed or
+retyped. Interface 2 (v0.2.0) replaced the base-image keys of interface 1 (`image_tag`,
+`digest_match`) with `kit_version` and `vendored`.
 
 | Key | Content |
 | --- | --- |
-| `interface` | `1` |
+| `interface` | `2` |
 | `version` | the installed dck version (the `VERSION` file of the install) |
 | `runtime` | `docker` {`cli`, `version`, `daemon` (true only when `docker info` returns a server version — a stuck engine that exits 0 printing its error counts as not answering), `server_version`, `reason`}, `provider` (`docker-desktop`, `orbstack`, `colima`, `podman`, `docker-engine` or null), `compose.version`, `devcontainer_cli` {`installed`, `version`} |
-| `repo` | `path`, `devcontainer`, `config_valid`, `errors`, `warnings`, `flavour`, `image_tag`, `base_image` (as pinned in compose), `digest_pinned`, `digest_match` (null until the image is pulled locally), `project`, `service`, `container` {`name`, `state`}, `env_files` [{`path`, `present`, `mode`, `private`, `keys_set`}] |
+| `repo` | `path`, `devcontainer`, `config_valid`, `errors`, `warnings`, `flavour`, `base_image` (the `ARG BASE_IMAGE` pin of the rendered Dockerfile), `digest_pinned`, `kit_version` (the devcontainer-kit tag in `docker/local/<service>/dck/VERSION`), `vendored` (`current` when `dck/` equals the installed kit's files, `modified` otherwise — `dck init` restores them), `project`, `service`, `container` {`name`, `state`}, `env_files` [{`path`, `present`, `mode`, `private`, `keys_set`}] |
 | `layers` | `agents`, `clis`, `dailybot`, `editor` |
 | `ssh` | `enabled`, `port`, `bind`, `identity`, `identity_present`, `answering` (true only when sshd sends its `SSH-` banner on the published port — a bare TCP accept can be Docker's userland proxy; probed only when the container runs), `banner` |
 | `herdr` | `installed`, `version`, `machine` (dck.toml), `alias`, `include_present`, `registered`, `enabled`, `server_answering` |
-| `drift` | [{`name`, `pinned`, `installed`, `status` (`ok`/`drift`/`unknown`), `note`}]: the repository's `image_tag` vs the installed dck; the host's Herdr client vs the image pin (informative: they need not match); inside a running container built from a dck image, gh/herdr/nvim/deepworkplan-vim vs `images/versions.env` |
+| `drift` | [{`name`, `pinned`, `installed`, `status` (`ok`/`drift`/`unknown`), `note`}]: the kit the repository was rendered with (`kit`) vs the installed dck; the host's Herdr client vs the image pin (informative: they need not match); inside a running container built from a dck image, gh/herdr/nvim/deepworkplan-vim vs `images/versions.env` |
 | `os`, `python`, `profile` | host system/arch; python version and whether it is ≥ 3.11; the host profile in use and whether it is valid |
 | `problems`, `ok` | human-readable findings; `ok` is true when there are none |
 

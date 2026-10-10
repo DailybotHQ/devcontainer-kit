@@ -2,7 +2,7 @@
 # Scope: doctor — `dck doctor [--json]` (schema-checked) and the dck skill.
 
 DCK="$DCK_REPO/bin/dck"
-SCHEMA="$DCK_REPO/docs/schema/dck-doctor-v1.json"
+SCHEMA="$DCK_REPO/docs/schema/dck-doctor-v2.json"
 VERSION="$(cat "$DCK_REPO/VERSION")"
 use_fakes
 export DCK_BACKEND=compose DCK_NONINTERACTIVE=1 DCK_NO_DIGEST=1
@@ -25,8 +25,8 @@ valid() {
 test_outside_a_repository() {
   outside
   assert_rc 0 "doctor works outside a repository"
-  valid "the report matches dck-doctor-v1"
-  assert_eq "$(j 'd["interface"]')" "1" "interface is 1"
+  valid "the report matches dck-doctor-v2"
+  assert_eq "$(j 'd["interface"]')" "2" "interface is 2"
   assert_eq "$(j 'd["version"]')" "\"$VERSION\"" "version is the installed dck's"
   assert_eq "$(j '[d["repo"], d["layers"], d["ssh"]]')" "[null, null, null]" "repo, layers and ssh are null outside a repository"
   assert_eq "$(j 'd["runtime"]["docker"]["daemon"]')" "true" "the (fake) daemon is reported"
@@ -37,15 +37,15 @@ test_outside_a_repository() {
 test_inside_a_repository() {
   mk_repo
   doc
-  valid "the in-repo report matches dck-doctor-v1"
+  valid "the in-repo report matches dck-doctor-v2"
   assert_eq "$(j 'd["repo"]["config_valid"]')" "true" "the config is valid"
   assert_eq "$(j 'd["repo"]["flavour"]')" '"node-24"' "the flavour is reported"
-  assert_eq "$(j 'd["repo"]["image_tag"]')" "\"v$VERSION\"" "the image tag is reported"
+  assert_eq "$(j 'd["repo"]["kit_version"]')" "\"v$VERSION\"" "the kit version is reported"
   assert_eq "$(j 'd["repo"]["project"]')" '"proj"' "the compose project is reported"
   assert_eq "$(j 'd["layers"]')" '{"agents": false, "clis": [], "dailybot": false, "editor": true}' "the layers are reported"
   assert_eq "$(j '[d["ssh"]["enabled"], d["ssh"]["port"], d["ssh"]["bind"]]')" '[true, 22040, "127.0.0.1"]' "ssh port and bind are reported"
-  assert_eq "$(j 'd["repo"]["digest_pinned"]')" "false" "a tag-only pin is reported"
-  assert_contains "$(j 'd["problems"]')" "pinned by tag only" "and listed as a problem"
+  assert_eq "$(j 'd["repo"]["digest_pinned"]')" "true" "the Dockerfile's digest pin is reported"
+  assert_not_contains "$(j 'd["problems"]')" "not pinned by digest" "a digest-pinned base is no problem"
   assert_contains "$(j 'd["problems"]')" "docker/local/app/.env is missing" "a missing .env is a problem"
   assert_eq "$(j 'd["ok"]')" "false" "ok is false while problems remain"
 }
@@ -96,20 +96,17 @@ test_provider_detection() {
   assert_eq "$(j 'd["runtime"]["provider"]')" '"docker-desktop"' "Docker Desktop is recognised"
 }
 
-test_digest_match() {
-  printf 'sha256:%064d\n' 5 > "$DCK_FAKE_STATE/digest"
+test_vendored_state() {
   mkdir -p "$REPO"; git -C "$REPO" init -q
-  run_cmd env DCK_NO_DIGEST=0 "$DCK" init --repo "$REPO" --flavour debian --ssh-port 22040 --no-herdr --yes
+  run_cmd "$DCK" init --repo "$REPO" --flavour debian --ssh-port 22040 --no-herdr --yes
   doc
-  assert_eq "$(j 'd["repo"]["digest_pinned"]')" "true" "a digest pin is reported"
-  assert_eq "$(j 'd["repo"]["digest_match"]')" "null" "an image not pulled yet cannot be compared"
-  printf '["ghcr.io/dailybothq/devcontainer-kit-base@sha256:%064d"]\n' 5 > "$DCK_FAKE_STATE/image_inspect_out"
+  assert_eq "$(j 'd["repo"]["digest_pinned"]')" "true" "the Dockerfile's base image digest pin is reported"
+  assert_eq "$(j 'd["repo"]["kit_version"]')" "\"v$(cat "$DCK_REPO/VERSION")\"" "the kit version the repository was rendered with is reported"
+  assert_eq "$(j 'd["repo"]["vendored"]')" '"current"' "vendored scripts equal to the kit are current"
+  printf '\n# local edit\n' >> "$REPO/docker/local/app/dck/install.sh"
   doc
-  assert_eq "$(j 'd["repo"]["digest_match"]')" "true" "a matching local image is reported"
-  printf '["ghcr.io/dailybothq/devcontainer-kit-base@sha256:%064d"]\n' 6 > "$DCK_FAKE_STATE/image_inspect_out"
-  doc
-  assert_eq "$(j 'd["repo"]["digest_match"]')" "false" "a different local image is reported"
-  assert_contains "$(j 'd["problems"]')" "does not match the digest pinned in compose" "and listed as a problem"
+  assert_eq "$(j 'd["repo"]["vendored"]')" '"modified"' "an edited vendored script is reported"
+  assert_contains "$(j 'd["problems"]')" "differs from the devcontainer-kit files" "and listed as a problem"
 }
 
 test_container_ssh_and_drift() {
@@ -126,9 +123,9 @@ test_container_ssh_and_drift() {
   assert_eq "$(j '[x["status"] for x in d["drift"] if x["name"] == "gh"]')" '["drift"]' "a tool version different from the pin is drift"
   assert_eq "$(j '[x["status"] for x in d["drift"] if x["name"] == "nvim"]')" '["ok"]' "a matching tool version is ok"
   assert_contains "$(j 'd["problems"]')" "drift: gh pinned" "tool drift is a problem"
-  sed -i.orig "s/^image_tag = .*/image_tag = \"v0.0.9\"/" "$REPO/.devcontainer/dck.toml" && rm -f "$REPO/.devcontainer/dck.toml.orig"
+  printf 'devcontainer-kit v0.0.9\n' > "$REPO/docker/local/app/dck/VERSION"
   doc
-  assert_eq "$(j '[x["status"] for x in d["drift"] if x["name"] == "image_tag"]')" '["drift"]' "a repository pinned to another dck tag shows drift"
+  assert_eq "$(j '[x["status"] for x in d["drift"] if x["name"] == "kit"]')" '["drift"]' "a repository rendered with another dck version shows drift"
 }
 
 test_herdr_section() {
@@ -144,7 +141,7 @@ test_herdr_section() {
 test_strict_text_and_flags() {
   outside
   run_cmd bash -c 'cd "$1" && "$2" doctor' _ "$SANDBOX/nowhere" "$DCK"
-  assert_contains "$RUN_OUT" "devcontainer-kit $VERSION (interface 1)" "the text report starts with version and interface"
+  assert_contains "$RUN_OUT" "devcontainer-kit $VERSION (interface 2)" "the text report starts with version and interface"
   mk_repo
   run_cmd bash -c 'cd "$1" && "$2" doctor --strict' _ "$REPO" "$DCK"
   assert_rc 1 "--strict exits 1 while problems remain"
@@ -167,9 +164,12 @@ test_non_loopback_bind_is_flagged() {
 SKILL="$DCK_REPO/skills/dck/SKILL.md"
 
 test_skill_frontmatter() {
-  run_cmd python3 - "$SKILL" "$VERSION" <<'PY'
-import re, sys
+  local f
+  for f in "$DCK_REPO"/skills/*/SKILL.md; do
+  run_cmd python3 - "$f" "$VERSION" <<'PY'
+import os, re, sys
 text = open(sys.argv[1]).read()
+want_name = os.path.basename(os.path.dirname(sys.argv[1]))
 m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
 assert m, "no frontmatter"
 fm = m.group(1)
@@ -177,23 +177,45 @@ def field(k):
     mm = re.search(r"^%s:\s*(.+)$" % k, fm, re.M)
     return mm.group(1).strip() if mm else None
 errors = []
-if field("name") != "dck": errors.append("name must be dck")
+if field("name") != want_name: errors.append("name must be %s" % want_name)
 desc = field("description") or ""
 if not (50 <= len(desc) <= 1024): errors.append("description length %d" % len(desc))
 if "Use only when" not in desc or "Do not use" not in desc: errors.append("description lacks strict triggers")
-if not re.search(r"^  interface: 1$", fm, re.M): errors.append("metadata.interface must be 1")
+if not re.search(r"^  interface: 2$", fm, re.M): errors.append("metadata.interface must be 2")
 if not re.search(r"^  version: %s$" % re.escape(sys.argv[2]), fm, re.M): errors.append("metadata.version must equal VERSION")
 if field("license") != "MIT": errors.append("license must be MIT")
 print("\n".join(errors)); sys.exit(1 if errors else 0)
 PY
-  assert_rc 0 "the skill frontmatter is valid (name, strict description, interface 1, version, license)"
+  assert_rc 0 "$(basename "$(dirname "$f")"): the skill frontmatter is valid (name, strict description, interface 2, version, license)"
+  done
 }
 
 test_skill_rules() {
-  local s; s="$(cat "$SKILL")"
+  local f s
+  for f in "$DCK_REPO"/skills/*/SKILL.md; do
+    s="$(cat "$f")"
+    assert_match "$s" '^## Trust boundary \(write scope\)$' "$(basename "$(dirname "$f")"): a Trust boundary (write scope) section"
+    assert_no_match "$s" '(curl|wget)[^|]*\|[[:space:]]*(sudo[[:space:]]+)?(ba|z)?sh' "$(basename "$(dirname "$f")"): no fetch-piped-to-shell line (E005)"
+    assert_no_match "$s" '--dangerously|--yolo|--always-approve' "$(basename "$(dirname "$f")"): no CLI autonomy flag (E006)"
+    assert_contains "$s" "AGENTKIT_PERMISSIONS=ask" "$(basename "$(dirname "$f")"): documents the opt-out (E006)"
+    assert_contains "$s" "git clone --branch v$VERSION https://github.com/DailybotHQ/devcontainer-kit" "$(basename "$(dirname "$f")"): the install line is pinned (W012)"
+    assert_no_match "$s" '@main|--branch main|:latest' "$(basename "$(dirname "$f")"): no floating reference"
+  done
+  s="$(cat "$DCK_REPO/skills/dck-dockerfile/SKILL.md")"
+  local step
+  for step in "## 1. Detect, then ask only what is missing" "## 2. Render" "## 3. Validate with a real build" "## 4. Report"; do
+    assert_contains "$s" "$step" "dck-dockerfile has the step: $step"
+  done
+  run_cmd "$DCK" --skill dck-dockerfile
+  assert_rc 0 "dck --skill dck-dockerfile prints the skill"
+  assert_contains "$RUN_OUT" "name: dck-dockerfile" "it is the dck-dockerfile skill"
+  run_cmd "$DCK" --skill "../x"
+  assert_rc 2 "an invalid skill name is a usage error"
+  s="$(cat "$SKILL")"
   assert_match "$s" '^## Trust boundary \(write scope\)$' "the skill has a Trust boundary (write scope) section"
   assert_no_match "$s" '(curl|wget)[^|]*\|[[:space:]]*(sudo[[:space:]]+)?(ba|z)?sh' "no fetch-piped-to-shell line (E005)"
-  assert_no_match "$s" '--dangerously|--yolo|--always-approve|AGENTKIT_PERMISSIONS=auto' "no permission-bypass flag (E006)"
+  assert_no_match "$s" '--dangerously|--yolo|--always-approve' "no CLI autonomy flag is spelled (E006: they live in coding-agents-kit)"
+  assert_contains "$s" "AGENTKIT_PERMISSIONS=ask" "the skill documents the opt-out (E006)"
   assert_contains "$s" "git clone --branch v$VERSION https://github.com/DailybotHQ/devcontainer-kit" "the install line is pinned to this version (W012)"
   assert_no_match "$s" '@main|--branch main|:latest' "no floating reference"
   local v

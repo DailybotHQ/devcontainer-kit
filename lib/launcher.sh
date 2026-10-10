@@ -47,7 +47,10 @@ usage: dck [--repo DIR] [--profile NAME] [--project NAME] [--trust] <verb> [args
   config                what dck resolved for this repository
   ports                 the published loopback ports
   ssh [cmd...]          ssh into the container with agent forwarding
-  herdr add|status|repair|remove   the container as a Herdr machine
+  herdr add|status|repair|remove|mesh   the container as a Herdr machine; mesh: reach the others from inside
+  herdr layout [--keep|--reset]   the standard sidebar inside: Home · Editor · Development · Agents
+  agents                the live agents on every Herdr machine (herdr-peers list)
+  ask <machine>:<pane> "<prompt>"   ask one of them, with the reply grant (herdr-peers ask)
   doctor [--json] [--strict]   environment and repository health (interface 1)
   --skill               print the bundled agent skill
   help [verb]           this text, or one verb's details
@@ -86,14 +89,12 @@ is written and dck exits 5.
   --workspace PATH     workspaceFolder (default /workspace)
   --ssh-port N         loopback sshd port, 0 = none (default: derived from the repo name)
   --port NAME=N        a named loopback port (repeatable)
-  --image-tag vX.Y.Z   devcontainer-kit-base tag (default: this dck's tag)
   --agents | --no-agents       the agents layer (coding-agents-kit)
   --clis "claude codex"        kinds for `ak install` when agents is on
   --editor | --no-editor       the editor layer
   --herdr | --no-herdr         register as a Herdr machine on `dck up`
   --dry-run            show the plan and the diffs, write nothing
   --yes, -y            consent to every change shown
-  --no-digest          do not resolve the base image digest (tag pin only)
   --repo DIR           the repository to initialise
 EOF
 }
@@ -121,13 +122,15 @@ load_context() {
   local out
   out="$(dckpy "${args[@]}")" || exit "$DCK_EXIT_CONFIG"
   DCK_HAS_TOML=0; DCK_SSH_PORT=0; DCK_BIND=127.0.0.1; DCK_ALIAS=""; DCK_HERDR_MACHINE=0
-  DCK_HERDR_LABEL=""; DCK_PORTS=""; DCK_SSH_IDENTITY=""; DCK_FLAVOUR=""; DCK_IMAGE_TAG=""
+  DCK_HERDR_LABEL=""; DCK_PORTS=""; DCK_SSH_IDENTITY=""; DCK_FLAVOUR=""
+  export DCK_HOST_MACHINE="0"  # read by lib/herdr.sh (herdr_mesh)
+  export DCK_HERDR_LAYOUT="standard"  # read by lib/herdr.sh (herdr_layout)
   while IFS= read -r line; do
     k="${line%%=*}"; v="${line#*=}"
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_IMAGE_TAG|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HERDR_LAYOUT|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out
@@ -288,6 +291,63 @@ $(env_examples)
 EOF
 }
 
+# ensure_git_identity_env — copy the host's git identity (user.name, user.email
+# and the signing settings, when set) into each service .env as DCK_GIT_*, only
+# where the key is absent. Values are written, never printed.
+ensure_git_identity_env() {
+  GIT_ID_SET=0
+  command -v git >/dev/null 2>&1 || return 0
+  local f target pair key var value
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    target="${f%.example}"
+    [ -f "$target" ] && [ ! -L "$target" ] || continue
+    for pair in user.name=DCK_GIT_NAME user.email=DCK_GIT_EMAIL user.signingkey=DCK_GIT_SIGNINGKEY \
+                gpg.format=DCK_GIT_GPG_FORMAT commit.gpgsign=DCK_GIT_COMMIT_GPGSIGN; do
+      key="${pair%%=*}"; var="${pair#*=}"
+      grep -q "^${var}=" "$target" && continue
+      value="$(git config --global --get "$key" 2>/dev/null || true)"
+      [ -n "$value" ] || continue
+      case "$value" in *"
+"*) continue ;; esac
+      printf '%s=%s\n' "$var" "$value" >> "$target" || die "could not update $target"
+      GIT_ID_SET=$((GIT_ID_SET + 1))
+    done
+  done <<EOF
+$(env_examples)
+EOF
+  [ "$GIT_ID_SET" -eq 0 ] || note "setup: wrote $GIT_ID_SET git identity setting(s) from your git config into the service .env"
+}
+
+# warn_empty_ssh_agent — git over SSH inside the container signs with keys the
+# HOST's agent holds (no key is copied in). An agent with no identity means git
+# push will fail inside: say how to load the key, once, at setup.
+warn_empty_ssh_agent() {
+  command -v ssh-add >/dev/null 2>&1 || return 0
+  local rc=0
+  ssh-add -l >/dev/null 2>&1 || rc=$?
+  case "$rc" in
+    0) return 0 ;;
+    1) if [ "$(uname -s)" = "Darwin" ]; then
+         warn "your ssh-agent holds no keys: git over SSH inside the container uses the host agent (no key is copied in). Load your git key once: ssh-add --apple-use-keychain ~/.ssh/<your key>"
+       else
+         warn "your ssh-agent holds no keys: git over SSH inside the container uses the host agent (no key is copied in). Load your git key: ssh-add ~/.ssh/<your key>"
+       fi ;;
+    *) warn "no ssh-agent is running on this host: git over SSH inside the container needs one (keys are never copied in)" ;;
+  esac
+}
+
+# export_host_ssh_agent — the compose file mounts ${DCK_HOST_SSH_AUTH_SOCK} as the
+# container's SSH agent. Docker Desktop's default path needs nothing; on a Linux
+# host it is the user's own agent socket.
+export_host_ssh_agent() {
+  [ -n "${DCK_HOST_SSH_AUTH_SOCK:-}" ] && return 0
+  if [ "$(uname -s)" = "Linux" ] && [ -S "${SSH_AUTH_SOCK:-}" ]; then
+    export DCK_HOST_SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+  fi
+  return 0
+}
+
 ensure_external_networks() {
   local net f
   for f in "${DC_COMPOSE_FILES[@]}"; do
@@ -411,6 +471,9 @@ cmd_setup() {
   ENV_CREATED=0
   ensure_env_from_examples
   changed=$((changed + ENV_CREATED))
+  ensure_git_identity_env
+  changed=$((changed + GIT_ID_SET))
+  warn_empty_ssh_agent
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     target="${f%.example}"
@@ -449,6 +512,7 @@ cmd_up() {
   done
   require_docker
   fast_check
+  export_host_ssh_agent
   resolve_backend
   selected_services ${args[@]+"${args[@]}"}
   if [ "$BACKEND" = devcontainer ] && [ "${#args[@]}" -eq 0 ]; then
@@ -643,7 +707,7 @@ cmd_config() {
     note "overlay          <none needed>"
   fi
   if [ "$DCK_HAS_TOML" = "1" ]; then
-    note "dck.toml         .devcontainer/dck.toml (flavour $DCK_FLAVOUR, image $DCK_IMAGE_TAG)"
+    note "dck.toml         .devcontainer/dck.toml (flavour $DCK_FLAVOUR)"
     note "ssh              $( [ "$DCK_SSH_PORT" = 0 ] && echo "off" || echo "$DCK_BIND:$DCK_SSH_PORT → 22, alias $DCK_ALIAS")"
     note "herdr machine    $( [ "$DCK_HERDR_MACHINE" = 1 ] && echo "on, label \"$DCK_HERDR_LABEL\"" || echo off)"
     note "ssh identity     $(pretty_path "$DCK_SSH_IDENTITY")"
@@ -710,7 +774,10 @@ dck_main() {
     case "$1" in
       --version|-V) note "devcontainer-kit $(dck_version)"; return 0 ;;
       --skill)
-        if declare -F dck_print_skill >/dev/null 2>&1; then dck_print_skill; return $?; fi
+        if declare -F dck_print_skill >/dev/null 2>&1; then
+          if [ $# -ge 2 ] && [ "${2#-}" = "$2" ]; then dck_print_skill "$2"; else dck_print_skill; fi
+          return $?
+        fi
         die "$DCK_EXIT_FAIL" "--skill is not available in this build" ;;
       --profile) [ $# -ge 2 ] || die "$DCK_EXIT_USAGE" "--profile needs a name"; DCK_PROFILE_NAME="$2"; shift 2 ;;
       --trust) DCK_TRUST=1; export DCK_TRUST; shift ;;

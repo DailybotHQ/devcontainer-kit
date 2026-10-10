@@ -22,7 +22,9 @@ dck_cmd_doctor() {
 # The bundled agent skill (skills/dck/SKILL.md), for agents that load skills
 # from a command's output.
 dck_print_skill() {
-  local f="$DCK_ROOT/skills/dck/SKILL.md"
+  local name="${1:-dck}"
+  case "$name" in ''|*[!a-z0-9-]*) die "$DCK_EXIT_USAGE" "--skill takes a skill name (dck, dck-dockerfile)" ;; esac
+  local f="$DCK_ROOT/skills/$name/SKILL.md"
   [ -f "$f" ] || die "the skill file is missing from this install ($f)"
   cat "$f"
 }
