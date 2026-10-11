@@ -138,10 +138,21 @@ install.
 | `agents` | `dck agents` (herdr-peers list) |
 | `ask <machine>:<pane> "<prompt>"` | `dck ask …` (herdr-peers ask) |
 
-When `dck` is not installed, `dev.sh` prints the pinned install steps
-(`git clone --branch <the release it was rendered with> …` and
-`install.sh`). It installs nothing itself. When the installed `dck`
-differs from that release, it suggests `dck init`. A repository that keeps
-its own `dev.sh` (no dck markers) keeps it untouched and can call the
-verbs above.
+| `install-dck` | installs devcontainer-kit on this host: clones the tag it was rendered with, verifies every shipped file against that release's `SHA256SUMS`, runs `install.sh --no-rc` (dck needs python3 >= 3.11) |
+
+`dev.sh` finds `dck` on `PATH`, then in `${DCK_INSTALL_DIR:-~/.local/share/dck}/bin`.
+When it is not installed, **Docker alone is enough** for the container verbs:
+`up`, `down`, `shell`, `exec`, `build`, `rebuild`, `logs` and `ps` run on plain
+`docker compose -f docker/local/docker-compose.yaml`, with the rendered service,
+user and workspace. That fallback creates missing `.env` files from their
+examples (umask 077), passes `$SSH_AUTH_SOCK` as `DCK_HOST_SSH_AUTH_SOCK` on a
+Linux host, and does not run `docker/local/dev-setup-hook.sh` itself (the
+container's entrypoint runs it at every start). For volumes dck created, plain
+compose prints a harmless `volume ... already exists but was not created by
+Docker Compose` warning. The dck-only verbs (`doctor`, `ssh`, `setup`,
+`herdr`, `herdr-layout`, `agents`, `ask`) print the pinned install steps and
+exit 4; on a terminal they first offer `install-dck` (`[Y/n]`). When the
+installed `dck` differs from the release `dev.sh` was rendered with, it
+suggests `dck init`. A repository that keeps its own `dev.sh` (no dck markers)
+keeps it untouched and can call the verbs above.
 
