@@ -515,3 +515,23 @@ test_setup_offers_the_host_listener_once() {
   denv DCK_HOST_OS=Darwin "$DCK" setup
   assert_contains "$RUN_OUT" "dck host listener enable" "without a terminal setup only names the command"
 }
+
+test_up_authorizes_the_extra_keys() {
+  mk_repo || return 0
+  mkdir -p "$HOME/.config/dck" "$HOME/keys"
+  local k1="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQExtraKeyOneFakeOnlyForTests me@host"
+  printf '%s\n# a comment\nnot a key\n' "$k1" > "$HOME/keys/one.pub"
+  ln -s "$HOME/keys/one.pub" "$HOME/keys/link.pub"
+  printf '[ssh]\nauthorized_extra = ["~/keys/one.pub", "~/keys/missing.pub", "~/keys/link.pub"]\n' > "$HOME/.config/dck/profile.toml"
+  d up
+  assert_rc 0 "up succeeds"
+  local ak; ak="$(cat "$DCK_FAKE_STATE/last_authorized_keys")"
+  assert_contains "$ak" "$(cat "$HOME/.config/dck/ssh/id_ed25519.pub")" "the dck key is still authorized"
+  assert_contains "$ak" "$k1" "a listed public key is authorized"
+  assert_not_contains "$ak" "not a key" "only public-key lines are taken"
+  assert_contains "$RUN_ERR" "missing.pub is missing" "a missing file is reported"
+  assert_contains "$RUN_ERR" "link.pub is missing (or a symlink)" "a symlink is never followed"
+  printf '' > "$HOME/.config/dck/profile.toml"
+  d up
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_authorized_keys")" "$(cat "$HOME/.config/dck/ssh/id_ed25519.pub")" "without the key only the dck key is authorized"
+}

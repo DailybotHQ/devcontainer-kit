@@ -527,11 +527,28 @@ dck_identity_ensure() {
   note "created the dck SSH key $(pretty_path "$id") (authorized only inside dck containers)"
 }
 
+# The dck key, plus the public keys the host profile lists in
+# [ssh] authorized_extra (for clients that log in with your own keys, such as
+# containers another kit manages). Only well-formed public-key lines are taken
+# from those files; the entrypoint filters again inside.
 export_authorized_keys() {
-  if ssh_enabled && [ -f "$DCK_SSH_IDENTITY.pub" ]; then
-    DCK_AUTHORIZED_KEYS="$(cat "$DCK_SSH_IDENTITY.pub")"
-    export DCK_AUTHORIZED_KEYS
-  fi
+  ssh_enabled || return 0
+  [ -f "$DCK_SSH_IDENTITY.pub" ] || return 0
+  local keys f line
+  keys="$(cat "$DCK_SSH_IDENTITY.pub")"
+  for f in ${DCK_SSH_AUTHORIZED_EXTRA:-}; do
+    case "$f" in *.pub) ;; *) warn "ssh: authorized_extra: skipping $f (not a .pub file)"; continue ;; esac
+    if [ ! -f "$f" ] || [ -L "$f" ]; then warn "ssh: authorized_extra: $f is missing (or a symlink); skipped"; continue; fi
+    while IFS= read -r line; do
+      case "$line" in
+        ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-nistp256\ *|ecdsa-sha2-nistp384\ *|ecdsa-sha2-nistp521\ *|sk-ssh-ed25519@openssh.com\ *|sk-ecdsa-sha2-nistp256@openssh.com\ *)
+          keys="$keys
+$line" ;;
+      esac
+    done < "$f"
+  done
+  DCK_AUTHORIZED_KEYS="$keys"
+  export DCK_AUTHORIZED_KEYS
 }
 
 # The repository's devcontainer.json and compose file run on YOUR Docker

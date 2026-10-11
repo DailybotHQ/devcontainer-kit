@@ -338,3 +338,9 @@ test_host_listener_posture() {
   assert_contains "$(cat "$DCK_REPO/docs/SECURITY.md")" "dck host listener disable" "SECURITY.md documents how to turn the listener off"
   assert_contains "$(cat "$DCK_REPO/docs/SECURITY.md")" "only with the host listener (opt-in)" "SECURITY.md lists the listener as a trust boundary"
 }
+
+test_authorized_extra_is_host_profile_only() {
+  assert_contains "$(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import config; print(sorted(config.REPO_RULES))' "$DCK_REPO/lib")" "ssh_agent" "the repo rules load"
+  assert_not_contains "$(python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import config; print(sorted(config.REPO_RULES))' "$DCK_REPO/lib")" "authorized_extra" "a repository can never authorize extra keys"
+  assert_contains "$(cat "$DCK_REPO/docs/SECURITY.md")" "authorized_extra" "SECURITY.md documents the extra keys"
+}
