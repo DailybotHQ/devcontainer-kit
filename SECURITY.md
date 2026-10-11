@@ -4,7 +4,9 @@
 
 | Version | Supported |
 | --- | --- |
-| `v0.2.5` (latest) | yes |
+| `v0.2.7` (latest) | yes |
+| `v0.2.6` | yes |
+| `v0.2.5` | yes |
 | `v0.2.4` | yes |
 | `v0.2.3` | no — upgrade (host listener and dev.sh fallback hardening; see CHANGELOG) |
 | `v0.2.2`, `v0.2.1` | yes |

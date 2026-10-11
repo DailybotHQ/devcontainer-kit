@@ -7,6 +7,15 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.2.7] — 2026-10-11
+
+### Fixed
+
+- A persisted JSON file that does not exist yet (or was left empty by an earlier version)
+  starts as `{}` instead of an empty file: an empty `~/.claude.json` made Claude Code report
+  its configuration as corrupt and stop on the first run in every new container. Upgrade with
+  `dck init` and `bash dev.sh rebuild`; empty files already on a volume are repaired at start.
+
 ## [0.2.6] — 2026-10-11
 
 Upgrade with `dck init` (re-renders the vendored entrypoint), `bash dev.sh rebuild`, then
@@ -370,6 +379,7 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
 [Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.6...HEAD
+[0.2.7]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.7
 [0.2.6]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.6
 [0.2.5]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.5
 [0.2.4]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.4
