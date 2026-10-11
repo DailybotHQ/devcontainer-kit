@@ -35,6 +35,8 @@ dck_test_enter_sandbox() {
     case "$v" in DCK_TEST_*|DCK_REPO) ;; *) unset "$v" ;; esac
   done
   unset SSH_AUTH_SOCK COMPOSE_PROJECT_NAME COMPOSE_FILE DOCKER_HOST HERDR_ENV
+  # The code under test honours its test hooks (fake binaries, answers) only with this.
+  export DCK_TEST=1
   export DCK_FAKE_LOG="$SANDBOX/fake.log"
   : > "$DCK_FAKE_LOG"
   export DCK_FAKE_STATE="$SANDBOX/fake-state"

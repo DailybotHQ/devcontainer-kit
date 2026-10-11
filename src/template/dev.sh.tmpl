@@ -13,6 +13,10 @@
 # >>> dck:devsh >>>
 set -euo pipefail
 DCK_RENDERED_WITH="{{dck_tag}}"
+# sha256 of that release's SHA256SUMS, when the rendering dck knew it (else empty).
+DCK_SUMS_SHA256="{{dck_sums_sha256}}"
+# The compose project dck uses, so plain compose never acts on another checkout.
+DCK_PROJECT="{{project}}"
 cd "$(dirname "$0")"
 
 usage() {
@@ -48,27 +52,100 @@ fi
 # shipped file against that release's SHA256SUMS, then run its installer
 # without touching shell rc files. Nothing is piped into a shell.
 install_dck() {
+  if ! printf '%s\n' "$DCK_RENDERED_WITH" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "dev.sh: invalid rendered version '$DCK_RENDERED_WITH'" >&2; return 2
+  fi
   command -v git >/dev/null 2>&1 || { echo "dev.sh: git is required to install dck" >&2; return 4; }
   command -v curl >/dev/null 2>&1 || { echo "dev.sh: curl is required to install dck" >&2; return 4; }
-  local work rc=0
+  local work rc=0 dest="${DCK_INSTALL_DIR:-$HOME/.local/share/dck}"
   work="$(mktemp -d "${TMPDIR:-/tmp}/dck-install.XXXXXX")"
   # An explicit chain: `set -e` does not apply inside a subshell tested by `||`.
   (
+    sum() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
     git clone -q --depth 1 --branch "$DCK_RENDERED_WITH" https://github.com/DailybotHQ/devcontainer-kit "$work/kit" &&
     curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$work/SHA256SUMS" \
       "https://github.com/DailybotHQ/devcontainer-kit/releases/download/$DCK_RENDERED_WITH/SHA256SUMS" &&
+    if [ -n "$DCK_SUMS_SHA256" ]; then
+      [ "$(sum "$work/SHA256SUMS" | cut -d' ' -f1)" = "$DCK_SUMS_SHA256" ] ||
+        { echo "dev.sh: SHA256SUMS does not match the digest this repository pins" >&2; false; }
+    fi &&
     cd "$work/kit" &&
-    if command -v sha256sum >/dev/null 2>&1; then sha256sum -c --quiet "$work/SHA256SUMS"
-    else shasum -a 256 -c --quiet "$work/SHA256SUMS"; fi &&
-    ./install.sh --no-rc
+    # Everything that runs must be covered by the sums: the installer, the
+    # launcher and its whole library.
+    for f in install.sh bin/dck lib/*; do
+      [ -d "$f" ] && continue
+      grep -Eq "^[0-9a-f]{64}  \*?(\./)?$f\$" "$work/SHA256SUMS" ||
+        { echo "dev.sh: $f is not covered by the release SHA256SUMS" >&2; exit 1; }
+    done &&
+    sum -c --quiet "$work/SHA256SUMS" &&
+    ./install.sh --no-rc &&
+    printf '%s %s\n' "$DCK_RENDERED_WITH" "$(sum "$work/SHA256SUMS" | cut -d' ' -f1)" > "$dest/RELEASE_SUMS_SHA256"
   ) || rc=$?
   rm -rf "$work"
   if [ "$rc" -ne 0 ]; then
     echo "dev.sh: devcontainer-kit $DCK_RENDERED_WITH was not installed (download or verification failed)" >&2
     return "$rc"
   fi
-  dck_bin="${DCK_INSTALL_DIR:-$HOME/.local/share/dck}/bin/dck"
+  dck_bin="$dest/bin/dck"
   echo "dev.sh: devcontainer-kit $DCK_RENDERED_WITH installed (verified). Add ${DCK_INSTALL_DIR:-~/.local/share/dck}/bin to PATH to use dck directly; it needs python3 >= 3.11."
+}
+
+# The docker-only fallback refuses what dck's own preflight refuses: container
+# configuration that reaches the host. A grep-level mirror of dck's rules;
+# DCK_TRUST=1 starts it anyway, once you have read the files it names.
+preflight() {
+  [ "${DCK_TRUST:-0}" = 1 ] && return 0
+  local compose=docker/local/docker-compose.yaml found="" root src line dir
+  root="$(pwd -P)"
+  [ -f "$compose" ] && [ ! -L "$compose" ] || { echo "dev.sh: $compose is missing or a symlink" >&2; return 5; }
+  grep -Eq '^[[:space:]]*privileged:[[:space:]]*(true|yes|on)' "$compose" && found="$found
+  - privileged: true"
+  grep -Eq '^[[:space:]]*cap_add:' "$compose" && found="$found
+  - cap_add"
+  grep -q 'docker\.sock' "$compose" && found="$found
+  - the Docker socket"
+  grep -Eq "^[[:space:]]*(network_mode|pid|ipc|userns_mode|uts):[[:space:]]*['\"]?host" "$compose" && found="$found
+  - a host namespace (network_mode/pid/ipc/userns_mode/uts: host)"
+  grep -Eq '^[[:space:]]*security_opt:' "$compose" && found="$found
+  - security_opt"
+  grep -Eq '^[[:space:]]*devices:' "$compose" && found="$found
+  - host devices"
+  if [ -f docker/local/.env ] && grep -Eq '^[[:space:]]*(export[[:space:]]+)?DCK_HOST_SSH_AUTH_SOCK[[:space:]]*[=:]' docker/local/.env; then
+    found="$found
+  - docker/local/.env sets DCK_HOST_SSH_AUTH_SOCK"
+  fi
+  if [ -f .devcontainer/devcontainer.json ] && grep -q '"initializeCommand"' .devcontainer/devcontainer.json; then
+    found="$found
+  - initializeCommand in .devcontainer/devcontainer.json"
+  fi
+  # Bind mounts: short (`- src:/dst`) and long (`source: src`) syntax.
+  while IFS= read -r src; do
+    [ -n "$src" ] || continue
+    case "$src" in
+      '${DCK_HOST_SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}') continue ;;
+      /*|'~'*|'$'*) found="$found
+  - a host bind mount ($src)"; continue ;;
+    esac
+    # A directory resolves itself; a file (or a missing path) its parent.
+    if [ -d "docker/local/$src" ]; then
+      dir="$(cd docker/local 2>/dev/null && cd -P "$src" 2>/dev/null && pwd -P)" || dir=""
+    else
+      dir="$(cd docker/local 2>/dev/null && cd -P "$(dirname "$src")" 2>/dev/null && pwd -P)" || dir=""
+    fi
+    case "$dir/" in
+      "$root"/*) ;;
+      *) found="$found
+  - a bind mount outside the repository ($src)" ;;
+    esac
+  done <<EOF
+$(sed -n -e "s/^[[:space:]]*-[[:space:]]*['\"]\{0,1\}\([^'\":[:space:]][^:'\"]*\):\/.*/\1/p" \
+         -e "s/^[[:space:]]*source:[[:space:]]*['\"]\{0,1\}\([^'\"[:space:]]*\).*/\1/p" "$compose" |
+  grep -E '^[./~$]' || true)
+EOF
+  [ -z "$found" ] && return 0
+  printf 'dev.sh: this repository'"'"'s container configuration reaches the host:%s\n' "$found" >&2
+  echo "dev.sh: review it, then re-run with DCK_TRUST=1 to start it anyway" >&2
+  return 5
 }
 
 verb="${1:-help}"
@@ -88,15 +165,22 @@ if [ -z "$dck_bin" ]; then
       command -v docker >/dev/null 2>&1 || { echo "dev.sh: docker is required on the host" >&2; exit 4; } ;;
   esac
   svc="{{service}}" user="{{user}}" workdir="{{workspace}}"
-  compose=(docker compose -f docker/local/docker-compose.yaml)
+  compose=(docker compose -p "$DCK_PROJECT" -f docker/local/docker-compose.yaml)
   # Docker Desktop exposes the host SSH agent itself; a Linux host passes its own.
   if [ -z "${DCK_HOST_SSH_AUTH_SOCK:-}" ] && [ "$(uname -s)" = Linux ] && [ -n "${SSH_AUTH_SOCK:-}" ]; then
     export DCK_HOST_SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
   fi
+  # Missing .env files from their examples: regular files inside the repository
+  # only, never through a symlink, never over an existing file.
   for ex in docker/local/*/.env.example; do
-    [ -f "$ex" ] || continue
-    [ -e "${ex%.example}" ] || (umask 077 && cp "$ex" "${ex%.example}")
+    t="${ex%.example}"
+    [ -f "$ex" ] && [ ! -L "$ex" ] && [ ! -L "$(dirname "$ex")" ] || continue
+    [ -e "$t" ] || [ -L "$t" ] && continue
+    (umask 077 && set -C && cat "$ex" > "$t") 2>/dev/null || true
   done
+  case "$verb" in
+    up|build|rebuild) preflight || exit $? ;;
+  esac
   case "$verb" in
     up) exec "${compose[@]}" up -d "$@" "$svc" ;;
     down) exec "${compose[@]}" down "$@" ;;

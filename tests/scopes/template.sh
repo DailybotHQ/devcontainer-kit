@@ -434,24 +434,105 @@ test_devsh_without_dck_uses_compose() {
   assert_contains "$(fake_calls dck)" "dck agents" "dck is found in its install directory"
 }
 
+# A fake kit release for install-dck: a tree, its SHA256SUMS (served by the fake
+# curl) and a git that "clones" the tree.
+mk_kit() {
+  local kit="$SANDBOX/kitsrc" f
+  rm -rf "$kit"; mkdir -p "$kit/bin" "$kit/lib" "$SANDBOX/fk" "$DCK_FAKE_STATE/curl"
+  printf '#!/usr/bin/env bash\nmkdir -p "${DCK_INSTALL_DIR:?}"; echo "installed $*" > "%s/installed"\n' "$SANDBOX" > "$kit/install.sh"; chmod +x "$kit/install.sh"
+  printf 'x\n' > "$kit/VERSION"; printf 'dck\n' > "$kit/bin/dck"; printf 'lib\n' > "$kit/lib/common.sh"
+  (cd "$kit" && for f in install.sh VERSION bin/dck lib/common.sh; do
+     printf '%s  %s\n' "$(shasum -a 256 "$f" 2>/dev/null | cut -d' ' -f1 || sha256sum "$f" | cut -d' ' -f1)" "$f"; done) > "$DCK_FAKE_STATE/curl/SHA256SUMS"
+  printf '#!/usr/bin/env bash\nif [ "$1" = clone ]; then echo "git $*" >> "%s"; cp -R "%s" "${@: -1}"; exit 0; fi\nexec /usr/bin/git "$@"\n' "$DCK_FAKE_LOG" "$kit" > "$SANDBOX/fk/git"; chmod +x "$SANDBOX/fk/git"
+}
+inst() { run_cmd env PATH="$SANDBOX/fk:$TESTS_DIR/fakes/bin:/usr/bin:/bin" HOME="$SANDBOX/nodck" DCK_INSTALL_DIR="$SANDBOX/inst" bash "$@"; }
+
 test_devsh_install_dck_verifies() {
-  local r fk="$SANDBOX/fk" kit="$SANDBOX/kitsrc"
+  local r
   r="$(new_repo devsh-install)"
   init_repo "$r" --no-herdr --yes
-  mkdir -p "$fk" "$kit/bin" "$DCK_FAKE_STATE/curl"
-  printf '#!/usr/bin/env bash\necho "installed $*" > "%s/installed"\n' "$SANDBOX" > "$kit/install.sh"; chmod +x "$kit/install.sh"
-  printf 'x\n' > "$kit/VERSION"
-  (cd "$kit" && for f in install.sh VERSION; do printf '%s  %s\n' "$(shasum -a 256 "$f" 2>/dev/null | cut -d' ' -f1 || sha256sum "$f" | cut -d' ' -f1)" "$f"; done) > "$DCK_FAKE_STATE/curl/SHA256SUMS"
-  # git: clone copies the prepared tree; everything else is the real git.
-  printf '#!/usr/bin/env bash\nif [ "$1" = clone ]; then echo "git $*" >> "%s"; cp -R "%s" "${@: -1}"; exit 0; fi\nexec /usr/bin/git "$@"\n' "$DCK_FAKE_LOG" "$kit" > "$fk/git"; chmod +x "$fk/git"
-  run_cmd env PATH="$fk:$TESTS_DIR/fakes/bin:/usr/bin:/bin" HOME="$SANDBOX/nodck" bash "$r/dev.sh" install-dck
+  mk_kit
+  inst "$r/dev.sh" install-dck
   assert_rc 0 "install-dck installs a verified clone"
   assert_contains "$(cat "$DCK_FAKE_LOG")" "--branch v$(cat "$DCK_REPO/VERSION")" "the rendered tag is cloned"
   assert_contains "$(cat "$SANDBOX/installed")" "--no-rc" "the installer runs without touching rc files"
   assert_contains "$RUN_OUT" "python3 >= 3.11" "it mentions dck's python requirement"
+  assert_match "$(cat "$SANDBOX/inst/RELEASE_SUMS_SHA256")" "^v[0-9.]+ [0-9a-f]{64}$" "the verified SHA256SUMS digest is recorded for later renders"
   rm -f "$SANDBOX/installed"
-  printf 'echo tampered\n' >> "$kit/install.sh"
-  run_cmd env PATH="$fk:$TESTS_DIR/fakes/bin:/usr/bin:/bin" HOME="$SANDBOX/nodck" bash "$r/dev.sh" install-dck
+  printf 'echo tampered\n' >> "$SANDBOX/kitsrc/install.sh"
+  inst "$r/dev.sh" install-dck
   assert_rc 1 "a clone that does not match SHA256SUMS is refused"
   assert_not_file "$SANDBOX/installed" "and nothing is installed"
+  mk_kit
+  printf 'more\n' > "$SANDBOX/kitsrc/lib/unlisted.sh"
+  inst "$r/dev.sh" install-dck
+  assert_rc 1 "a library file the sums do not cover is refused"
+  assert_contains "$RUN_ERR" "lib/unlisted.sh is not covered" "and named"
+  assert_not_file "$SANDBOX/installed" "nothing is installed"
+}
+
+test_devsh_install_dck_pins_and_validates() {
+  local r sums
+  r="$(new_repo devsh-pin)"
+  init_repo "$r" --no-herdr --yes
+  mk_kit
+  sed -i.bak 's/^DCK_SUMS_SHA256=.*/DCK_SUMS_SHA256="'"$(printf '0%.0s' $(seq 1 64))"'"/' "$r/dev.sh" && rm -f "$r/dev.sh.bak"
+  inst "$r/dev.sh" install-dck
+  assert_rc 1 "a SHA256SUMS that differs from the pinned digest is refused"
+  assert_contains "$RUN_ERR" "does not match the digest this repository pins" "and says why"
+  sums="$(shasum -a 256 "$DCK_FAKE_STATE/curl/SHA256SUMS" 2>/dev/null | cut -d' ' -f1 || sha256sum "$DCK_FAKE_STATE/curl/SHA256SUMS" | cut -d' ' -f1)"
+  sed -i.bak 's/^DCK_SUMS_SHA256=.*/DCK_SUMS_SHA256="'"$sums"'"/' "$r/dev.sh" && rm -f "$r/dev.sh.bak"
+  inst "$r/dev.sh" install-dck
+  assert_rc 0 "the pinned digest matches"
+  sed -i.bak 's/^DCK_RENDERED_WITH=.*/DCK_RENDERED_WITH="main; touch pwned"/' "$r/dev.sh" && rm -f "$r/dev.sh.bak"
+  inst "$r/dev.sh" install-dck
+  assert_rc 2 "a rendered version that is not vX.Y.Z is refused"
+  # A kit that knows its release digest embeds it at render time.
+  printf 'v%s %s\n' "$(cat "$DCK_REPO/VERSION")" "$sums" > "$SANDBOX/digest"
+  r="$(new_repo devsh-embed)"
+  run_cmd env DCK_NONINTERACTIVE=1 DCK_TEST_RELEASE_SUMS="$SANDBOX/digest" "$DCK" init --repo "$r" --no-herdr --yes
+  assert_contains "$(cat "$r/dev.sh")" "DCK_SUMS_SHA256=\"$sums\"" "the release digest is embedded when known"
+}
+
+test_devsh_fallback_preflight_and_project() {
+  local r
+  r="$(new_repo devsh-pre)"
+  init_repo "$r" --no-herdr --yes
+  : > "$DCK_FAKE_LOG"
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" bash "$r/dev.sh" up
+  assert_rc 0 "a dck-rendered compose file passes the preflight"
+  assert_contains "$(fake_calls docker)" "compose -p devsh-pre -f docker/local/docker-compose.yaml" "plain compose uses dck's project name"
+  local c="$r/docker/local/docker-compose.yaml" orig
+  orig="$(cat "$c")"
+  for bad in "    privileged: true" "    cap_add: [SYS_ADMIN]" "      - /var/run/docker.sock:/var/run/docker.sock" "    network_mode: host" "    pid: host" "    devices: [/dev/kvm]" "      - /etc:/host-etc" "      - ~/.ssh:/root/.ssh" "      - ../../..:/up"; do
+    printf '%s\n%s\n' "$orig" "$bad" > "$c"
+    run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" bash "$r/dev.sh" up
+    assert_rc 5 "the fallback refuses: $bad"
+  done
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" DCK_TRUST=1 bash "$r/dev.sh" up
+  assert_rc 0 "DCK_TRUST=1 starts it anyway"
+  printf '%s\n' "$orig" > "$c"
+  printf 'DCK_HOST_SSH_AUTH_SOCK=/etc/passwd\n' > "$r/docker/local/.env"
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" bash "$r/dev.sh" build
+  assert_rc 5 "a .env redirecting the agent socket is refused"
+}
+
+test_devsh_fallback_env_files_are_safe() {
+  local r
+  r="$(new_repo devsh-env)"
+  init_repo "$r" --no-herdr --yes
+  rm -f "$r/docker/local/app/.env"
+  printf 'SECRET=keep\n' > "$SANDBOX/outside"
+  ln -s "$SANDBOX/outside" "$r/docker/local/app/.env"
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" bash "$r/dev.sh" ps
+  assert_eq "$(cat "$SANDBOX/outside")" "SECRET=keep" "a symlinked .env is never written through"
+  rm -f "$r/docker/local/app/.env"
+  mv "$r/docker/local/app/.env.example" "$SANDBOX/example"
+  ln -s "$SANDBOX/example" "$r/docker/local/app/.env.example"
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" bash "$r/dev.sh" ps
+  assert_not_file "$r/docker/local/app/.env" "a symlinked example is never copied"
+  rm -f "$r/docker/local/app/.env.example"; mv "$SANDBOX/example" "$r/docker/local/app/.env.example"
+  printf 'MINE=1\n' > "$r/docker/local/app/.env"
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" bash "$r/dev.sh" ps
+  assert_eq "$(cat "$r/docker/local/app/.env")" "MINE=1" "an existing .env is never overwritten"
 }

@@ -339,6 +339,22 @@ def layers_block(values):
 AGENT_VOLUMES = ("claude", "codex", "cursor", "opencode", "pi", "cline", "grok")
 
 
+def release_sums_sha256(dck_tag):
+    """The sha256 of this release's SHA256SUMS when the kit knows it: install.sh
+    records it (RELEASE_SUMS_SHA256: '<tag> <sha256>') when it installs from a
+    verified release. Empty when unknown (a checkout, an unverified install)."""
+    path = os.path.join(KIT_ROOT, "RELEASE_SUMS_SHA256")
+    if os.environ.get("DCK_TEST") == "1" and os.environ.get("DCK_TEST_RELEASE_SUMS"):
+        path = os.environ["DCK_TEST_RELEASE_SUMS"]  # test hook
+    try:
+        parts = open(path).read().split()
+    except OSError:
+        return ""
+    if len(parts) == 2 and parts[0] == dck_tag and re.match(r"^[0-9a-f]{64}$", parts[1]):
+        return parts[1]
+    return ""
+
+
 def context(values, repo_name, project, network, base_image, dck_tag, pins=None):
     user = values["user"]
     vols = ["state"]
@@ -362,6 +378,7 @@ def context(values, repo_name, project, network, base_image, dck_tag, pins=None)
         "apt_extras": FLAVOUR_APT[values["flavour"]],
         "repo_name": repo_name,
         "project": project,
+        "dck_sums_sha256": release_sums_sha256(dck_tag),
         "service": values["service"],
         "user": user,
         "workspace": values["workspace"],
