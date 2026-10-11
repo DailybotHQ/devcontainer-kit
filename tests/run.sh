@@ -34,7 +34,7 @@ SCOPES_DIR="${DCK_TEST_SCOPES_DIR:-$TESTS_DIR/scopes}"
 
 # The canonical order. Scopes not listed here run after these, alphabetically.
 # docker is last: it is the only integration scope and the slowest.
-ORDER="harness config template images entrypoint launcher layers herdr doctor security hygiene standard docker"
+ORDER="harness config template images entrypoint launcher layers agents herdr doctor security hygiene standard docker"
 
 usage_error() {
   printf 'tests/run.sh: %s\n' "$1" >&2
@@ -93,6 +93,39 @@ export DCK_TEST_RUN_DIR="$RUN_DIR"
 # The home the runner was started with, recorded only so the harness scope can
 # prove the sandbox is somewhere else. Nothing ever writes through it.
 export DCK_TEST_OUTER_HOME="${HOME:-}"
+
+# PATH-hermetic: the ecosystem tools installed on the developer's machine (ak,
+# herdr, herdr-peers, dck itself, the agent CLIs) must never answer a test in
+# place of a fake or of their absence. Each PATH directory holding one of them
+# is replaced by a mirror of its other executables; every other directory
+# (docker, the devcontainer CLI, python3, git) is kept as it is.
+DCK_TEST_HIDDEN="ak agentkit herdr herdr-peers herdr-groups dck devcontainer-kit claude codex cursor-agent agent opencode pi cline grok antigravity dailybot"
+hermetic_path() {
+  local out="" dir name hide n=0 mirror f IFS=:
+  for dir in $PATH; do
+    [ -n "$dir" ] && [ -d "$dir" ] || continue
+    case ":$out:" in *":$dir:"*) continue ;; esac
+    hide=0
+    for name in $(printf '%s' "$DCK_TEST_HIDDEN" | tr ' ' ':'); do
+      if [ -x "$dir/$name" ]; then hide=1; break; fi
+    done
+    if [ "$hide" -eq 1 ]; then
+      n=$((n + 1)); mirror="$RUN_DIR/path/$n"
+      mkdir -p "$mirror"
+      for f in "$dir"/*; do
+        name="${f##*/}"
+        [ -x "$f" ] && [ ! -d "$f" ] || continue
+        case " $DCK_TEST_HIDDEN " in *" $name "*) continue ;; esac
+        ln -s "$f" "$mirror/$name" 2>/dev/null || true
+      done
+      dir="$mirror"
+    fi
+    out="${out:+$out:}$dir"
+  done
+  printf '%s' "$out"
+}
+PATH="$(hermetic_path)"
+export PATH DCK_TEST_HIDDEN
 
 PASSED=0
 FAILED=0

@@ -31,6 +31,29 @@ test_dck_environment_does_not_leak() {
   assert_eq "$RUN_OUT" "[]" "DCK_* variables from the caller are cleared"
 }
 
+test_path_is_hermetic() {
+  local name found=""
+  for name in $DCK_TEST_HIDDEN; do
+    if command -v "$name" >/dev/null 2>&1; then found="$found $name=$(command -v "$name")"; fi
+  done
+  assert_eq "$found" "" "no host ak, herdr, herdr-peers, dck or agent CLI is on the tests' PATH"
+  command -v python3 >/dev/null 2>&1 && pass "python3 is still reachable" || fail "python3 is still reachable"
+}
+
+test_hermetic_path_hides_a_planted_tool() {
+  mkdir -p "$SANDBOX/hostbin"
+  printf '#!/bin/sh\necho host-ak\n' > "$SANDBOX/hostbin/ak"
+  printf '#!/bin/sh\necho kept\n' > "$SANDBOX/hostbin/keepme"
+  chmod +x "$SANDBOX/hostbin/ak" "$SANDBOX/hostbin/keepme"
+  run_cmd env -u DCK_TEST_DOCKER PATH="$SANDBOX/hostbin:$PATH" DCK_TEST_SCOPES_DIR="$FIX/scopes-path" bash "$TESTS_DIR/run.sh" probe
+  assert_rc 0 "a host ak planted on PATH is hidden from tests, its neighbours are kept"
+}
+
+test_agent_environment_does_not_leak() {
+  run_cmd env AGENTKIT_PROFILES_DIR=/leak CLAUDE_CODE_OAUTH_TOKEN_X=leak HERDR_SOCKET=/leak CODEX_HOME=/leak bash -c ". '$TESTS_DIR/lib.sh'; DCK_TEST_RUN_DIR='$SANDBOX'; dck_test_enter_sandbox x y 3>/dev/null; echo \"[\${AGENTKIT_PROFILES_DIR:-}\${CLAUDE_CODE_OAUTH_TOKEN_X:-}\${HERDR_SOCKET:-}\${CODEX_HOME:-}]\""
+  assert_eq "$RUN_OUT" "[]" "AGENTKIT_*, CLAUDE_*, CODEX_* and HERDR_* from the caller are cleared"
+}
+
 test_passing_scope_summary() {
   nested "$FIX/scopes-pass" sample
   assert_rc 0 "a passing scope exits 0"
