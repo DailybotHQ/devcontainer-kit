@@ -153,7 +153,9 @@ dck ask dck-other:w1:p2 "Which test covers the parser?"   # herdr-peers ask, wit
 - **Every running container learns about the others.** After updating its own
   container, `dck herdr mesh` re-applies the mesh to every other running dck
   container over its alias (`ForwardAgent no`), so a container started earlier
-  sees one started later.
+  sees one started later. A repository whose `dck.toml` sets `[herdr] mesh =
+  false` keeps it off: `dck up` records the choice in its state volume and
+  refreshes from other repositories are ignored there.
 - **The host as a peer** (`[host]` in your profile, see
   [config.md](config.md)). The host is reachable inside as `dck-host`
   (`host.docker.internal:<port>`, your user, pinned by the listener's ed25519

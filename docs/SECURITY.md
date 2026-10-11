@@ -21,7 +21,7 @@ in your images, and your Herdr machines.
 | the repository's container configuration → your Docker daemon | **only after review** | `up`/`start`/`build`/`rebuild` hand the repository's compose file and `devcontainer.json` to Docker (and the devcontainer CLI). Anything in them that reaches the host — `initializeCommand`, `privileged`, `cap_add`, host namespaces, devices, the Docker socket, bind mounts outside the repository, a compose file outside it — is refused until you pass `--trust` (or `DCK_TRUST=1`). dck-rendered setups contain none of these. Treat `--trust` like "trust this folder" in an editor |
 | the repository → its own container | yes, by design | the container exists to run the repository's code; its hook and its Dockerfile run there, with the dev user's sudo |
 | the container → your host | **no** | the container reaches the host through what you publish (loopback ports) and through your SSH agent: forwarded on the sessions you open, and — with `ssh_agent = true`, the default — its socket mounted for the container's lifetime. Code in the container can *use* the agent's keys (sign, never read them) while it runs: for git that is the point; for sensitive keys use `ssh-add -c` (confirm each use) or set `ssh_agent = false`. With the host as a mesh peer (`[host] machine = true`) that also means a shell on the host — see the next row |
-| a dck container → your host's shell | **only with the host listener (opt-in)** | `dck host listener enable` (or a yes to the one question `dck setup` asks) runs a user-level sshd on **127.0.0.1** only (default port 22033, its own ed25519 host key, `AllowUsers` you, no passwords, no PAM, no root, no TCP forwarding) that authorizes **only the dck key**, kept alive by a launchd agent. While it runs, any process that can use the dck key through your agent — code in any running dck container with the agent socket — can open a shell on your host as you. That is what lets agents inside answer agents on the host. Turn it off with `dck host listener disable` (removes the launchd agent and its files), `[host] machine = false`, `ssh_agent = false` per repository, or `ssh-add -d ~/.config/dck/ssh/id_ed25519`. With `listener = "external"` dck reuses a listener you already run and writes nothing on the host; with `"remote-login"` it relies on the system sshd and your own `authorized_keys` |
+| a dck container → your host's shell | **only with the host listener (opt-in)** | `dck host listener enable` (or a yes to the one question `dck setup` asks) runs a user-level sshd on **127.0.0.1** only (default port 22033, its own ed25519 host key, `AllowUsers` you, no passwords, no PAM, no root, no TCP forwarding (`PermitOpen none`), no agent forwarding, no `~/.ssh/rc`, only the local stream forward Herdr's client uses) that authorizes **only the dck key** (`no-agent-forwarding,no-X11-forwarding,no-user-rc`), kept alive by a launchd agent. While it runs, any process that can use the dck key through your agent — code in any running dck container with the agent socket — can open a shell on your host as you. That is what lets agents inside answer agents on the host. Turn it off with `dck host listener disable` (removes the launchd agent and its files), `[host] machine = false`, `ssh_agent = false` per repository, or `ssh-add -d ~/.config/dck/ssh/id_ed25519`. With `listener = "external"` dck reuses a listener you already run and writes nothing on the host; with `"remote-login"` it relies on the system sshd and your own `authorized_keys` |
 | one dck container → another dck container | **only through the mesh** | `[herdr] mesh = true` (the default; Docker Desktop only) loads the dck key into your agent so agents inside can ask agents in the other containers. Every container with the agent socket can then log in to every other dck container (they all authorize the dck key) and read what it holds (`.env`, logins). Only run untrusted repositories with `mesh = false` and `ssh_agent = false`, and remove the key from the agent (`ssh-add -d ~/.config/dck/ssh/id_ed25519`). The mesh never forwards the agent further (`ForwardAgent no`) |
 | other machines on your network → the container | **no** | nothing listens beyond 127.0.0.1 unless `bind` says so |
 | the network → the image build | **no** | every base-image download is pinned and checksum-verified; the opt-in layers install coding-agents-kit from its sha256-verified release tarball and resolve the Dailybot CLI's dependencies with uv (see Supply chain) |
@@ -93,6 +93,12 @@ own edit, outside dck's managed blocks, and its own decision.
   default) it also pushes the host's other Herdr machines on loopback ports
   22000-22999, pinned by the ed25519 key **your** `known_hosts` already holds
   (a peer with no known key is skipped, never trusted on first use inside).
+  Those host-catalog peers tell every dck container the **inventory of your
+  host's loopback containers** (aliases, ports, users, labels, public host
+  keys); turn it off with `[mesh] external = false`. A repository whose
+  `dck.toml` sets `[herdr] mesh = false` is recorded as such in its state
+  volume at `dck up`, and refreshes pushed by another repository's
+  `dck herdr mesh` are ignored there.
   `[ssh] authorized_extra` (host profile only) adds the public keys you list to
   every container's dck block, so clients that log in with your own keys (for
   example containers another kit manages) can reach dck containers. See the
@@ -154,6 +160,29 @@ possible only by an explicit edit outside the managed blocks.
   from the distribution's signed archive; coding-agents-kit is
   pinned by tag (its installer then installs each CLI through the vendor's
   channel); the Dailybot CLI's dependencies are resolved by uv at build time.
+
+### `dev.sh` without dck
+
+The rendered `dev.sh` can run the container verbs on plain `docker compose`
+when dck is not installed. It keeps dck's guarantees there: `up`, `build`
+and `rebuild` run a preflight that refuses `privileged`, `cap_add`, the
+Docker socket, host namespaces, `security_opt`, `devices`, bind mounts of
+host paths outside the repository, a `.env` that redirects the agent socket
+and `initializeCommand` — unless `DCK_TRUST=1`; compose gets dck's project
+name (`-p`), so it never acts on another checkout; `.env` files are created
+only from regular, non-symlinked examples, never through a symlink and never
+over an existing file. `bash dev.sh install-dck` validates the rendered tag,
+checks the release `SHA256SUMS` against the digest embedded at render time
+when the rendering dck knew it (a dck installed by `install-dck` records it),
+requires the installer, `bin/dck` and every `lib/` file to be covered, and
+verifies the clone against it before running `install.sh --no-rc`.
+
+### Test hooks
+
+Variables that swap a binary or answer a prompt in tests (`DCK_HOST_SSHD`,
+`DCK_LAUNCHCTL`, `DCK_LAUNCH_AGENTS_DIR`, `DCK_HOST_LISTENER_ANSWER`,
+`DCK_PEERS_CURL`, `DCK_VERSIONS_ENV`, …) are honoured only when
+`DCK_TEST=1`, which only the test runner sets.
 
 ### Code hygiene on the host
 

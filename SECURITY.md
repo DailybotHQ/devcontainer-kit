@@ -4,7 +4,9 @@
 
 | Version | Supported |
 | --- | --- |
-| `v0.2.3` (latest), `v0.2.2`, `v0.2.1` | yes |
+| `v0.2.4` (latest) | yes |
+| `v0.2.3` | no — upgrade (host listener and dev.sh fallback hardening; see CHANGELOG) |
+| `v0.2.2`, `v0.2.1` | yes |
 | `v0.2.0` | no — upgrade (mesh agent forwarding, root-owned skill directories; see CHANGELOG) |
 | `v0.1.6` | yes |
 | `v0.1.5` | no — upgrade (no code security fix since; newer editor pin) |

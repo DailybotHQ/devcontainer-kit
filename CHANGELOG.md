@@ -7,6 +7,37 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.2.4] — 2026-10-11
+
+Security patch for v0.2.3 (findings of its security review). Upgrade with `dck init`
+(re-renders `dev.sh` and the vendored entrypoint), `bash dev.sh rebuild`, and — if you
+enabled it — `dck host listener enable` again to rewrite the listener's configuration.
+
+### Security
+
+- **`dev.sh` without dck** runs a preflight mirroring dck's (`up`, `build`, `rebuild` refuse
+  configuration that reaches the host unless `DCK_TRUST=1`), passes dck's compose project
+  name (`-p`), and creates `.env` files only from regular, non-symlinked examples, never
+  through a symlink or over an existing file.
+- **`install-dck`** validates the rendered tag, checks `SHA256SUMS` against a digest
+  embedded at render time when known (recorded by a verified `install-dck`), and requires
+  `install.sh`, `bin/dck` and every `lib/` file to be covered by the sums.
+- **Host listener**: the dck key is authorized with `no-agent-forwarding,no-X11-forwarding,
+  no-user-rc`; `sshd_config` adds `AllowAgentForwarding no`, `PermitUserRC no`,
+  `PermitUserEnvironment no`, `PermitOpen none`, `GatewayPorts no` and keeps only
+  `AllowStreamLocalForwarding local`; paths are quoted in `sshd_config` and XML-escaped in
+  the launchd plist. The setup prompt (still `[Y/n]`) states that code in any running dck
+  container can then open a shell on the Mac, and how to undo it.
+- **Mesh**: a repository with `[herdr] mesh = false` ignores refreshes pushed by other
+  repositories (marker on its state volume); labels pushed for every peer are sanitized
+  and never start with `-`; aliases must start with a letter or digit and `ssh` gets `--`
+  before them. `docs/SECURITY.md` states that host-catalog peers expose the host's loopback
+  container inventory to dck containers.
+- **`[ssh] authorized_extra`** paths never glob (validator and launcher).
+- **Test hooks** are honoured only with `DCK_TEST=1`.
+- **Host herdr-peers** counts as installed only with a completion marker written after the
+  full verified copy; a partial tree is replaced.
+
 ## [0.2.3] — 2026-10-11
 
 Agent mesh out of the box: agents in a dck container reach and answer agents on the host,
@@ -305,7 +336,9 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.4
+[0.2.3]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.3
 [0.2.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.2
 [0.2.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.1
 [0.2.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.0
