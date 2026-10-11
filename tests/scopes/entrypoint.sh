@@ -242,6 +242,7 @@ test_start_sequence() {
   assert_eq "$(readlink "$DCK_HOME/.config/gh")" "$V/state/config_gh" "gh auth lives on the state volume"
   assert_eq "$(readlink "$DCK_HOME/.config/herdr")" "$V/state/config_herdr" "the Herdr config lives on the state volume"
   assert_file "$V/state/config_herdr/config.toml" "the Herdr config is seeded"
+  assert_eq "$(readlink "$DCK_HOME/.local/state/herdr/client")" "$V/state/local_state_herdr_client" "Herdr's saved machines live on the state volume"
   assert_file "$DCK_HOME/.dck/env.sh" "the env profile is written"
   assert_file "$DCK_FAKE_STATE/sshd_started" "sshd is started"
   assert_contains "$(cat "$V/state/ssh/authorized_keys")" "$KEY1" "the key survives on the volume"
@@ -319,6 +320,18 @@ test_hostssh_apply() {
   assert_contains "$(cat "$DCK_HOME/.ssh/known_hosts.dck-host")" "[example.net]:2222 ssh-ed25519 AAAAIncludedFake" "with their port"
   assert_eq "$(head -1 "$DCK_HOME/.ssh/config")" "Include config.d/dck-host" "the aliases are included first"
   assert_no_match "$(cat "$frag" "$DCK_HOME/.ssh/dck-host-keys/work.pub")" 'PRIVATE KEY' "no private key material"
+}
+
+test_herdr_catalog_survives_recreate() {
+  run_cmd bash -c '. "$1"; dck_start' _ "$LIB"
+  assert_rc 0 "dck_start completes"
+  printf '{"machines":["dck-other"]}\n' > "$DCK_HOME/.local/state/herdr/client/endpoints.json"
+  # A recreate: the image's home is fresh, the volume is not.
+  rm -rf "$DCK_HOME/.local" "$DCK_HOME/.config" "$DCK_HOME/.ssh"
+  run_cmd bash -c '. "$1"; dck_start' _ "$LIB"
+  assert_rc 0 "dck_start completes after a recreate"
+  assert_contains "$(cat "$DCK_HOME/.local/state/herdr/client/endpoints.json")" "dck-other" "the saved machines survive"
+  assert_eq "$(stat -c %U "$DCK_HOME/.local/state/herdr" 2>/dev/null || stat -f %Su "$DCK_HOME/.local/state/herdr")" "$(id -un)" "the Herdr state directory stays the user's"
 }
 
 test_mesh_apply() {

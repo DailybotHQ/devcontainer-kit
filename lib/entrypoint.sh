@@ -686,12 +686,18 @@ dck_start() {
   _dck_env
   dck_log "starting for user $DCK_USER (workspace $DCK_WORKSPACE)"
   # Per-project state volume: ssh (authorized_keys, known_hosts), gh auth,
-  # Herdr config, shell history.
+  # Herdr config and saved machines, shell history.
   dck_persist state "$DCK_HOME/.ssh" dir || true
   _dck_chown "$DCK_USER:$(_dck_group)" "$DCK_PERSIST_ROOT/state/ssh"
   chmod 0700 "$DCK_PERSIST_ROOT/state/ssh" 2>/dev/null || true
   dck_persist state "$DCK_HOME/.config/gh" dir || true
   dck_persist state "$DCK_HOME/.config/herdr" dir || true
+  # Herdr's saved SSH machines (the host, the other containers) live in its
+  # client state, not its config: keep them too, or every rebuild drops them.
+  # The parents are created as the user first, so Herdr can still write its
+  # other state (agent detection) next to the link.
+  _dck_as_user mkdir -p "$DCK_HOME/.local/state/herdr" 2>/dev/null || true
+  dck_persist state "$DCK_HOME/.local/state/herdr/client" dir || true
   dck_persist state "$DCK_HOME/.bash_history" file || true
   dck_layer_persist || true
   dck_git_identity || true
