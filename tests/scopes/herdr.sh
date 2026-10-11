@@ -553,3 +553,17 @@ test_doctor_reports_host_peers_and_ak() {
   assert_contains "$RUN_OUT" "herdr-peers" "doctor reports herdr-peers on the host"
   assert_contains "$RUN_OUT" "ak (host)" "doctor reports coding-agents-kit on the host"
 }
+
+
+test_host_peers_partial_copy_is_not_installed() {
+  peers_release
+  local d="$HOME/.local/share/dck-host/herdr-peers/v0.1.0"
+  mkdir -p "$d/skills/herdr-peers/scripts"
+  printf '#!/usr/bin/env bash\necho partial\n' > "$d/skills/herdr-peers/scripts/herdr-peers"; chmod +x "$d/skills/herdr-peers/scripts/herdr-peers"
+  hp host peers status
+  assert_contains "$RUN_OUT" "not installed" "a tree without its completion marker is not installed"
+  hp host peers install
+  assert_rc 0 "install replaces the partial copy"
+  assert_file "$d/.dck-verified" "the completion marker is written after the verified copy"
+  assert_not_contains "$(cat "$d/skills/herdr-peers/scripts/herdr-peers")" "partial" "the partial copy is gone"
+}

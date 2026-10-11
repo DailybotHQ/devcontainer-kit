@@ -54,3 +54,11 @@ dckpy() {
   dck_require_python
   "$DCK_PY" -I "$DCK_LIB/dckpy.py" "$@"
 }
+
+# dck_hook <VAR> <default> — the value of a test hook variable, honoured only
+# when DCK_TEST=1 (tests/lib.sh sets it); otherwise the default. Keeps a stray
+# environment variable from swapping a binary or answering a prompt for you.
+dck_hook() {
+  local v="${!1:-}"
+  if [ "${DCK_TEST:-0}" = 1 ] && [ -n "$v" ]; then printf '%s' "$v"; else printf '%s' "$2"; fi
+}

@@ -12,11 +12,14 @@
 # The copy lives in ${XDG_DATA_HOME:-~/.local/share}/dck-host/herdr-peers/<tag>
 # (outside dck's own install directory, which install.sh replaces), never in an
 # agent's skill directory. `dck setup` installs it when herdr is on the host.
-# Nothing is piped into a shell. Test hooks: DCK_PEERS_CURL (the fetch command),
+# Nothing is piped into a shell. A copy counts as installed only once its
+# completion marker (.dck-verified) is written after the full verified copy.
+# Test hooks (DCK_TEST=1 only): DCK_PEERS_CURL (the fetch command),
 # DCK_VERSIONS_ENV (the pin file).
 
 hostp_pins() {
-  local f="${DCK_VERSIONS_ENV:-$DCK_ROOT/images/versions.env}" line  # DCK_VERSIONS_ENV: test hook
+  local f line
+  f="$(dck_hook DCK_VERSIONS_ENV "$DCK_ROOT/images/versions.env")"
   HOSTP_TAG=""; HOSTP_SUMS=""
   [ -f "$f" ] || return 1
   while IFS= read -r line; do
@@ -37,7 +40,7 @@ dck_host_peers_bin() {
   hostp_pins || return 1
   local b
   b="$(hostp_dir)/$HOSTP_TAG/skills/herdr-peers/scripts/herdr-peers"
-  [ -x "$b" ] && printf '%s\n' "$b"
+  [ -f "$(hostp_dir)/$HOSTP_TAG/.dck-verified" ] && [ -x "$b" ] && printf '%s\n' "$b"
 }
 
 hostp_sha256() {
@@ -46,14 +49,14 @@ hostp_sha256() {
 }
 
 hostp_fetch() {
-  ${DCK_PEERS_CURL:-curl} --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$2" "$1"
+  "$(dck_hook DCK_PEERS_CURL curl)" --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$2" "$1"
 }
 
 dck_host_peers_install() {
   hostp_pins || die "$DCK_EXIT_CONFIG" "images/versions.env has no valid HERDR_PEERS_TAG / HERDR_PEERS_SUMS_SHA256"
   local dest work
   dest="$(hostp_dir)/$HOSTP_TAG"
-  if [ -x "$dest/skills/herdr-peers/scripts/herdr-peers" ]; then
+  if [ -f "$dest/.dck-verified" ] && [ -x "$dest/skills/herdr-peers/scripts/herdr-peers" ]; then
     note "herdr-peers $HOSTP_TAG: already installed for the host ($(pretty_path "$dest"))"
     return 0
   fi
@@ -91,10 +94,13 @@ hostp_install_into() {
   listed="$(awk '{p=$2; sub(/^\*/, "", p); sub(/^\.\//, "", p); print p}' "$work/SHA256SUMS" | sort -u)"
   unlisted="$(cd "$src" && find skills/herdr-peers -type f | sort | comm -23 - <(printf '%s\n' "$listed"))"
   [ -z "$unlisted" ] || { warn "herdr-peers $HOSTP_TAG: files not covered by SHA256SUMS: $unlisted"; return 1; }
+  # A partial copy (interrupted, or from an older dck) never counts: replace it
+  # whole, and mark it complete only after the copy succeeded.
+  rm -rf "$dest"
   mkdir -p "$dest/skills"
-  rm -rf "$dest/skills/herdr-peers"
-  cp -R "$src/skills/herdr-peers" "$dest/skills/herdr-peers"
+  cp -R "$src/skills/herdr-peers" "$dest/skills/herdr-peers" || { warn "herdr-peers $HOSTP_TAG: copy failed"; rm -rf "$dest"; return 1; }
   chmod -R go-w "$dest"
+  printf '%s %s\n' "$HOSTP_TAG" "$HOSTP_SUMS" > "$dest/.dck-verified"
   note "herdr-peers $HOSTP_TAG: installed for the host, verified ($(pretty_path "$dest")); dck agents and dck ask use it"
 }
 

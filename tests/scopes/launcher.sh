@@ -463,7 +463,12 @@ test_host_listener_enable_disable() {
   assert_contains "$cfg" "PasswordAuthentication no" "no passwords"
   assert_contains "$cfg" "AllowTcpForwarding no" "no TCP forwarding"
   assert_not_contains "$cfg" "ListenAddress 0.0.0.0" "never on every interface"
-  assert_eq "$(cat "$dir/authorized_keys")" "$(cat "$HOME/.config/dck/ssh/id_ed25519.pub")" "only the dck key is authorized"
+  assert_eq "$(cat "$dir/authorized_keys")" "no-agent-forwarding,no-X11-forwarding,no-user-rc $(cat "$HOME/.config/dck/ssh/id_ed25519.pub")" "only the dck key is authorized, without agent/X11 forwarding or rc"
+  assert_contains "$cfg" "AllowAgentForwarding no" "no agent forwarding on the listener"
+  assert_contains "$cfg" "PermitUserRC no" "no ~/.ssh/rc"
+  assert_contains "$cfg" "PermitOpen none" "no TCP forward destination"
+  assert_contains "$cfg" "AllowStreamLocalForwarding local" "only the local stream forward Herdr uses"
+  assert_contains "$cfg" "HostKey \"$dir/ssh_host_ed25519_key\"" "paths are quoted in sshd_config"
   assert_mode "$dir" 700 "the listener directory is private"
   assert_file "$dir/ssh_host_ed25519_key.pub" "the listener has its own host key"
   assert_file "$SANDBOX/LaunchAgents/com.dailybothq.dck.host-listener.plist" "a launchd agent keeps it running"
@@ -534,4 +539,25 @@ test_up_authorizes_the_extra_keys() {
   printf '' > "$HOME/.config/dck/profile.toml"
   d up
   assert_eq "$(cat "$DCK_FAKE_STATE/last_authorized_keys")" "$(cat "$HOME/.config/dck/ssh/id_ed25519.pub")" "without the key only the dck key is authorized"
+}
+
+
+test_host_listener_hooks_need_dck_test() {
+  # Without DCK_TEST=1 a stray hook variable cannot swap sshd or launchctl.
+  run_cmd env -u DCK_TEST DCK_HOST_OS=Darwin DCK_HOST_SSHD=/nonexistent/evil DCK_LAUNCHCTL=/nonexistent/evil "$DCK" host listener status
+  assert_not_contains "$RUN_OUT$RUN_ERR" "/nonexistent/evil" "hooks are ignored outside tests"
+  run_cmd env -u DCK_TEST bash -c '. "$1/lib/common.sh"; DCK_X=hooked; dck_hook DCK_X default' _ "$DCK_REPO"
+  assert_eq "$RUN_OUT" "default" "dck_hook ignores the variable without DCK_TEST=1"
+  run_cmd env DCK_TEST=1 bash -c '. "$1/lib/common.sh"; DCK_X=hooked; dck_hook DCK_X default' _ "$DCK_REPO"
+  assert_eq "$RUN_OUT" "hooked" "and honours it with DCK_TEST=1"
+}
+
+test_host_listener_plist_and_config_escape_paths() {
+  local odd="$SANDBOX/odd&<dir>"
+  run_cmd env DCK_HOST_OS=Darwin DCK_HOST_SSHD="$TESTS_DIR/fakes/sbin/sshd" DCK_LAUNCH_AGENTS_DIR="$SANDBOX/LaunchAgents" \
+    DCK_LISTENER_WAIT=0 DCK_CONFIG_HOME="$odd" "$DCK" host listener enable
+  assert_rc 0 "enable works under a path with XML characters"
+  local pl; pl="$(cat "$SANDBOX/LaunchAgents/com.dailybothq.dck.host-listener.plist")"
+  assert_contains "$pl" "odd&amp;&lt;dir&gt;" "the plist escapes the path"
+  assert_not_contains "$pl" "odd&<dir>" "no raw XML characters in the plist"
 }
