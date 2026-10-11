@@ -8,10 +8,10 @@ use_fakes
 export DCK_BACKEND=compose DCK_NONINTERACTIVE=1 DCK_NO_DIGEST=1
 
 REPO="$SANDBOX/proj"
-# Fake secret values: they must never appear outside the generated env file.
-SECRET_A="sk-dck-test-value-aaaa"
-SECRET_B="sk-dck-test-value-bbbb"
-SECRET_C="sk-dck-test-value-cccc"
+# Fake values: they must never appear outside the generated env file.
+FAKE_VALUE_A="dck-fake-value-aaaa"
+FAKE_VALUE_B="dck-fake-value-bbbb"
+FAKE_VALUE_C="dck-fake-value-cccc"
 
 mk_repo() {
   mkdir -p "$REPO"
@@ -27,9 +27,9 @@ mk_host() {
            "$HOME/.local/share/agentkit/profiles/cursor/work1" "$HOME/.codex" "$HOME/.config/agentkit"
   cat > "$HOME/.config/agentkit/env" <<EOF
 # ak env file
-CLAUDE_CODE_OAUTH_TOKEN='$SECRET_A'
-export CLAUDE_CODE_OAUTH_TOKEN_WORK1="$SECRET_B"
-OPENAI_API_KEY=$SECRET_C
+CLAUDE_CODE_OAUTH_TOKEN='$FAKE_VALUE_A'
+export CLAUDE_CODE_OAUTH_TOKEN_WORK1="$FAKE_VALUE_B"
+OPENAI_API_KEY=$FAKE_VALUE_C
 XAI_API_KEY=\$(cat /somewhere)
 BROKEN_TOKEN='it''s'
 EOF
@@ -112,20 +112,20 @@ host_env_keys = ["OPENAI_API_KEY", "XAI_*"]'
   assert_mode "$(dirname "$env_file")" 700 "its directory is 0700"
   local e
   e="$(cat "$env_file")"
-  assert_contains "$e" "CLAUDE_CODE_OAUTH_TOKEN='$SECRET_A'" "the default Claude token is copied"
-  assert_contains "$e" "CLAUDE_CODE_OAUTH_TOKEN_WORK1='$SECRET_B'" "a per-profile Claude token is copied"
-  assert_contains "$e" "OPENAI_API_KEY='$SECRET_C'" "an allow-listed name is copied"
+  assert_contains "$e" "CLAUDE_CODE_OAUTH_TOKEN='$FAKE_VALUE_A'" "the default Claude token is copied"
+  assert_contains "$e" "CLAUDE_CODE_OAUTH_TOKEN_WORK1='$FAKE_VALUE_B'" "a per-profile Claude token is copied"
+  assert_contains "$e" "OPENAI_API_KEY='$FAKE_VALUE_C'" "an allow-listed name is copied"
   assert_not_contains "$e" "XAI_API_KEY" "shell code is never copied"
   assert_not_contains "$e" "BROKEN_TOKEN" "a value that is not plain data is never copied"
   local name
-  for name in "$SECRET_A" "$SECRET_B" "$SECRET_C"; do
+  for name in "$FAKE_VALUE_A" "$FAKE_VALUE_B" "$FAKE_VALUE_C"; do
     assert_not_contains "$o" "$name" "no value is in the overlay"
     assert_not_contains "$RUN_OUT$RUN_ERR" "$name" "no value is printed"
     assert_not_contains "$(fake_calls)" "$name" "no value reaches docker's argv"
   done
   assert_contains "$RUN_OUT" "host profiles: ak profiles shared for claude codex" "dck up names what it shares"
   assert_contains "$RUN_OUT" "env file names: CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN_WORK1 OPENAI_API_KEY" "names only"
-  assert_contains "$RUN_OUT" "not shared: cursor pi" "and what it skips"
+  assert_contains "$RUN_OUT" "ak profiles not shared for: cursor pi" "and what it skips"
   assert_eq "$(git -C "$REPO" status --porcelain | grep -c agents || true)" "0" "nothing is written into the repository"
 }
 
@@ -212,14 +212,14 @@ test_doctor_reports_names_and_keychain_logins() {
 host_env_keys = ["OPENAI_API_KEY"]'
   run_cmd bash -c 'cd "$1" && PATH="$2:$PATH" "$3" doctor' _ "$REPO" "$SANDBOX/akbin" "$DCK"
   assert_contains "$RUN_OUT" "host profiles    shared for claude, codex" "the doctor names the shared CLIs"
-  assert_contains "$RUN_OUT" "cursor not shared" "and the skipped ones"
+  assert_contains "$RUN_OUT" "cursor ak profiles not shared" "and the skipped ones"
   assert_contains "$RUN_OUT" "env file names: CLAUDE_CODE_OAUTH_TOKEN, CLAUDE_CODE_OAUTH_TOKEN_WORK1, OPENAI_API_KEY" "names only"
   assert_not_contains "$RUN_OUT" "claude @work1 logs in through the macOS keychain" "a keychain login with its token stored is fine"
   assert_contains "$RUN_OUT" "claude @team-b logs in through the macOS keychain" "a keychain-only login is flagged"
   assert_contains "$RUN_OUT" "claude setup-token" "with the fix: a long-lived token"
   assert_contains "$RUN_OUT" "CLAUDE_CODE_OAUTH_TOKEN_TEAM_B" "stored under the profile's variable (suffix upper-cased, - → _)"
   local name
-  for name in "$SECRET_A" "$SECRET_B" "$SECRET_C"; do
+  for name in "$FAKE_VALUE_A" "$FAKE_VALUE_B" "$FAKE_VALUE_C"; do
     assert_not_contains "$RUN_OUT$RUN_ERR" "$name" "the doctor never prints a value"
   done
   run_cmd bash -c 'cd "$1" && PATH="$2:$PATH" "$3" doctor --json' _ "$REPO" "$SANDBOX/akbin" "$DCK"

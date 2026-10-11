@@ -287,7 +287,9 @@ def report(merged, env=None, profiles=None):
     if p["codex"]:
         out.append(("info", "host profiles: the host's Codex home (@default) is shared read-write"))
     for cli, why in p["skipped"]:
-        out.append(("info", "host profiles: %s not shared — %s" % (cli, why)))
+        if cli == "codex" and p["codex"]:
+            why += "; the Codex home is shared"
+        out.append(("info", "host profiles: %s ak profiles not shared — %s" % (cli, why)))
     out.append(("info", "host profiles: env file names: %s" % (", ".join(p["env_names"]) or "none")))
     for name, why in p["env_skipped"]:
         out.append(("warn", "host profiles: %s not copied — %s" % (name, why)))
@@ -308,7 +310,7 @@ def report(merged, env=None, profiles=None):
             if var not in names:
                 out.append(("warn", "host profiles: %s logs in through the macOS keychain, which a "
                             "container cannot read; run `claude setup-token` for that account, then "
-                            "store it with `ak env` as %s" % (label, var)))
+                            "store it in ak's env file (~/.config/agentkit/env, or `ak env import <file>`) as %s" % (label, var)))
                 continue
         out.append(("info", "host profiles: %s (login: %s)" % (label, row.get("login") or "none")))
     return out, p

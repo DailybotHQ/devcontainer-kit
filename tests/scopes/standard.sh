@@ -8,7 +8,13 @@ VERSION="$(cat "$R/VERSION")"
 test_readme_sections_in_order() {
   local got
   got="$(sed -n 's/^## //p' "$R/README.md" | tr '\n' '|')"
-  assert_eq "$got" "What it is|Install|Quickstart|Documentation|Security|Contributing|License|" "README sections follow the standard order"
+  assert_eq "$got" "What it is|Install|Quickstart|Core usage|How it fits with DeepWorkPlan|Part of the DeepWorkPlan ecosystem|Documentation|Security|Contributing|License|" "README sections follow the standard order"
+  local eco
+  eco="$(sed -n '/^## Part of the DeepWorkPlan ecosystem/,/^## /p' "$R/README.md")"
+  for repo in deepworkplan-skill coding-agents-kit devcontainer-kit herdr-peers deepworkplan-vim ai-diff-reviewer agent-skill deepworkplan.com; do
+    assert_contains "$eco" "[$repo](" "the ecosystem table lists $repo"
+  done
+  assert_contains "$eco" "(this repository)" "the ecosystem table marks this repository"
   assert_eq "$(head -1 "$R/README.md")" "# devcontainer-kit" "README starts with the title"
   assert_match "$(sed -n 3p "$R/README.md")" '^A standard, agent-ready development container' "the title is followed by the one-line value"
   assert_contains "$(cat "$R/README.md")" "actions/workflows/ci.yml/badge.svg" "README has the CI badge"

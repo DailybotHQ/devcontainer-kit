@@ -48,7 +48,7 @@ git clone --branch v0.3.0 https://github.com/DailybotHQ/devcontainer-kit
 | agents inside to reach other containers | `dck herdr mesh` (also run by `dck up`): the other dck containers and the host's other loopback Herdr machines (`[mesh] external`); containers another kit manages log in with keys listed in `[ssh] authorized_extra` |
 | to list or ask agents from the host | `dck agents`, `dck ask <machine>:<pane> "<prompt>"` (herdr-peers; `dck host peers install` if missing) |
 | coding-agent CLIs inside | set `[layers] agents = true` and `[agents] clis = [...]` in `dck.toml`, `dck init` (shows the diff), `dck rebuild` |
-| the host's agent accounts inside (no login in the container) | ask the user first (it shares their credentials with the container): they set `[agents] host_profiles = true` in their **host profile** (`~/.config/dck/profile.toml`, never `dck.toml`), then `dck up --recreate`; `dck doctor` names what is shared and which Claude profiles need `claude setup-token` + `ak env` |
+| the host's agent accounts inside (no login in the container) | ask the user first (it shares their credentials with the container): they set `[agents] host_profiles = true` in their **host profile** (`~/.config/dck/profile.toml`, never `dck.toml`), then `dck up --recreate`; `dck doctor` names what is shared and which Claude profiles need `claude setup-token` and the token stored in ak's env file |
 | to know what is wrong | `dck doctor` (human) or `dck doctor --json` (parse `problems`) |
 
 Configuration lives in `.devcontainer/dck.toml` (per repo, committed) and

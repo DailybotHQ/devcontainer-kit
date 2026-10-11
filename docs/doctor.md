@@ -51,7 +51,8 @@ by other accounts is a problem (`dck setup` narrows it to 0600).
 - tool drift inside the container, or a repository pinned to another dck tag;
 - with `[agents] host_profiles`: a shared Claude profile that logs in through the macOS
   keychain without its token variable in the env file (run `claude setup-token`, then
-  store the token with `ak env` as `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`, or
+  store the token in ak's env file — `~/.config/agentkit/env`, or `ak env import <file>` —
+  as `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`, or
   `CLAUDE_CODE_OAUTH_TOKEN` for `@default`), and an allow-listed variable whose value
   could not be copied. Logins are read from the host's `ak profiles --json`
   (schema `profiles-v1`, coding-agents-kit v0.5.0+); without it the doctor says so.

@@ -26,7 +26,7 @@ Interface stays **2**: every new key is optional and off by default.
 - `dck doctor` reports the shared CLIs, the env file's names and, from the host's
   `ak profiles --json` (`profiles-v1`, coding-agents-kit v0.5.0+), the Claude profiles
   that log in through the macOS keychain without a token variable (with the fix:
-  `claude setup-token`, then `ak env` as `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`).
+  `claude setup-token`, then store it in ak's env file as `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`).
   `doctor --json` gains an optional `host_profiles` object.
 - **Unattended agent launches.** With autonomy on, the entrypoint marks the app path as
   trusted for Claude and Codex at each start — in the container's own CLI homes and in

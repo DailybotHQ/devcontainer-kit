@@ -271,7 +271,7 @@ write_agents_overlay() {
       shared) note "host profiles: ak profiles shared for ${v:-no CLI}" ;;
       codex) [ "$v" = 1 ] && note "host profiles: the host's Codex home is shared (one active writer per account)" ;;
       env) note "host profiles: env file names: ${v:-none}" ;;
-      skipped) [ -n "$v" ] && note "host profiles: not shared: $v (dck doctor says why)" ;;
+      skipped) [ -n "$v" ] && note "host profiles: ak profiles not shared for: $v (dck doctor says why)" ;;
     esac
   done <<OUT
 $out

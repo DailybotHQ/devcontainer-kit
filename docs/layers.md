@@ -112,8 +112,9 @@ the repository — that binds:
   (and antigravity) profiles hold absolute host symlinks and are skipped. The whole
   `AGENTKIT_HOME` is never mounted (it would shadow the ak the image pins).
 - **Claude:** a profile logged in through the macOS keychain cannot reach a container.
-  Give each such account a long-lived token — `claude setup-token`, then store it with
-  `ak env` as `CLAUDE_CODE_OAUTH_TOKEN` (`@default`) or `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`
+  Give each such account a long-lived token — `claude setup-token`, then store it in
+  ak's env file (`~/.config/agentkit/env`, mode 600; `ak env import <file>` copies
+  `KEY=value` lines from a file) as `CLAUDE_CODE_OAUTH_TOKEN` (`@default`) or `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`
   (`@name`: the name upper-cased, every character outside `A-Z0-9_` replaced by `_`;
   `@team-b` → `CLAUDE_CODE_OAUTH_TOKEN_TEAM_B`). Those names are always in the env file.
 - **Codex:** `auth.json` is shared read-write; keep one active writer per account
