@@ -80,9 +80,11 @@ host.
   is `AGENTKIT_PERMISSIONS=ask`; never remove it once the user has set it.
   With autonomy on, new agents start unattended: the entrypoint pre-trusts the
   app path for Claude and Codex (bypass acknowledgement only in the container's
-  own homes, never in shared host profiles). A first-run screen that still
-  appears is answered through Herdr (`herdr pane read`, `herdr pane send-keys`)
-  under the user's standing authorization.
+  own homes, never in shared host profiles). Never key through Claude's
+  bypass-permissions acknowledgement: a leftover one is escalated to the user,
+  who accepts it once per profile. Folder trust is the only screen you may key
+  through (`herdr pane read`, `herdr pane send-keys`), and only on a pane you
+  launched yourself when `--trust-cwd` was unavailable.
 - Never turn on `[agents] host_profiles` or edit `host_env_keys` / `host_profile_names` yourself, and
   never read or print `~/.config/dck/agents/*.env`.
 - Prefer `dck shell -c` / `dck exec` over raw `docker compose`: dck applies the
