@@ -19,6 +19,16 @@ test_readme_sections_in_order() {
   assert_eq "$(tail -1 "$R/README.md")" "Part of the [DeepWorkPlan](https://deepworkplan.com) ecosystem — works on its own." "README ends with the ecosystem footer"
 }
 
+test_install_sh_is_executable() {
+  local mode
+  mode="$(git -C "$R" ls-files -s install.sh 2>/dev/null | cut -d' ' -f1)"
+  if [ -z "$mode" ]; then
+    assert_eq "$([ -x "$R/install.sh" ] && echo yes)" "yes" "install.sh is executable (no git index: file mode)"
+  else
+    assert_eq "$mode" "100755" "install.sh is tracked executable, so ./devcontainer-kit/install.sh works"
+  fi
+}
+
 test_license_and_credits() {
   assert_eq "$(head -1 "$R/LICENSE")" "MIT License" "LICENSE is MIT (GitHub detects the SPDX id from it)"
   assert_contains "$(cat "$R/LICENSE")" "Copyright (c) 2026 DailybotHQ contributors" "LICENSE names DailybotHQ contributors"
