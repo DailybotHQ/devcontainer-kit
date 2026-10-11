@@ -250,7 +250,8 @@ def cmd_sshconf(args):
             path = opt(args, "--file")
             if os.path.exists(path):
                 for alias, _s, _e in sshconf._blocks(sshconf._read_owned(path)):
-                    print(alias)
+                    if alias != sshconf.HOST_SELF_ALIAS:  # the host, not a container
+                        print(alias)
             return EXIT_OK
         if sub == "peers":
             labels = {}
@@ -268,21 +269,55 @@ def cmd_sshconf(args):
             for m in machines:
                 if isinstance(m, dict) and m.get("target") and m.get("label"):
                     labels[str(m["target"])] = str(m["label"])
-            labels["dck-host"] = opt(args, "--host-label") or labels.get("dck-host", "host")
+            host_label = opt(args, "--host-label") or "host"
             path, exclude = opt(args, "--file"), opt(args, "--exclude") or ""
             host_user, host_port = opt(args, "--host-user") or "", opt(args, "--host-port") or "22"
+            with_catalog = flag(args, "--catalog")
+            dck_aliases = [a for a, _s, _e in sshconf._blocks(sshconf._read_owned(path))] if os.path.exists(path) else []
+            # The host as a peer: its own catalog entry when it has one, so ids match.
+            host_alias = sshconf.HOST_SELF_ALIAS
+            if host_user:
+                me = sshconf.host_self(machines, host_port)
+                if me:
+                    host_alias = str(me["target"])
+                labels[host_alias] = labels.get(host_alias) or host_label
             external = []
             if flag(args, "--external"):
-                dck_aliases = [a for a, _s, _e in sshconf._blocks(sshconf._read_owned(path))] if os.path.exists(path) else []
                 dck_ports = sshconf.alias_ports(path) if os.path.exists(path) else []
                 skip_ports = list(dck_ports) + ([host_port] if host_user else []) + [opt(args, "--self-port") or "0"]
                 external, notes = sshconf.external_peers(
-                    machines, skip_aliases=dck_aliases + [exclude, "dck-host"], skip_ports=skip_ports,
+                    machines, skip_aliases=dck_aliases + [exclude, sshconf.HOST_SELF_ALIAS, host_alias],
+                    skip_ports=skip_ports,
                     known_hosts_files=(opt(args, "--user-known-hosts") or "").split(","))
                 for n in notes:
                     sys.stderr.write("dck: %s\n" % n)
-            sys.stdout.write(sshconf.peers(path, opt(args, "--known-hosts"), exclude, labels,
-                                           host_user, opt(args, "--host-key") or "", host_port, external))
+            out = sshconf.peers(path, opt(args, "--known-hosts"), exclude, labels, host_user,
+                                opt(args, "--host-key") or "", host_port, external, host_alias,
+                                with_self=with_catalog)
+            if with_catalog:
+                reachable = set()
+                for ln in out.splitlines():
+                    parts = ln.split()
+                    if len(parts) >= 2 and parts[0] in ("peer", "self"):
+                        reachable.add(parts[1])
+                out += "".join(l + "\n" for l in sshconf.catalog_lines(machines, reachable))
+            sys.stdout.write(out)
+            return EXIT_OK
+        if sub == "host-self":
+            # The host's own Herdr catalog entry (stdin: herdr machine list --json):
+            # "<id> <target>" or nothing (exit 1).
+            raw = sys.stdin.read()
+            start = min([i for i in (raw.find("["), raw.find("{")) if i >= 0] or [-1])
+            try:
+                data = json.loads(raw[start:]) if start >= 0 else []
+            except ValueError:
+                data = []
+            if isinstance(data, dict):
+                data = (data.get("result") or {}).get("machines") or data.get("machines") or []
+            me = sshconf.host_self(data if isinstance(data, list) else [], opt(args, "--port") or "0")
+            if not me:
+                return EXIT_FAIL
+            print("%s %s" % (me.get("id", ""), me.get("target", "")))
             return EXIT_OK
     except sshconf.SshConfError as exc:
         sys.stderr.write("dck: %s\n" % exc)

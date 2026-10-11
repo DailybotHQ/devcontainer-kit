@@ -413,3 +413,23 @@ test_mesh_apply_refuses_dash_aliases() {
   assert_not_contains "$(cat "$DCK_HOME/.ssh/config.d/dck-peers")" "ProxyCommand" "an alias starting with '-' is refused"
   assert_not_contains "$(cat "$DCK_FAKE_STATE/herdr_machines")" '"label": "-' "a label never starts with '-'"
 }
+
+test_mesh_apply_mirrors_the_host_catalog() {
+  export PATH="$TESTS_DIR/fakes/bin:$PATH"
+  local A B C dir="$DCK_HOME/.local/state/herdr/client"
+  A="$(printf 'a%.0s' $(seq 1 32))"; B="$(printf 'b%.0s' $(seq 1 32))"; C="$(printf 'c%.0s' $(seq 1 32))"
+  mkdir -p "$dir"; printf '{"version":1,"ssh":[{"id":"old"}]}\n' > "$dir/endpoints.json"
+  run_cmd bash -c '. "$1"; printf "%s\n" "$2" | dck_mesh_apply' _ "$LIB" "$(printf '%s\n' \
+    'self dck-me 22040 dev' 'peer dck-other 22041 dev Other' 'peer mac 22032 me Mac' \
+    "catalog $A 1 default dck-me Me" "catalog $B 0 default dck-other Other" "catalog $C 1 default mac 0 - Mac" \
+    "catalog $(printf 'd%.0s' $(seq 1 32)) 1 default not-pushed X" 'catalog nothex 1 default mac X' "catalog $A 1 bad;session mac X")"
+  assert_rc 0 "the mesh applies"
+  local j="$dir/endpoints.json"
+  assert_eq "$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["version"], " ".join("%s:%s:%s" % (m["target"], m["id"][:1], m["enabled"]) for m in d["ssh"]))' "$j")" \
+    "1 dck-me:a:True dck-other:b:False mac:c:True" "Herdr's catalog is the host's entries, ids and enabled state"
+  assert_contains "$(cat "$dir/endpoints.json.dck-bak")" '"old"' "the previous catalog is kept once"
+  assert_mode "$j" 600 "the catalog is private"
+  assert_contains "$(cat "$DCK_HOME/.ssh/config.d/dck-peers")" "Host dck-me" "the container can reach itself"
+  assert_not_contains "$(cat "$DCK_FAKE_LOG")" "machine add" "no machine is minted with a new id"
+  assert_contains "$RUN_ERR" "Herdr catalog mirrored from the host (3 machine(s)" "the mirror is logged"
+}

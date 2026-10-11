@@ -246,3 +246,10 @@ test_error_text_from_docker_info_is_not_a_daemon() {
   outside
   assert_eq "$(j 'd["runtime"]["docker"]["daemon"]')" "false" "error text printed by docker info is not a daemon"
 }
+
+test_doctor_reports_the_catalog() {
+  use_fakes
+  printf '[{"id":"%s","label":"L","target":"dck-x","session":"default","enabled":true}]' "$(printf 'e%.0s' $(seq 1 32))" > "$DCK_FAKE_STATE/herdr_machines"
+  run_cmd "$DCK_REPO/bin/dck" doctor
+  assert_contains "$RUN_OUT" "herdr catalog    1 entry" "doctor reports the host's Herdr catalog"
+}

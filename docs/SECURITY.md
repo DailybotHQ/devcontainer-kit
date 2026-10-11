@@ -95,7 +95,11 @@ own edit, outside dck's managed blocks, and its own decision.
   (a peer with no known key is skipped, never trusted on first use inside).
   Those host-catalog peers tell every dck container the **inventory of your
   host's loopback containers** (aliases, ports, users, labels, public host
-  keys); turn it off with `[mesh] external = false`. A repository whose
+  keys); turn it off with `[mesh] external = false`. Since v0.2.6 the mesh also
+  copies the matching entries of your host's Herdr catalog — machine ids,
+  labels, aliases, sessions, enabled state — into each container's Herdr
+  (replies need identical ids); only entries the container can reach are
+  copied, never another host's. A repository whose
   `dck.toml` sets `[herdr] mesh = false` is recorded as such in its state
   volume at `dck up`, and refreshes pushed by another repository's
   `dck herdr mesh` are ignored there.
