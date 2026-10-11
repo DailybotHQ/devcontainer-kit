@@ -83,7 +83,7 @@ host.
   own homes, never in shared host profiles). A first-run screen that still
   appears is answered through Herdr (`herdr pane read`, `herdr pane send-keys`)
   under the user's standing authorization.
-- Never turn on `[agents] host_profiles` or edit `host_env_keys` yourself, and
+- Never turn on `[agents] host_profiles` or edit `host_env_keys` / `host_profile_names` yourself, and
   never read or print `~/.config/dck/agents/*.env`.
 - Prefer `dck shell -c` / `dck exec` over raw `docker compose`: dck applies the
   right project, user, workspace and overlay, and never `--remove-orphans`.
@@ -100,7 +100,7 @@ What running this skill's commands may write, and nothing else:
 | your ssh-agent: your own keys that `~/.ssh/config` aliases use (`ssh-add`, `--apple-use-keychain` on macOS) | `dck up`, `dck rebuild` with `ssh_host_config` | only a key the agent lacks; asks for its passphrase on a terminal |
 | the container's `~/.ssh/config.d/dck-host`, `dck-host-keys/*.pub`, `known_hosts.dck-host` (public data from your `~/.ssh`) | `dck up`, `dck rebuild` with `ssh_host_config` | never a private key |
 | `~/.config/dck/` (dedicated SSH key, dck known_hosts, profiles) | `dck setup`, `dck up`, `dck ssh` | first use |
-| `~/.config/dck/agents/<project>.env` (0600, allow-listed names from your ak env file) and `$TMPDIR/dck-<uid>/<project>-agents.yml` | `dck up`, `dck start/restart/build/rebuild` | only with `[agents] host_profiles` in your host profile; removed when it is off |
+| `~/.config/dck/agents/<project>.env` (0600: the shared Claude profiles' tokens and the exact names in `host_env_keys`) and `$TMPDIR/dck-<uid>/<project>-agents.yml` | `dck up`, `dck start/restart/build/rebuild` | only with `[agents] host_profiles` in your host profile; removed when it is off |
 | the app path's folder-trust entry in the shared host ak profiles' Claude/Codex config | the container's entrypoint | with `[agents] host_profiles` and autonomy on; inert on the host |
 | `~/.ssh/config.d/dck` (provenance-guarded) and one `Include config.d/dck` line at the top of `~/.ssh/config` | `dck herdr add/repair/remove` | only for Herdr machines |
 | Herdr's saved machines | the `herdr` CLI, called by `dck herdr …` | only for Herdr machines |

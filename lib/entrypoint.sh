@@ -489,7 +489,10 @@ _dck_host_codex() {
 
 dck_host_homes() {
   local d
-  for d in "$DCK_HOME/.dck/host" "$DCK_HOME/.dck/host/agentkit" "$DCK_HOME/.dck/host/agentkit/profiles"; do
+  # The per-CLI directories hold one bind mount per profile: docker creates
+  # them, the profiles inside are the host's (never chowned).
+  for d in "$DCK_HOME/.dck/host" "$DCK_HOME/.dck/host/agentkit" "$DCK_HOME/.dck/host/agentkit/profiles" \
+           "$DCK_HOME"/.dck/host/agentkit/profiles/*; do
     [ -d "$d" ] && [ ! -L "$d" ] && _dck_chown "$DCK_USER:$(_dck_group)" "$d"
   done
   return 0

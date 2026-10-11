@@ -136,22 +136,26 @@ repository's `dck.toml` cannot ask for it):
 ```toml
 [agents]
 host_profiles = true
-host_env_keys = []        # optional: more env names to share besides Claude's tokens
+host_profile_names = []   # optional: only these profiles, e.g. ["claude@work1"]
+host_env_keys = []        # optional: exact env names to share besides Claude's tokens
 ```
 
-`dck up --recreate` then binds into the container the host's coding-agents-kit profiles
-of the CLIs the repository installs (claude, codex, pi, cline, grok, opencode — never
-cursor), the host's `~/.codex` when codex is installed, and a generated, allow-listed env
-file read-only (Claude's long-lived tokens `CLAUDE_CODE_OAUTH_TOKEN` and
-`CLAUDE_CODE_OAUTH_TOKEN_<PROFILE>`, plus the names you list). Everything goes through a
-runtime compose overlay that is never written into the repository. `dck doctor` shows
-what is shared, by name only:
+`dck up --recreate` then binds into the container, one by one, the host's
+coding-agents-kit profiles of the CLIs the repository installs (claude, codex, pi, cline,
+grok, opencode — never cursor; `host_profile_names = ["claude@work1"]` narrows them), the
+host's `~/.codex` when codex is installed, and a generated env file read-only. The env
+file holds no implicit secret: only the long-lived token of each shared Claude profile
+(`CLAUDE_CODE_OAUTH_TOKEN_<PROFILE>`, and `CLAUDE_CODE_OAUTH_TOKEN` for Claude's own home)
+plus the exact names you list. Mounts are read-write only where the CLI writes. Everything
+goes through a runtime compose overlay that is never written into the repository.
+`dck doctor` shows what is shared, by name, with each mount's mode and reason:
 
 ```text
 layers           agents yes (claude codex), dailybot no, editor yes
-host profiles    shared for claude
-host profiles    the host's Codex home (@default) is shared read-write
-host profiles    env file names: CLAUDE_CODE_OAUTH_TOKEN_WORK1
+host profiles    shared: claude@work1, codex@default
+host profiles    claude@work1 rw — Claude rewrites its profile state (.claude.json, settings, sessions, history) on every run
+host profiles    codex@default (the host's Codex home) rw — Codex refreshes its login in auth.json and writes sessions and history
+host profiles    env file (ro) names: CLAUDE_CODE_OAUTH_TOKEN_WORK1
 ```
 
 A Claude profile that logs in through the macOS keychain cannot reach a container; the

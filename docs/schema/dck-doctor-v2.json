@@ -510,6 +510,8 @@
       "required": [
         "enabled",
         "shared",
+        "profiles",
+        "mounts",
         "codex",
         "skipped",
         "env_names",
@@ -573,6 +575,39 @@
           "items": {
             "type": "string"
           }
+        },
+        "profiles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "the shared host profiles as cli@name (the Codex home is codex@default)"
+        },
+        "mounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "profile",
+              "mode",
+              "reason"
+            ],
+            "properties": {
+              "profile": {
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "ro",
+                  "rw"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          },
+          "description": "every shared directory and the env file with its mount mode and why"
         }
       }
     }

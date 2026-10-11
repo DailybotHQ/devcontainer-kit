@@ -374,7 +374,7 @@ def cmd_agents(args):
         return EXIT_CONFIG
     # Names only: never a value.
     print("enabled=%s" % ("1" if p["enabled"] else "0"))
-    print("shared=%s" % " ".join(s["cli"] for s in p["shared"]))
+    print("shared=%s" % " ".join(hostagents.profile_refs(p)))
     print("codex=%s" % ("1" if p["codex"] else "0"))
     print("env=%s" % " ".join(p["env_names"]))
     print("skipped=%s" % " ".join(c for c, _ in p["skipped"]))

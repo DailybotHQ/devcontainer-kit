@@ -339,8 +339,16 @@ def host_profiles_info(merged, problems):
     for level, msg in lines:
         if level == "warn":
             problems.append(msg)
+    mounts = [{"profile": "%s@%s" % (s["cli"], s["profile"][1:]), "mode": s["mode"], "reason": s["why"]}
+              for s in p["shared"]]
+    if p["codex"]:
+        mounts.append({"profile": "codex@default", "mode": p["codex"]["mode"], "reason": p["codex"]["why"]})
+    if p["env_names"]:
+        mounts.append({"profile": "env", "mode": hostagents.MOUNT_MODES["env"][0],
+                       "reason": hostagents.MOUNT_MODES["env"][1]})
     return {"enabled": p["enabled"], "reason": p["reason"] or None,
-            "shared": [s["cli"] for s in p["shared"]], "codex": bool(p["codex"]),
+            "shared": hostagents.shared_clis(p), "profiles": hostagents.profile_refs(p),
+            "mounts": mounts, "codex": bool(p["codex"]),
             "skipped": [{"cli": c, "reason": r} for c, r in p["skipped"]],
             "env_names": p["env_names"], "notes": [m for _lvl, m in lines]}
 

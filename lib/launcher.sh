@@ -268,8 +268,8 @@ write_agents_overlay() {
   while IFS= read -r line; do
     k="${line%%=*}"; v="${line#*=}"
     case "$k" in
-      shared) note "host profiles: ak profiles shared for ${v:-no CLI}" ;;
-      codex) [ "$v" = 1 ] && note "host profiles: the host's Codex home is shared (one active writer per account)" ;;
+      shared) note "host profiles: shared: ${v:-none} (read-write where the CLI writes; dck doctor says why)" ;;
+      codex) [ "$v" = 1 ] && note "host profiles: codex@default is the host's Codex home (one active writer per account)" ;;
       env) note "host profiles: env file names: ${v:-none}" ;;
       skipped) [ -n "$v" ] && note "host profiles: ak profiles not shared for: $v (dck doctor says why)" ;;
     esac

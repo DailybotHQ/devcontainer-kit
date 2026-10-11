@@ -23,7 +23,7 @@ in your images, and your Herdr machines.
 | the container → your host | **no** | the container reaches the host through what you publish (loopback ports) and through your SSH agent: forwarded on the sessions you open, and — with `ssh_agent = true`, the default — its socket mounted for the container's lifetime. Code in the container can *use* the agent's keys (sign, never read them) while it runs: for git that is the point; for sensitive keys use `ssh-add -c` (confirm each use) or set `ssh_agent = false`. With the host as a mesh peer (`[host] machine = true`) that also means a shell on the host — see the next row |
 | a dck container → your host's shell | **only with the host listener (opt-in)** | `dck host listener enable` (or a yes to the one question `dck setup` asks) runs a user-level sshd on **127.0.0.1** only (default port 22033, its own ed25519 host key, `AllowUsers` you, no passwords, no PAM, no root, no TCP forwarding (`PermitOpen none`), no agent forwarding, no `~/.ssh/rc`, only the local stream forward Herdr's client uses) that authorizes **only the dck key** (`no-agent-forwarding,no-X11-forwarding,no-user-rc`), kept alive by a launchd agent. While it runs, any process that can use the dck key through your agent — code in any running dck container with the agent socket — can open a shell on your host as you. That is what lets agents inside answer agents on the host. Turn it off with `dck host listener disable` (removes the launchd agent and its files), `[host] machine = false`, `ssh_agent = false` per repository, or `ssh-add -d ~/.config/dck/ssh/id_ed25519`. With `listener = "external"` dck reuses a listener you already run and writes nothing on the host; with `"remote-login"` it relies on the system sshd and your own `authorized_keys` |
 | one dck container → another dck container | **only through the mesh** | `[herdr] mesh = true` (the default; Docker Desktop only) loads the dck key into your agent so agents inside can ask agents in the other containers. Every container with the agent socket can then log in to every other dck container (they all authorize the dck key) and read what it holds (`.env`, logins). Only run untrusted repositories with `mesh = false` and `ssh_agent = false`, and remove the key from the agent (`ssh-add -d ~/.config/dck/ssh/id_ed25519`). The mesh never forwards the agent further (`ForwardAgent no`) |
-| a dck container → your agent accounts | **only with `[agents] host_profiles` (opt-in, host profile)** | off by default, and only your host profile can turn it on — a repository's `dck.toml` cannot. When on, `dck up` binds into the container the host's ak profiles of the CLIs the repository installs (read-write), the host's Codex home (read-write) and an allow-listed env file (read-only). Code in the container can then act as you on those accounts and read those credentials while it runs. See [Host accounts](#host-accounts-agents-host_profiles) |
+| a dck container → your agent accounts | **only with `[agents] host_profiles` (opt-in, host profile)** | off by default, and only your host profile can turn it on — a repository's `dck.toml` cannot. When on, `dck up` binds into the container the host's ak profiles of the CLIs the repository installs (optionally only those `host_profile_names` lists), the host's Codex home, and an env file read-only with only the Claude tokens of the shared profiles and the names you list; read-write only where the CLI writes. Code in the container can then act as you on those accounts and read those credentials while it runs. See [Host accounts](#host-accounts-agents-host_profiles) |
 | other machines on your network → the container | **no** | nothing listens beyond 127.0.0.1 unless `bind` says so |
 | the network → the image build | **no** | every base-image download is pinned and checksum-verified; the opt-in layers install coding-agents-kit from its sha256-verified release tarball and resolve the Dailybot CLI's dependencies with uv (see Supply chain) |
 
@@ -138,23 +138,46 @@ own edit, outside dck's managed blocks, and its own decision.
 Credential sharing is **opt-in** and host-side only. With
 `[agents] host_profiles = true` in `~/.config/dck/profile.toml`, `dck up` adds a
 second runtime compose overlay (`$TMPDIR/dck-<uid>/<project>-agents.yml`, 0600 in a
-0700 directory you own — never written into the repository) that binds:
+0700 directory you own — never written into the repository) that binds, one by one:
 
-- `$AGENTKIT_PROFILES_DIR/<cli>` (default `~/.local/share/agentkit/profiles/<cli>`)
-  for each CLI in the repository's `[agents] clis` with file-portable profiles —
-  claude, codex, pi, cline, grok, opencode — read-write, and points
-  `AGENTKIT_PROFILES_DIR` at them. cursor (and antigravity) profiles are never shared:
-  they hold absolute host symlinks into your home. The whole `AGENTKIT_HOME` is never
-  mounted: it also holds the host's ak program and would shadow the image's pinned ak;
-- the host's Codex home (`$CODEX_HOME`, else `~/.codex`, the Codex `@default` login),
-  read-write, when codex is installed;
+- each host ak profile `$AGENTKIT_PROFILES_DIR/<cli>/<name>` (default root
+  `~/.local/share/agentkit/profiles`) of the CLIs in the repository's `[agents] clis`
+  with file-portable profiles — claude, codex, pi, cline, grok, opencode — and points
+  `AGENTKIT_PROFILES_DIR` at them. `[agents] host_profile_names` (for example
+  `["claude@work1", "codex@default"]`) limits the share to the profiles listed; empty
+  means every profile of those CLIs. A whole CLI directory is never bound. cursor (and
+  antigravity) profiles are never shared: they hold absolute host symlinks into your
+  home. The whole `AGENTKIT_HOME` is never mounted: it also holds the host's ak
+  program and would shadow the image's pinned ak;
+- the host's Codex home (`$CODEX_HOME`, else `~/.codex`, the Codex `@default` login)
+  when codex is installed and `codex@default` is shared;
 - an env file generated on the host, `~/.config/dck/agents/<project>.env` (0600 in a
-  0700 directory), read-only, with `AGENTKIT_ENV` pointing at it. It holds **only**
-  `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN_*` and the names listed in
-  `[agents] host_env_keys`, copied from the host's ak env file (and dck's
-  environment) as plain single-line values; shell code, quotes and multi-line values
-  are skipped by name. This file is the one place dck writes a credential value, on
-  your host, for your user only; turning the option off removes it.
+  0700 directory), with `AGENTKIT_ENV` pointing at it.
+
+**Least privilege.** Every mount is read-only unless the CLI must write there; each
+read-write mount and its reason (the same table the code uses, shown by `dck doctor`):
+
+| Mount | Mode | Why |
+| --- | --- | --- |
+| a Claude profile | rw | Claude rewrites its profile state (.claude.json, settings, sessions, history) on every run |
+| a Codex profile, the Codex home | rw | Codex refreshes its login in auth.json and writes sessions and history |
+| a pi profile | rw | pi writes its sessions and settings in its home |
+| a Cline profile | rw | Cline writes its task state and settings in its home |
+| a grok profile | rw | grok writes its sessions and settings and refreshes its login in its home |
+| an opencode profile | rw | opencode writes its sessions and data and refreshes provider logins (auth.json) |
+| the env file | ro | generated by dck on the host; nothing in the container writes it |
+
+**No implicit secrets.** The env file holds only names derived from what is shared or
+listed by name: `CLAUDE_CODE_OAUTH_TOKEN` when Claude's own home (`claude@default`) is
+shared, `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>` for each Claude profile actually shared, and
+the exact names in `[agents] host_env_keys` (no prefixes, no wildcards). The token of a
+profile that is not shared is never copied. `host_env_keys = []` copies nothing beyond
+those Claude tokens, and with `host_profiles` off nothing at all is copied, whatever
+`host_env_keys` says. Values are read from the host's ak env file (and dck's
+environment) as plain single-line data; shell code, quotes and multi-line values are
+skipped by name. The overlay, `dck up` and `dck doctor` state the names; this file is
+the one place dck writes a credential value, on your host, for your user only; turning
+the option off removes it.
 
 Values never appear in a compose file, in docker's argv, in dck's output or in
 `dck doctor` (names only). Every mount uses `create_host_path: false`: a missing host
@@ -164,10 +187,10 @@ path fails the start instead of being created.
 shared read-write: Codex refreshes its token in place, so keep **one active writer
 per account** — the same account used at once on the host and in a container, or in
 two containers, can lose a refresh and log one of them out. Prefer a dedicated ak
-profile per place that runs agents in parallel. Claude's long-lived token
-(`claude setup-token`) is inference-only and never refreshed, so sharing it has no
-race; a Claude login kept in the macOS keychain cannot reach a container — `dck doctor`
-names such profiles and the variable to store the token under.
+profile per place that runs agents in parallel (`host_profile_names` picks it).
+Claude's long-lived token (`claude setup-token`) is inference-only and never refreshed,
+so sharing it has no race; a Claude login kept in the macOS keychain cannot reach a
+container — `dck doctor` names such profiles and the variable to store the token under.
 
 **Ownership.** On Docker Desktop and OrbStack the bind mounts appear owned by the
 container user. On a native Linux engine they keep the host's uid: the option works

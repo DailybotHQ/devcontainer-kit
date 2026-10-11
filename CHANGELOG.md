@@ -18,16 +18,21 @@ Interface stays **2**: every new key is optional and off by default.
   compose overlay, never written into the repository, that binds the host's
   coding-agents-kit profiles of the CLIs the repository installs (`[agents] clis`;
   claude, codex, pi, cline, grok, opencode — never cursor, whose profiles hold absolute
-  host symlinks) with `AGENTKIT_PROFILES_DIR` pointing at them, the host's Codex home
-  (`@default`) when codex is installed, and a generated env file (0600, under
-  `~/.config/dck/agents/`) read-only with `AGENTKIT_ENV` pointing at it. The env file
-  holds only `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN_*` and the names in
-  `[agents] host_env_keys`; values never appear in compose files, logs or the doctor.
-- `dck doctor` reports the shared CLIs, the env file's names and, from the host's
+  host symlinks), one bind per profile, with `AGENTKIT_PROFILES_DIR` pointing at them;
+  `[agents] host_profile_names` limits them to the profiles listed (`"claude@work1"`).
+  Also the host's Codex home (`codex@default`) when codex is installed, and a generated
+  env file (0600, under `~/.config/dck/agents/`) read-only with `AGENTKIT_ENV` pointing
+  at it. Mounts are read-write only where the CLI writes, each reason documented and
+  shown by the doctor. The env file has no implicit secret: only the Claude token of
+  each shared Claude profile and the exact names in `[agents] host_env_keys`; with the
+  option off nothing is copied. Values never appear in compose files, logs or the
+  doctor; the names do.
+- `dck doctor` reports the shared profiles with their mount mode and reason, the env
+  file's names and, from the host's
   `ak profiles --json` (`profiles-v1`, coding-agents-kit v0.5.0+), the Claude profiles
   that log in through the macOS keychain without a token variable (with the fix:
   `claude setup-token`, then store it in ak's env file as `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`).
-  `doctor --json` gains an optional `host_profiles` object.
+  `doctor --json` gains an optional `host_profiles` object (`profiles`, `mounts`, …).
 - **Unattended agent launches.** With autonomy on, the entrypoint marks the app path as
   trusted for Claude and Codex at each start — in the container's own CLI homes and in
   shared host profiles — and writes Claude's bypass-permissions acknowledgement only in

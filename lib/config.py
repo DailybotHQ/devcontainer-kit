@@ -39,8 +39,10 @@ RE_PROFILE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$"
 RE_PREFIX = r"^([a-z0-9][a-z0-9_-]{0,31})?$"
 RE_NETWORK = r"^([A-Za-z0-9][A-Za-z0-9_.-]{0,62})?$"
 RE_ALIAS_PREFIX = r"^[a-z0-9][a-z0-9._-]{0,31}$"
-# An environment variable name, or a name prefix ending in "*" (FOO_*).
-RE_ENV_NAME = r"^[A-Z_][A-Z0-9_]{0,127}\*?$"
+# An environment variable name (exact: no prefix or wildcard, no implicit secret).
+RE_ENV_NAME = r"^[A-Z_][A-Z0-9_]{0,127}$"
+# A host ak profile: <cli>@<name>, the CLIs whose profiles are file-portable.
+RE_PROFILE_REF = r"^(claude|codex|pi|cline|grok|opencode)@[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
 
 # key path -> (type, default, constraint). "required" defaults are REQUIRED.
 REQUIRED = object()
@@ -93,14 +95,15 @@ PROFILE_RULES = {
     "mesh.external": ("bool", True, None),
     # The host's agent accounts inside containers (docs/config.md): the ak
     # profiles of the CLIs a repository installs, the host's Codex home and an
-    # allow-listed env file. Host profile only — a repository cannot ask for
+    # env file of explicitly named variables. Host profile only — a repository cannot ask for
     # your credentials.
     "agents.host_profiles": ("bool", False, None),
     "agents.host_env_keys": ("env_name_list", [], ("pattern", RE_ENV_NAME)),
+    "agents.host_profile_names": ("profile_ref_list", [], ("pattern", RE_PROFILE_REF)),
 }
 TABLES = {"repo": ("layers", "agents", "herdr"), "profile": ("labels", "ssh", "host", "mesh", "agents")}
 # Keys only the host profile may set; in a repository's dck.toml they are ignored.
-HOST_ONLY_REPO_KEYS = ("agents.host_profiles", "agents.host_env_keys")
+HOST_ONLY_REPO_KEYS = ("agents.host_profiles", "agents.host_env_keys", "agents.host_profile_names")
 
 # Where each listener kind listens and which public host key pins it.
 LISTENER_DEFAULT_PORT = {"dck": 22033, "remote-login": 22, "external": 0}
@@ -194,10 +197,17 @@ def _check(key, value, rule, problems):
             return bad("expected an array of variable names, got %s" % _type_name(value))
         for item in value:
             if not re.match(carg, item):
-                bad("invalid variable name %r (upper-case letters, digits and _, "
-                    "optionally ending in * for a prefix)" % item)
+                bad("invalid variable name %r (an exact name: upper-case letters, digits and _)" % item)
         if len(value) > 64:
             bad("at most 64 names")
+    elif kind == "profile_ref_list":
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            return bad("expected an array of \"cli@name\" strings, got %s" % _type_name(value))
+        for item in value:
+            if not re.match(carg, item):
+                bad("invalid profile %r (\"<cli>@<name>\", cli one of claude codex pi cline grok opencode)" % item)
+        if len(value) > 64:
+            bad("at most 64 profiles")
     elif kind == "kind_list":
         if not isinstance(value, list):
             return bad("expected an array of strings, got %s" % _type_name(value))
@@ -394,6 +404,7 @@ def effective(repo, default_tag, profile_name=None, env=None):
         "ssh_host_extra": list(prof["ssh.host_extra"]),
         "host_profiles": bool(prof["agents.host_profiles"]),
         "host_env_keys": list(prof["agents.host_env_keys"]),
+        "host_profile_names": list(prof["agents.host_profile_names"]),
     })
     merged.update(host_settings(prof, env))
     merged["herdr.label"] = expand_label(label_fmt, {
