@@ -7,6 +7,16 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.2.8] — 2026-10-11
+
+### Fixed
+
+- Agents in Herdr panes have an SSH agent even when the Herdr client that attached
+  forwarded none. Herdr then points `SSH_AUTH_SOCK` at a dangling link, so mesh hops,
+  `herdr-peers reply` and git over SSH failed with `Permission denied (publickey)`. The
+  login profile falls back to the host agent dck mounts, and the entrypoint repoints the
+  dangling Herdr link at it. Upgrade with `dck init` and `bash dev.sh rebuild`.
+
 ## [0.2.7] — 2026-10-11
 
 ### Fixed
@@ -379,6 +389,7 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
 [Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.6...HEAD
+[0.2.8]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.8
 [0.2.7]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.7
 [0.2.6]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.6
 [0.2.5]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.5

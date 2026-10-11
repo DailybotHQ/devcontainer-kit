@@ -444,3 +444,27 @@ test_mesh_apply_mirrors_the_host_catalog() {
   assert_not_contains "$(cat "$DCK_FAKE_LOG")" "machine add" "no machine is minted with a new id"
   assert_contains "$RUN_ERR" "Herdr catalog mirrored from the host (3 machine(s)" "the mirror is logged"
 }
+
+test_herdr_agent_link_repaired() {
+  local sock link="$DCK_HOME/.config/herdr/herdr.sock.agent"
+  sock="$(mktemp -u /tmp/dck-ag.XXXXXX)"  # AF_UNIX paths are short: not under the sandbox
+  python3 -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1])' "$sock"
+  mkdir -p "$DCK_HOME/.config/herdr"
+  ln -sfn "$DCK_HOME/.config/herdr/herdr.sock.unavailable" "$link"
+  DCK_SSH_AGENT_SOCK="$sock" ep dck_herdr_agent_link
+  assert_eq "$(readlink "$link")" "$sock" "a dangling Herdr agent link points at the mounted host agent"
+  rm -f "$sock"
+  ln -sfn "$DCK_HOME/.config/herdr/herdr.sock.unavailable" "$link"
+  DCK_SSH_AGENT_SOCK="$sock" ep dck_herdr_agent_link
+  assert_eq "$(readlink "$link")" "$DCK_HOME/.config/herdr/herdr.sock.unavailable" "without the mounted socket nothing changes"
+}
+
+test_profile_falls_back_to_the_mounted_agent() {
+  local out
+  out="$(SSH_AUTH_SOCK=/nonexistent/dangling HOME="$SANDBOX" sh -c '. "$1"; echo "$SSH_AUTH_SOCK"' _ "$DCK_REPO/images/common/profile.sh")"
+  if [ -S /run/dck/ssh-agent.sock ]; then
+    assert_eq "$out" "/run/dck/ssh-agent.sock" "a dangling SSH_AUTH_SOCK falls back to the mounted agent"
+  else
+    assert_eq "$out" "/nonexistent/dangling" "without the mounted agent SSH_AUTH_SOCK is left alone"
+  fi
+}
