@@ -154,9 +154,9 @@ test_ps_and_logs() {
 test_shell() {
   mk_repo || return 0
   d shell
-  assert_contains "$(fake_calls docker)" "$(compose_prefix) exec -T --user dev -e HOME=/home/dev -e USER=dev -e LOGNAME=dev -w /workspace app bash -l" "shell opens a login shell as remoteUser in workspaceFolder"
+  assert_contains "$(fake_calls docker)" "$(compose_prefix) exec -T --user dev -e HOME=/home/dev -e USER=dev -e LOGNAME=dev -w /app app bash -l" "shell opens a login shell as remoteUser in workspaceFolder"
   d shell -c "true"
-  assert_contains "$(fake_calls docker)" "-w /workspace app bash -lc true" "shell -c runs one command in a login shell"
+  assert_contains "$(fake_calls docker)" "-w /app app bash -lc true" "shell -c runs one command in a login shell"
   denv DCK_BACKEND=auto "$DCK" shell -c "true"
   assert_contains "$(fake_calls devcontainer)" "devcontainer exec --workspace-folder $REPO bash -lc true" "with the devcontainer CLI, shell uses devcontainer exec"
   d shell -x
@@ -166,7 +166,7 @@ test_shell() {
 test_exec() {
   mk_repo || return 0
   d exec app ls -la /tmp
-  assert_contains "$(fake_calls docker)" "-w /workspace app ls -la /tmp" "exec passes the command verbatim, flags included"
+  assert_contains "$(fake_calls docker)" "-w /app app ls -la /tmp" "exec passes the command verbatim, flags included"
   d exec db psql -c 'select 1'
   assert_contains "$(fake_calls docker)" "$(compose_prefix) exec -T db psql -c select 1" "a backing service is entered without remoteUser"
   d exec app

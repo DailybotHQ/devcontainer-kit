@@ -96,7 +96,7 @@ test_node_fixture_end_to_end() {
   run_cmd docker port "${IT_PROJECT}-app-1" 22
   assert_eq "$RUN_OUT" "127.0.0.1:$port" "sshd is published on 127.0.0.1 only"
   dev shell -c 'printf "%s|%s|%s" "$(whoami)" "$(pwd)" "$(test -f package.json && echo repo-mounted)"'
-  assert_eq "$RUN_OUT" "dev|/workspace|repo-mounted" "dev.sh shell runs as the dev user in the mounted workspace"
+  assert_eq "$RUN_OUT" "dev|/app|repo-mounted" "dev.sh shell runs as the dev user in the mounted workspace"
 
   # The host's SSH aliases work inside, with the public half only.
   dev shell -c 'ssh -G github.com-it | grep -E "^(hostname|user|identityfile|identitiesonly) "; ls ~/.ssh/dck-host-keys; grep -rl "PRIVATE KEY" ~/.ssh 2>/dev/null | wc -l | tr -d " "'
@@ -224,7 +224,7 @@ test_devcontainer_cli_backend() {
   assert_rc 0 "dck up through the devcontainer CLI starts the container"
   run_cmd bash -c 'cd "$1" && "$2" shell -c "whoami; pwd"' _ "$IT_REPO" "$DCK"
   assert_eq "$RUN_OUT" "dev
-/workspace" "dck shell through devcontainer exec runs as remoteUser in workspaceFolder"
+/app" "dck shell through devcontainer exec runs as remoteUser in workspaceFolder"
   run_cmd docker ps --filter "label=com.docker.compose.project=$IT_PROJECT" --format '{{.Names}}'
   assert_eq "$RUN_OUT" "${IT_PROJECT}-app-1" "the devcontainer CLI used the compose project dck init named"
 }

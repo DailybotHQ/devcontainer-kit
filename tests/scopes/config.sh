@@ -128,7 +128,7 @@ flavour = "python-3.13"' "My Repo")"
   local j="$RUN_OUT"
   get() { printf '%s' "$j" | python3 -c "import json,sys; v=json.load(sys.stdin)[sys.argv[1]]; print(json.dumps(v))" "$1"; }
   assert_eq "$(get user)" '"dev"' "user defaults to dev"
-  assert_eq "$(get workspace)" '"/workspace"' "workspace defaults to /workspace"
+  assert_eq "$(get workspace)" '"/app"' "workspace defaults to /app"
   assert_eq "$(get ssh_port)" '0' "ssh_port defaults to 0 (no sshd)"
   assert_eq "$(get bind)" '"127.0.0.1"' "bind defaults to loopback"
   assert_eq "$(get layers.agents)" 'false' "the agents layer is off by default"

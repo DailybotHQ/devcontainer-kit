@@ -28,7 +28,7 @@ that setup done once, as a tool, with safe defaults and tests. Built on the
   [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit) (`ak`, autonomy by
   default, with the familiar `claudex` / `codex-glm` names);
 - **Herdr, both ways**: the host Herdr attaches the container as a machine and it opens
-  with the standard sidebar (Home · Editor · Development · Agents); agents inside ask and
+  with the standard sidebar (App · Editor · Development · Agents); agents inside ask and
   answer agents on the host (through an opt-in loopback listener, `dck host listener`),
   in the other dck containers and in the host's other loopback containers — and they
   ask back. Machines registered inside survive `rebuild`;
@@ -43,7 +43,7 @@ Requires bash 3.2+ and python3 ≥ 3.11 on a Linux or macOS host; Docker (Deskto
 colima or Engine) with Compose v2 for the container verbs.
 
 ```bash
-git clone --branch v0.2.8 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.2.9 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh          # --no-rc for scripted installs, --uninstall to remove
 dck --version
 ```
@@ -58,7 +58,7 @@ carries `SHA256SUMS` for the shipped files.
 cd your-repo
 dck init --port web=4321   # renders the layout (shows a plan; asks before changing files)
 bash dev.sh up             # first run: .env files, the dck SSH key; then build and start
-bash dev.sh shell          # a login shell as the dev user in /workspace
+bash dev.sh shell          # a login shell as the dev user in /app
 bash dev.sh doctor         # what is wrong, if anything (dck doctor --json for tools and agents)
 ```
 
@@ -81,7 +81,7 @@ editor = true              # nvim + DeepWorkPlan Vim
 clis = ["claude", "codex"]
 [herdr]
 machine = true             # register as a Herdr machine on `dev.sh up`
-layout = "standard"        # Home · Editor · Development · Agents ("none" to skip)
+layout = "standard"        # App · Editor · Development · Agents ("none" to skip)
 ```
 
 ### Acceptance checklist
@@ -113,7 +113,7 @@ each item is one check:
    Herdr config, agentkit's keys and your git identity are still there.
 9. **Editor** — `bash dev.sh shell -c 'git -C ~/.config/nvim describe --tags'` prints the
    pinned DeepWorkPlan Vim tag and `nvim` starts ready.
-10. **The standard sidebar** — the attached machine opens with Home · Editor ·
+10. **The standard sidebar** — the attached machine opens with App · Editor ·
     Development (server | tests) · Agents (Agent 1..4): `bash dev.sh herdr-layout --keep`
     recreates what is missing.
 

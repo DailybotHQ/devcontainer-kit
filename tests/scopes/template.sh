@@ -63,7 +63,7 @@ test_init_empty_repo_renders_layout() {
   assert_eq "$(cat "$r/docker/local/app/dck/VERSION")" "devcontainer-kit v$(cat "$DCK_REPO/VERSION")" "dck/VERSION stamps the kit version"
   assert_contains "$(cat "$r/docker/local/app/Dockerfile")" "# dck:managed v$(cat "$DCK_REPO/VERSION") base" "the base block carries the render stamp"
   run_cmd python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import jsonc; d=jsonc.load(sys.argv[2]); print(d["service"], d["runServices"], d["remoteUser"], d["workspaceFolder"], d["shutdownAction"], d["dockerComposeFile"])' "$DCK_REPO/lib" "$r/.devcontainer/devcontainer.json"
-  assert_eq "$RUN_OUT" "app ['app'] dev /workspace none ../docker/local/docker-compose.yaml" "devcontainer.json carries the owned keys"
+  assert_eq "$RUN_OUT" "app ['app'] dev /app none ../docker/local/docker-compose.yaml" "devcontainer.json carries the owned keys"
   assert_contains "$(cat "$r/.gitignore")" "docker/local/**/.env" "the .gitignore guard keeps .env files out of git"
 }
 

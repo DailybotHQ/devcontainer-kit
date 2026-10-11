@@ -31,8 +31,8 @@
     "workspace": {
       "type": "string",
       "pattern": "^/[A-Za-z0-9._/-]*$",
-      "default": "/workspace",
-      "description": "workspaceFolder"
+      "default": "/app",
+      "description": "workspaceFolder (the app path): the repository mount and where every Herdr workspace and new pane opens"
     },
     "flavour": {
       "enum": [

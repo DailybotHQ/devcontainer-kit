@@ -202,6 +202,13 @@ test_herdr_config_defaults() {
   assert_not_contains "$RUN_ERR" "updated" "an unchanged file is not rewritten"
 }
 
+test_herdr_config_repairs_the_seeded_new_cwd() {
+  mkdir -p "$DCK_HOME/.config/herdr"
+  printf '[terminal]\nnew_cwd = "/workspace"\n' > "$DCK_HOME/.config/herdr/config.toml"
+  DCK_WORKSPACE="$DCK_ROOT/app" ep dck_herdr_config
+  assert_contains "$(cat "$DCK_HOME/.config/herdr/config.toml")" "new_cwd = \"$DCK_ROOT/app\"" "the image's seeded /workspace follows the repository's app path"
+}
+
 test_herdr_config_respects_user_values() {
   mkdir -p "$DCK_HOME/.config/herdr"
   cat > "$DCK_HOME/.config/herdr/config.toml" <<'EOF'

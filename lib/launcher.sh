@@ -49,7 +49,7 @@ usage: dck [--repo DIR] [--profile NAME] [--project NAME] [--trust] <verb> [args
   ssh [cmd...]          ssh into the container with agent forwarding
   herdr add|status|repair|remove|mesh   the container as a Herdr machine; mesh: reach the others from inside
                                         (run explicitly, mesh works even with [herdr] mesh = false)
-  herdr layout [--keep|--reset]   the standard sidebar inside: Home · Editor · Development · Agents
+  herdr layout [--keep|--reset]   the standard sidebar inside: App · Editor · Development · Agents
   host listener enable|disable|status   the host as a mesh peer: a loopback sshd (macOS,
                         launchd) that accepts only the dck key; see docs/herdr.md
   host peers install|status   herdr-peers for the host (verified), used by agents and ask
@@ -90,7 +90,7 @@ is written and dck exits 5.
   --flavour python-3.13|node-24|debian   (default: detected from the repo)
   --service NAME       compose service (default app)
   --user NAME          remoteUser (default dev)
-  --workspace PATH     workspaceFolder (default /workspace)
+  --workspace PATH     workspaceFolder (default /app): every Herdr workspace and pane opens there
   --ssh-port N         loopback sshd port, 0 = none (default: derived from the repo name)
   --port NAME=N        a named loopback port (repeatable)
   --agents | --no-agents       the agents layer (coding-agents-kit)

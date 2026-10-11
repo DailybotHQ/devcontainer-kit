@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Stateful fake Herdr for the layout tests: workspaces, tabs and panes in a
-JSON file ($HERDR_FAKE_STATE). Commands: workspace list|create|close|focus,
+JSON file ($HERDR_FAKE_STATE). Commands: workspace list|create|close|focus|rename,
 tab create|rename|list, pane split|rename|list. HERDR_FAKE_UNREADABLE=tab
 makes `tab list` print garbage (an unreadable read)."""
 import json, os, sys
@@ -44,7 +44,9 @@ def find_pane(pid):
 
 cmd = args[:2]
 if cmd == ["workspace", "list"]:
-    out({"workspaces": [{"workspace_id": w["id"], "label": w["label"]} for w in st["ws"]]})
+    out({"workspaces": [{"workspace_id": w["id"], "label": w["label"], "pane_count": sum(len(t["panes"]) for t in w["tabs"]), "agent_status": w.get("agent", "unknown")} for w in st["ws"]]})
+elif cmd == ["workspace", "rename"]:
+    find_ws(args[2])["label"] = " ".join(args[3:]); save(); out({})
 elif cmd == ["workspace", "create"]:
     wid, tid, pid = nid("w"), nid("t"), nid("p")
     st["ws"].append({"id": wid, "label": opt("--label"), "tabs": [{"id": tid, "label": "1", "panes": [pid]}]})

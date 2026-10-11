@@ -12,7 +12,7 @@
 #                       container (and the host, when the profile sets
 #                       host_machine) becomes reachable from inside
 #   dck herdr layout [--keep|--reset]   the standard sidebar inside the container
-#                       (Home · Editor · Development · Agents); dck up runs --keep
+#                       (App · Editor · Development · Agents); dck up runs --keep
 #   dck agents          herdr-peers list: the live agents on every machine
 #   dck ask <machine>:<pane>|<#> "<prompt>"   herdr-peers ask, with the reply grant
 #
