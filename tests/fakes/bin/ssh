@@ -1,8 +1,19 @@
 #!/usr/bin/env bash
 # Fake ssh. Logs argv. $DCK_FAKE_STATE/ssh_rc sets the status (default 0),
 # ssh_server_rc the status of `... herdr status server`, ssh_out the output.
+# `ssh -G <alias>` prints $DCK_FAKE_STATE/ssh_G_<alias> (exit 255 when absent).
+# A command running dck_mesh_apply saves its stdin to ssh_stdin_<last host arg>.
 st="${DCK_FAKE_STATE:-/nonexistent}"
 printf 'ssh %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
+if [ "${1:-}" = "-G" ]; then
+  [ -f "$st/ssh_G_$2" ] || exit 255
+  cat "$st/ssh_G_$2"; exit 0
+fi
+case " $* " in
+  *dck_mesh_apply*)
+    host=""; for a in "$@"; do case "$a" in -*|*=*|BatchMode*|ConnectTimeout*) ;; *) [ -z "$host" ] && [ "$prev" != "-o" ] && host="$a" ;; esac; prev="$a"; done
+    cat > "$st/ssh_stdin_$host" ;;
+esac
 cat "$st/ssh_out" 2>/dev/null
 case " $* " in
   *" herdr status server "*) exit "$(cat "$st/ssh_server_rc" 2>/dev/null || echo 0)" ;;

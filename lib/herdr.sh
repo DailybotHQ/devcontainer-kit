@@ -137,19 +137,44 @@ herdr_mesh() {
     return 0
   fi
   herdr_agent_key
-  local host_user="" host_key="" payload n
-  if [ "${DCK_HOST_MACHINE:-0}" = "1" ]; then
-    host_user="$(id -un)"
-    host_key=/etc/ssh/ssh_host_ed25519_key.pub
-  fi
-  payload="$( { herdr machine list --json 2>/dev/null || true; } | dckpy sshconf peers --labels-stdin \
-      --file "$HERDR_INCLUDE" --known-hosts "$HERDR_KNOWN_HOSTS" --exclude "$DCK_ALIAS" \
-      --host-user "$host_user" --host-key "$host_key")" || exit $?
+  local catalog payload n alias
+  catalog="$(herdr machine list --json 2>/dev/null || true)"
+  payload="$(herdr_mesh_payload "$DCK_ALIAS" "$DCK_SSH_PORT" "$catalog")" || exit $?
   n="$(printf '%s\n' "$payload" | grep -c '^peer ' || true)"
   printf '%s\n' "$payload" | dc exec -T --user root "$DC_SERVICE" \
     bash -c '. /usr/local/lib/dck/entrypoint.sh && dck_mesh_apply' >/dev/null 2>&1 \
     || die "could not apply the mesh inside $DC_SERVICE (rendered by devcontainer-kit v0.2+?)"
   note "mesh: $n peer(s) reachable from inside $DC_SERVICE"
+  # The containers started before this one learn about it too: re-apply the
+  # mesh to every other running dck container, over its own alias.
+  for alias in $(dckpy sshconf aliases --file "$HERDR_INCLUDE" 2>/dev/null || true); do
+    [ "$alias" != "$DCK_ALIAS" ] || continue
+    ssh -o BatchMode=yes -o ConnectTimeout=3 -o ForwardAgent=no "$alias" true </dev/null >/dev/null 2>&1 || continue
+    payload="$(herdr_mesh_payload "$alias" "" "$catalog")" || continue
+    if printf '%s\n' "$payload" | ssh -o BatchMode=yes -o ConnectTimeout=5 -o ForwardAgent=no "$alias" \
+        "bash -c '. /usr/local/lib/dck/entrypoint.sh && dck_mesh_apply'" >/dev/null 2>&1; then
+      note "mesh: refreshed $alias"
+    else
+      note "mesh: could not refresh $alias (rendered before devcontainer-kit v0.2?); run dck herdr mesh in its repository"
+    fi
+  done
+}
+
+# herdr_mesh_payload <alias> <its ssh port or ""> <host catalog json> — the
+# public peer list for one container: the other dck containers, the host (with
+# [host] machine), and the host's other loopback Herdr machines ([mesh] external).
+herdr_mesh_payload() {
+  local self="$1" self_port="${2:-0}" catalog="$3" host_user="" host_key="" ext=()
+  if [ "${DCK_HOST_MACHINE:-0}" = "1" ]; then
+    host_user="$(id -un)"
+    host_key="${DCK_HOST_KEY:-}"
+    [ -n "$host_key" ] && [ ! -f "$host_key" ] && warn "mesh: the host key $host_key is missing; the host is pushed unpinned and will be refused inside (dck host listener enable?)"
+  fi
+  [ "${DCK_MESH_EXTERNAL:-1}" = "1" ] && ext=(--external --user-known-hosts "$HOME/.ssh/known_hosts" --self-port "${self_port:-0}")
+  printf '%s' "$catalog" | dckpy sshconf peers --labels-stdin \
+    --file "$HERDR_INCLUDE" --known-hosts "$HERDR_KNOWN_HOSTS" --exclude "$self" \
+    --host-user "$host_user" --host-key "$host_key" --host-port "${DCK_HOST_PORT:-22}" \
+    --host-label "${DCK_HOST_LABEL:-host}" ${ext[@]+"${ext[@]}"}
 }
 
 # herdr_layout [--keep|--reset] — create the standard sidebar inside the container,
@@ -163,17 +188,20 @@ herdr_layout() {
     || die "the Herdr layout could not be created inside $DC_SERVICE (is the host Herdr attached? run: dck herdr status)"
 }
 
+# Sets HERDR_PEERS_CLI: herdr-peers on PATH, else dck's verified host copy
+# (dck host peers install, run by dck setup).
 herdr_peers_cli() {
-  command -v herdr-peers >/dev/null 2>&1 && return 0
-  die "$DCK_EXIT_ENV" "herdr-peers is not installed on this host. Install the skill, pinned:
-  npx --yes skills add DailybotHQ/herdr-peers@${HERDR_PEERS_TAG:-v0.1.0} --skill herdr-peers -g
-then put its helper on PATH (see https://github.com/DailybotHQ/herdr-peers#install)"
+  if command -v herdr-peers >/dev/null 2>&1; then HERDR_PEERS_CLI="herdr-peers"; return 0; fi
+  if declare -F dck_host_peers_bin >/dev/null 2>&1 && HERDR_PEERS_CLI="$(dck_host_peers_bin)"; then return 0; fi
+  die "$DCK_EXIT_ENV" "herdr-peers is not installed on this host. Install dck's verified copy:
+  dck host peers install
+(or the skill, pinned: npx --yes skills add DailybotHQ/herdr-peers@${HERDR_PEERS_TAG:-v0.1.0} --skill herdr-peers -g)"
 }
 
 dck_cmd_agents() {
   [ $# -eq 0 ] || die "$DCK_EXIT_USAGE" "usage: dck agents"
   herdr_peers_cli
-  exec herdr-peers list
+  exec "$HERDR_PEERS_CLI" list
 }
 
 dck_cmd_ask() {
@@ -184,7 +212,7 @@ dck_cmd_ask() {
     *:*) ;;
     *) die "$DCK_EXIT_USAGE" "ask: the target is <machine>:<pane> (the MACHINE:PANE column of: dck agents)" ;;
   esac
-  exec herdr-peers ask "$target" "$*"
+  exec "$HERDR_PEERS_CLI" ask "$target" "$*"
 }
 
 herdr_add() {

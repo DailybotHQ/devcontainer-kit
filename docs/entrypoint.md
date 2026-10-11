@@ -98,7 +98,8 @@ entrypoint.
 
 The standard sequence:
 
-1. persist `~/.ssh`, `~/.config/gh`, `~/.config/herdr`, `~/.bash_history` on
+1. persist `~/.ssh`, `~/.config/gh`, `~/.config/herdr`, Herdr's saved
+   machines (`~/.local/state/herdr/client`) and `~/.bash_history` on
    the per-project `state` volume (and the agents layer's homes, see
    [layers.md](layers.md));
 2. `dck_herdr_config`;

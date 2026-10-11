@@ -19,7 +19,7 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
 | Verb | What it does |
 | --- | --- |
 | `init [flags]` | render or reconcile the template ([init.md](init.md)) |
-| `setup` | create each `docker/local/**/.env` from its `.env.example` at **0600** (an existing readable one is narrowed to 0600, loudly), create missing external networks, create the dedicated dck SSH key |
+| `setup` | create each `docker/local/**/.env` from its `.env.example` at **0600** (an existing readable one is narrowed to 0600, loudly), create missing external networks, create the dedicated dck SSH key; with Herdr on the host, install a verified herdr-peers for it and, once on a terminal (macOS), offer the host listener ([herdr.md](herdr.md)) |
 | `up [--recreate] [svc…]` | start `runServices`, detached. A second `up` leaves running containers alone; `--recreate` applies compose changes. Registers the Herdr machine afterwards when `dck.toml` says so ([herdr.md](herdr.md)) |
 | `down [svc…]` | stop and remove this repository's services — never `compose down`; named volumes and the project network are kept (the next `up` reuses them). To retire a repository completely: `docker volume rm <project>_state …` and `docker network rm <project>_default` |
 | `stop` / `start` / `restart` `[svc…]` | as compose; `stop` skips the environment checks so a stack can always be stopped |
@@ -33,7 +33,10 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
 | `ports` | the published loopback ports and whether the service runs |
 | `ssh [cmd…]` | SSH into the container with **agent forwarding** (see below) |
 | `doctor [--json] [--strict]` | environment and repository health, interface 2; `--strict` exits 1 while `problems` is not empty ([doctor.md](doctor.md)) |
-| `herdr add\|status\|repair\|remove\|mesh` | the container as a Herdr machine; `mesh` makes the other dck containers reachable from inside ([herdr.md](herdr.md)) |
+| `herdr add\|status\|repair\|remove\|mesh` | the container as a Herdr machine; `mesh` makes the other dck containers, the host and the host's other loopback machines reachable from inside, and refreshes every running dck container ([herdr.md](herdr.md)) |
+| `host listener enable\|disable\|status` | the host as a mesh peer: an opt-in loopback sshd (macOS, launchd) that accepts only the dck key ([herdr.md](herdr.md), [SECURITY.md](SECURITY.md)) |
+| `host peers install\|status` | herdr-peers for the host, verified against its release `SHA256SUMS`; used by `agents` and `ask` |
+| `agents`, `ask <machine>:<pane> "<prompt>"` | herdr-peers `list` / `ask` from the host |
 | `herdr layout [--keep\|--reset]` | the standard sidebar inside: Home · Editor · Development · Agents ([herdr.md](herdr.md)) |
 | `--skill`, `--version`, `help` | the bundled agent skill, the version, usage |
 
@@ -114,7 +117,7 @@ entrypoint). `dck ssh` connects to `127.0.0.1:<ssh_port>` with:
 ## Install
 
 ```bash
-git clone --branch v0.2.2 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.2.3 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh            # or --no-rc for scripted installs
 ```
 
@@ -138,10 +141,21 @@ install.
 | `agents` | `dck agents` (herdr-peers list) |
 | `ask <machine>:<pane> "<prompt>"` | `dck ask …` (herdr-peers ask) |
 
-When `dck` is not installed, `dev.sh` prints the pinned install steps
-(`git clone --branch <the release it was rendered with> …` and
-`install.sh`). It installs nothing itself. When the installed `dck`
-differs from that release, it suggests `dck init`. A repository that keeps
-its own `dev.sh` (no dck markers) keeps it untouched and can call the
-verbs above.
+| `install-dck` | installs devcontainer-kit on this host: clones the tag it was rendered with, verifies every shipped file against that release's `SHA256SUMS`, runs `install.sh --no-rc` (dck needs python3 >= 3.11) |
+
+`dev.sh` finds `dck` on `PATH`, then in `${DCK_INSTALL_DIR:-~/.local/share/dck}/bin`.
+When it is not installed, **Docker alone is enough** for the container verbs:
+`up`, `down`, `shell`, `exec`, `build`, `rebuild`, `logs` and `ps` run on plain
+`docker compose -f docker/local/docker-compose.yaml`, with the rendered service,
+user and workspace. That fallback creates missing `.env` files from their
+examples (umask 077), passes `$SSH_AUTH_SOCK` as `DCK_HOST_SSH_AUTH_SOCK` on a
+Linux host, and does not run `docker/local/dev-setup-hook.sh` itself (the
+container's entrypoint runs it at every start). For volumes dck created, plain
+compose prints a harmless `volume ... already exists but was not created by
+Docker Compose` warning. The dck-only verbs (`doctor`, `ssh`, `setup`,
+`herdr`, `herdr-layout`, `agents`, `ask`) print the pinned install steps and
+exit 4; on a terminal they first offer `install-dck` (`[Y/n]`). When the
+installed `dck` differs from the release `dev.sh` was rendered with, it
+suggests `dck init`. A repository that keeps its own `dev.sh` (no dck markers)
+keeps it untouched and can call the verbs above.
 

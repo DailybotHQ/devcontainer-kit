@@ -380,9 +380,10 @@ test_devsh() {
   assert_contains "$(fake_calls dck)" "dck ask dck-x:w1:p1 a question" "dev.sh ask passes the target and prompt"
   run_cmd env PATH="$fake:$PATH" bash "$r/dev.sh" nope
   assert_rc 2 "an unknown dev.sh command is a usage error"
-  run_cmd env PATH=/usr/bin:/bin bash "$r/dev.sh" up
-  assert_rc 4 "without dck, dev.sh says how to install it"
+  run_cmd env PATH=/usr/bin:/bin HOME="$SANDBOX/nodck" bash "$r/dev.sh" agents
+  assert_rc 4 "without dck, a dck-only command says how to install it"
   assert_contains "$RUN_ERR" "git clone --branch v$(cat "$DCK_REPO/VERSION") https://github.com/DailybotHQ/devcontainer-kit" "the install line is pinned"
+  assert_contains "$RUN_ERR" "bash dev.sh install-dck" "and names install-dck"
   r="$(new_repo devsh-own)"
   printf '#!/usr/bin/env bash\necho mine\n' > "$r/dev.sh"
   init_repo "$r" --no-herdr --yes
@@ -395,5 +396,62 @@ test_herdr_layout_in_the_template() {
   init_repo "$r" --no-herdr --yes
   assert_contains "$(cat "$r/.devcontainer/dck.toml")" 'layout = "standard"' "dck.toml defaults to the standard layout"
   assert_contains "$(cat "$r/docker/local/app/Dockerfile")" "COPY dck/herdr-layout.sh /usr/local/bin/dck-herdr-layout" "the image carries the layout script"
-  assert_contains "$(cat "$r/dev.sh")" "herdr-layout) exec dck herdr layout" "dev.sh herdr-layout maps to dck herdr layout"
+  assert_contains "$(cat "$r/dev.sh")" 'herdr-layout) exec "$dck_bin" herdr layout' "dev.sh herdr-layout maps to dck herdr layout"
+}
+
+# A PATH with the fake docker but no dck (and no default install).
+nodck_path() { printf '%s:/usr/bin:/bin' "$TESTS_DIR/fakes/bin"; }
+
+test_devsh_without_dck_uses_compose() {
+  local r
+  r="$(new_repo devsh-compose)"
+  init_repo "$r" --service web --user node --workspace /app --no-herdr --yes
+  rm -f "$r/docker/local/web/.env"
+  : > "$DCK_FAKE_LOG"
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" bash "$r/dev.sh" up
+  assert_rc 0 "dev.sh up works with Docker alone"
+  assert_contains "$(fake_calls docker)" "compose -f docker/local/docker-compose.yaml up -d web" "up starts the rendered service on plain compose"
+  assert_file "$r/docker/local/web/.env" "the .env is created from its example"
+  assert_mode "$r/docker/local/web/.env" 600 "under umask 077"
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" bash "$r/dev.sh" shell
+  assert_contains "$(fake_calls docker)" "exec -u node -w /app web bash -l" "shell enters as the rendered user and workspace"
+  for v in down build logs ps; do
+    run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" bash "$r/dev.sh" "$v"
+    assert_rc 0 "dev.sh $v works without dck"
+  done
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" bash "$r/dev.sh" rebuild
+  assert_contains "$(fake_calls docker)" "up -d --force-recreate web" "rebuild recreates on plain compose"
+  assert_not_contains "$(cat "$r/dev.sh")" "dev-setup-hook.sh" "the fallback never runs the start hook (the entrypoint does)"
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" bash "$r/dev.sh" herdr
+  assert_rc 4 "herdr needs dck"
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" DCK_HOST_SSH_AUTH_SOCK= SSH_AUTH_SOCK=/tmp/agent.sock bash -c 'uname() { echo Linux; }; export -f uname; bash "$1" ps' _ "$r/dev.sh"
+  assert_rc 0 "ps works"
+  # The default install location is found without PATH.
+  mkdir -p "$SANDBOX/inst/bin"
+  printf '#!/bin/sh\nif [ "$1" = --version ]; then echo "devcontainer-kit %s"; exit 0; fi\nprintf "dck %%s\\n" "$*" >> "%s"\n' "$(cat "$DCK_REPO/VERSION")" "$DCK_FAKE_LOG" > "$SANDBOX/inst/bin/dck"
+  chmod +x "$SANDBOX/inst/bin/dck"
+  run_cmd env PATH="$(nodck_path)" DCK_INSTALL_DIR="$SANDBOX/inst" bash "$r/dev.sh" agents
+  assert_contains "$(fake_calls dck)" "dck agents" "dck is found in its install directory"
+}
+
+test_devsh_install_dck_verifies() {
+  local r fk="$SANDBOX/fk" kit="$SANDBOX/kitsrc"
+  r="$(new_repo devsh-install)"
+  init_repo "$r" --no-herdr --yes
+  mkdir -p "$fk" "$kit/bin" "$DCK_FAKE_STATE/curl"
+  printf '#!/usr/bin/env bash\necho "installed $*" > "%s/installed"\n' "$SANDBOX" > "$kit/install.sh"; chmod +x "$kit/install.sh"
+  printf 'x\n' > "$kit/VERSION"
+  (cd "$kit" && for f in install.sh VERSION; do printf '%s  %s\n' "$(shasum -a 256 "$f" 2>/dev/null | cut -d' ' -f1 || sha256sum "$f" | cut -d' ' -f1)" "$f"; done) > "$DCK_FAKE_STATE/curl/SHA256SUMS"
+  # git: clone copies the prepared tree; everything else is the real git.
+  printf '#!/usr/bin/env bash\nif [ "$1" = clone ]; then echo "git $*" >> "%s"; cp -R "%s" "${@: -1}"; exit 0; fi\nexec /usr/bin/git "$@"\n' "$DCK_FAKE_LOG" "$kit" > "$fk/git"; chmod +x "$fk/git"
+  run_cmd env PATH="$fk:$TESTS_DIR/fakes/bin:/usr/bin:/bin" HOME="$SANDBOX/nodck" bash "$r/dev.sh" install-dck
+  assert_rc 0 "install-dck installs a verified clone"
+  assert_contains "$(cat "$DCK_FAKE_LOG")" "--branch v$(cat "$DCK_REPO/VERSION")" "the rendered tag is cloned"
+  assert_contains "$(cat "$SANDBOX/installed")" "--no-rc" "the installer runs without touching rc files"
+  assert_contains "$RUN_OUT" "python3 >= 3.11" "it mentions dck's python requirement"
+  rm -f "$SANDBOX/installed"
+  printf 'echo tampered\n' >> "$kit/install.sh"
+  run_cmd env PATH="$fk:$TESTS_DIR/fakes/bin:/usr/bin:/bin" HOME="$SANDBOX/nodck" bash "$r/dev.sh" install-dck
+  assert_rc 1 "a clone that does not match SHA256SUMS is refused"
+  assert_not_file "$SANDBOX/installed" "and nothing is installed"
 }

@@ -25,6 +25,7 @@ INTERFACES = (1, 2)  # 1 is read for migration only
 FLAVOURS = ("python-3.13", "node-24", "debian")
 AGENT_KINDS = ("claude", "codex", "cursor", "opencode", "pi", "cline", "grok")
 LABEL_PLACEHOLDERS = ("repo", "service", "project", "user")
+HOST_LISTENERS = ("dck", "external", "remote-login")
 
 RE_SERVICE = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$"
 RE_USER = r"^[a-z_][a-z0-9_-]{0,31}$"
@@ -76,8 +77,25 @@ PROFILE_RULES = {
     # containers. A host preference, never a repository's: a cloned repository
     # must not be able to ask for your server aliases.
     "ssh.host_extra": ("host_list", [], ("pattern", r"^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$")),
+    # Extra PUBLIC keys authorized in every container's dck block (for example
+    # the keys non-dck containers log in with). Host profile only.
+    "ssh.authorized_extra": ("pubkey_list", [], None),
+    # The host as a mesh peer (docs/herdr.md). [host] machine wins over the
+    # older top-level host_machine, which stays as its alias.
+    "host.machine": ("bool", None, None),
+    "host.listener": ("str", "dck", ("enum", HOST_LISTENERS)),
+    "host.port": ("int", 0, ("port_or_zero", None)),
+    "host.host_key": ("path", "", None),
+    "host.label": ("label", "host", ("placeholders", LABEL_PLACEHOLDERS)),
+    # The mesh also pushes the host's other loopback Herdr machines.
+    "mesh.external": ("bool", True, None),
 }
-TABLES = {"repo": ("layers", "agents", "herdr"), "profile": ("labels", "ssh")}
+TABLES = {"repo": ("layers", "agents", "herdr"), "profile": ("labels", "ssh", "host", "mesh")}
+
+# Where each listener kind listens and which public host key pins it.
+LISTENER_DEFAULT_PORT = {"dck": 22033, "remote-login": 22, "external": 0}
+LISTENER_DEFAULT_KEY = {"dck": "~/.config/dck/host-listener/ssh_host_ed25519_key.pub",
+                        "remote-login": "/etc/ssh/ssh_host_ed25519_key.pub", "external": ""}
 
 
 class ConfigError(Exception):
@@ -153,6 +171,14 @@ def _check(key, value, rule, problems):
                 bad("invalid host %r (must match %s)" % (item, carg))
         if len(value) > 64:
             bad("at most 64 hosts")
+    elif kind == "pubkey_list":
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            return bad("expected an array of public key file paths, got %s" % _type_name(value))
+        for item in value:
+            if not item.endswith(".pub") or re.search(r"[\s\x00]", item) or "/../" in item or item.startswith("../"):
+                bad("invalid public key file %r (a path ending in .pub, no whitespace or ..)" % item)
+        if len(value) > 16:
+            bad("at most 16 keys")
     elif kind == "kind_list":
         if not isinstance(value, list):
             return bad("expected an array of strings, got %s" % _type_name(value))
@@ -212,9 +238,31 @@ def validate(data, kind="repo", path="dck.toml"):
         if effective["image_tag"] is not None:
             warnings.append("%s: image_tag is ignored since devcontainer-kit v0.2.0 (no shared base "
                             "image); `dck init` removes it" % path)
+    if kind == "profile" and not problems and effective["host.listener"] == "external":
+        if not effective["host.port"]:
+            problems.append("host.port: listener = \"external\" needs the port of your existing listener")
+        if not effective["host.host_key"]:
+            problems.append("host.host_key: listener = \"external\" needs the path of its public host key")
     if problems:
         raise ConfigError(path, problems)
     return effective, warnings
+
+
+def host_settings(prof, env=None):
+    """The resolved host-peer settings of a validated profile."""
+    env = os.environ if env is None else env
+    listener = prof["host.listener"]
+    machine = prof["host.machine"] if prof["host.machine"] is not None else prof["host_machine"]
+    return {
+        "host_machine": bool(machine),
+        "host_listener": listener,
+        "host_port": prof["host.port"] or LISTENER_DEFAULT_PORT[listener],
+        "host_key": expand_home(prof["host.host_key"] or LISTENER_DEFAULT_KEY[listener], env),
+        "host_label": prof["host.label"],
+        "host_configured": prof["host.machine"] is not None or "host_machine_set" in prof,
+        "mesh_external": prof["mesh.external"],
+        "ssh_authorized_extra": [expand_home(p, env) for p in prof["ssh.authorized_extra"]],
+    }
 
 
 def parse_file(path):
@@ -278,8 +326,11 @@ def load_profile(name=None, env=None):
         effective, _ = validate({}, "profile", path)
         effective["_source"] = "defaults"
         return effective, []
-    effective, warnings = validate(parse_file(path), "profile", path)
+    raw = parse_file(path)
+    effective, warnings = validate(raw, "profile", path)
     effective["_source"] = path
+    if "host_machine" in raw:
+        effective["host_machine_set"] = True
     return effective, warnings
 
 
@@ -317,10 +368,10 @@ def effective(repo, default_tag, profile_name=None, env=None):
         "compose_project_prefix": prof["compose_project_prefix"],
         "network": prof["network"],
         "alias": prof["alias_prefix"] + rslug,
-        "host_machine": prof["host_machine"],
         "ssh_identity": expand_home(prof["ssh.identity"], env),
         "ssh_host_extra": list(prof["ssh.host_extra"]),
     })
+    merged.update(host_settings(prof, env))
     merged["herdr.label"] = expand_label(label_fmt, {
         "repo": repo_name, "service": cfg["service"], "user": cfg["user"],
         "project": prof["compose_project_prefix"] + rslug})

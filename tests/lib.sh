@@ -111,6 +111,7 @@ $(printf '%s\n' "$1" | grep -E -- "$2" | head -5)"; else pass "$3"; fi
 }
 
 assert_file() { if [ -f "$1" ]; then pass "$2"; else fail "$2" "not a file: $1"; fi; }
+assert_not_file() { if [ ! -e "$1" ]; then pass "$2"; else fail "$2" "exists: $1"; fi; }
 assert_dir() { if [ -d "$1" ]; then pass "$2"; else fail "$2" "not a directory: $1"; fi; }
 assert_symlink() { if [ -L "$1" ]; then pass "$2"; else fail "$2" "not a symlink: $1"; fi; }
 assert_absent() { if [ ! -e "$1" ] && [ ! -L "$1" ]; then pass "$2"; else fail "$2" "exists: $1"; fi; }

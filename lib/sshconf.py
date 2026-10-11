@@ -192,14 +192,29 @@ def _known_port(hosts, by_alias, ports):
     return None
 
 
-def peers(path, known_hosts, exclude="", labels=None, host_user="", host_key_file=""):
+def alias_ports(path):
+    """The Port of every managed block of the include."""
+    lines = _read_owned(path)
+    ports = []
+    for _alias, start, end in _blocks(lines):
+        for ln in lines[start:end]:
+            m = re.match(r"^\s+Port\s+(\d+)\s*$", ln)
+            if m:
+                ports.append(m.group(1))
+    return ports
+
+
+def peers(path, known_hosts, exclude="", labels=None, host_user="", host_key_file="",
+          host_port="22", external=None):
     """The mesh payload `dck_mesh_apply` reads inside a container: one
     `peer <alias> <port> <user> <label>` line per managed block of the include
     except `exclude`, one `hostkey <port> <type> <key>` line per pinned host key
     of those peers (from dck's known_hosts: entries for the alias — dck pins
     with HostKeyAlias — plain or hashed, or legacy `[127.0.0.1]:<port>`), and,
-    when host_user is set, the host itself (`dck-host`, port 22) with its own
-    host key. Public data only: aliases, ports, users, labels, public keys."""
+    when host_user is set, the host itself (`dck-host`, on host_port: 22 for
+    Remote Login, the listener's port otherwise) with its own host key, then the
+    lines of `external` (host-catalog peers, see external_peers). Public data
+    only: aliases, ports, users, labels, public keys."""
     labels = labels or {}
     lines = _read_owned(path) if os.path.exists(path) else []
     out, ports, by_alias = [], set(), {}
@@ -235,12 +250,95 @@ def peers(path, known_hosts, exclude="", labels=None, host_user="", host_key_fil
     if host_user:
         if not re.match(r"^%s$" % USER_RE, host_user):
             raise SshConfError("invalid host user %r" % host_user, 2)
-        out.append("peer dck-host 22 %s %s" % (host_user, labels.get("dck-host", "host")))
+        if not re.match(r"^\d{1,5}$", str(host_port)) or not 1 <= int(host_port) <= 65535:
+            raise SshConfError("invalid host port %r" % host_port, 2)
+        out.append("peer dck-host %s %s %s" % (host_port, host_user, labels.get("dck-host", "host")))
         if host_key_file and os.path.exists(host_key_file):
             parts = open(host_key_file).read().split()
             if len(parts) >= 2:
-                out.append("hostkey 22 %s %s" % (parts[0], parts[1]))
+                out.append("hostkey %s %s %s" % (host_port, parts[0], parts[1]))
+    out.extend(external or [])
     return "\n".join(out) + ("\n" if out else "")
+
+
+EXTERNAL_PORTS = (22000, 22999)  # the loopback container-sshd convention
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
+
+
+def _ssh_g(alias, ssh="ssh"):
+    """`ssh -G alias` -> {hostname, port, user, hostkeyalias} (lower-case keys)."""
+    import subprocess
+    try:
+        r = subprocess.run([ssh, "-G", alias], capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if r.returncode != 0:
+        return {}
+    cfg = {}
+    for ln in r.stdout.splitlines():
+        parts = ln.split(None, 1)
+        if len(parts) == 2 and parts[0] in ("hostname", "port", "user", "hostkeyalias"):
+            cfg.setdefault(parts[0], parts[1].strip())
+    return cfg
+
+
+def _known_ed25519(names, known_hosts_files, keygen="ssh-keygen"):
+    """The ed25519 key any of the names has in the given known_hosts files."""
+    import subprocess
+    for kh in known_hosts_files:
+        if not kh or not os.path.isfile(kh):
+            continue
+        for name in names:
+            try:
+                r = subprocess.run([keygen, "-F", name, "-f", kh], capture_output=True, text=True, timeout=10)
+            except (OSError, subprocess.SubprocessError):
+                continue
+            for ln in r.stdout.splitlines():
+                parts = ln.split()
+                if len(parts) >= 3 and not ln.startswith("#") and parts[1] == "ssh-ed25519" \
+                        and re.match(r"^[A-Za-z0-9+/=]+$", parts[2]):
+                    return parts[2]
+    return None
+
+
+def external_peers(machines, skip_aliases=(), skip_ports=(), known_hosts_files=(), ssh="ssh",
+                   keygen="ssh-keygen"):
+    """Host-catalog peers: every Herdr machine whose alias resolves (ssh -G) to a
+    loopback address on a port in 22000-22999 and is not already a dck peer.
+    Returns (payload lines, notes). Each peer gives `peer <alias> <port> <user>
+    <label>`, `hostkey <port> ssh-ed25519 <key>` (from YOUR known_hosts; a peer
+    with no pinned ed25519 key is skipped, never trusted on first use) and, for a
+    machine disabled on the host, `disabled <alias>`."""
+    out, notes, seen_ports = [], [], set(str(p) for p in skip_ports)
+    for m in machines:
+        if not isinstance(m, dict):
+            continue
+        alias = str(m.get("target") or "")
+        if not alias or alias in skip_aliases or not re.match(r"^[A-Za-z0-9._-]{1,128}$", alias):
+            continue
+        cfg = _ssh_g(alias, ssh)
+        host, port, user = cfg.get("hostname", ""), cfg.get("port", ""), cfg.get("user", "")
+        if host not in LOOPBACK or not port.isdigit():
+            continue
+        if not EXTERNAL_PORTS[0] <= int(port) <= EXTERNAL_PORTS[1] or port in seen_ports:
+            continue
+        if not re.match(r"^%s$" % USER_RE, user):
+            notes.append("mesh: skipped %s (user %r)" % (alias, user))
+            continue
+        names = ["[%s]:%s" % (h, port) for h in LOOPBACK] + [alias]
+        if cfg.get("hostkeyalias") and cfg["hostkeyalias"] != "none":
+            names.insert(0, cfg["hostkeyalias"])
+        key = _known_ed25519(names, known_hosts_files, keygen)
+        if not key:
+            notes.append("mesh: skipped %s (no ed25519 host key in your known_hosts; connect once from this host)" % alias)
+            continue
+        label = re.sub(r"[^A-Za-z0-9 ._:@()/-]", "", str(m.get("label") or alias)).strip() or alias
+        out.append("peer %s %s %s %s" % (alias, port, user, label))
+        out.append("hostkey %s ssh-ed25519 %s" % (port, key))
+        if not m.get("enabled", True):
+            out.append("disabled %s" % alias)
+        seen_ports.add(port)
+    return out, notes
 
 
 def ensure_include(config_path, include="config.d/dck"):

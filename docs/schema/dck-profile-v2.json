@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/devcontainer-kit/blob/v0.2.0/docs/schema/dck-profile-v2.json",
+  "$id": "https://github.com/DailybotHQ/devcontainer-kit/blob/v0.2.3/docs/schema/dck-profile-v2.json",
   "title": "devcontainer-kit host profile (~/.config/dck/profile.toml or profiles/<name>.toml), interface 2",
   "type": "object",
   "properties": {
@@ -36,7 +36,7 @@
     "host_machine": {
       "type": "boolean",
       "default": false,
-      "description": "Reserved: host-as-Herdr-machine preference (reported, not configured, in v0.1)"
+      "description": "Alias of [host] machine (kept for profiles written before v0.2.3): the mesh pushes the host as a peer"
     },
     "labels": {
       "type": "object",
@@ -68,6 +68,64 @@
           "maxItems": 64,
           "default": [],
           "description": "aliases or host names beyond the git hosting services whose ~/.ssh/config blocks ssh_host_config also copies into containers (opt-in, host-side only)"
+        },
+        "authorized_extra": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "\\.pub$"
+          },
+          "maxItems": 16,
+          "default": [],
+          "description": "public key files (paths ending in .pub) also authorized in every container's dck block, e.g. the keys non-dck containers log in with (host profile only)"
+        }
+      }
+    },
+    "host": {
+      "type": "object",
+      "description": "the host as a mesh peer (docs/herdr.md)",
+      "properties": {
+        "machine": {
+          "type": "boolean",
+          "description": "push the host to the containers as dck-host; unset falls back to host_machine"
+        },
+        "listener": {
+          "enum": [
+            "dck",
+            "external",
+            "remote-login"
+          ],
+          "default": "dck",
+          "description": "dck: dck's own loopback listener (dck host listener enable); external: one you already run (set port and host_key); remote-login: the system sshd on port 22"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "default": 0,
+          "description": "0 = the listener's default (dck 22033, remote-login 22); required for external"
+        },
+        "host_key": {
+          "type": "string",
+          "default": "",
+          "description": "path of the listener's PUBLIC ed25519 host key; empty = the listener's default; required for external"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "default": "host",
+          "description": "Herdr label of the host inside containers"
+        }
+      }
+    },
+    "mesh": {
+      "type": "object",
+      "properties": {
+        "external": {
+          "type": "boolean",
+          "default": true,
+          "description": "the mesh also pushes the host's other loopback Herdr machines (ports 22000-22999, ed25519 key in your known_hosts), mirroring enabled/disabled"
         }
       }
     }

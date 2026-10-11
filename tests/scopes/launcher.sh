@@ -447,3 +447,91 @@ test_setup_copies_only_working_signing() {
   assert_not_contains "$(cat "$env")" "$HOME" "no host path reaches the container"
   git config --global --unset user.signingkey; git config --global --unset commit.gpgsign; git config --global --unset gpg.format
 }
+
+# The host listener runs nothing real here: sshd, launchctl and the OS are fakes.
+hl() { run_cmd env DCK_HOST_OS="${HL_OS:-Darwin}" DCK_HOST_SSHD="$TESTS_DIR/fakes/sbin/sshd" \
+  DCK_LAUNCH_AGENTS_DIR="$SANDBOX/LaunchAgents" DCK_LISTENER_WAIT=0 "$DCK" "$@"; }
+
+test_host_listener_enable_disable() {
+  hl host listener enable
+  assert_rc 0 "enable succeeds"
+  local dir="$HOME/.config/dck/host-listener" cfg
+  cfg="$(cat "$dir/sshd_config")"
+  assert_contains "$cfg" "ListenAddress 127.0.0.1" "the listener is loopback-only"
+  assert_contains "$cfg" "Port 22033" "the default port"
+  assert_contains "$cfg" "AllowUsers $(id -un)" "only the developer's user"
+  assert_contains "$cfg" "PasswordAuthentication no" "no passwords"
+  assert_contains "$cfg" "AllowTcpForwarding no" "no TCP forwarding"
+  assert_not_contains "$cfg" "ListenAddress 0.0.0.0" "never on every interface"
+  assert_eq "$(cat "$dir/authorized_keys")" "$(cat "$HOME/.config/dck/ssh/id_ed25519.pub")" "only the dck key is authorized"
+  assert_mode "$dir" 700 "the listener directory is private"
+  assert_file "$dir/ssh_host_ed25519_key.pub" "the listener has its own host key"
+  assert_file "$SANDBOX/LaunchAgents/com.dailybothq.dck.host-listener.plist" "a launchd agent keeps it running"
+  assert_contains "$(cat "$SANDBOX/LaunchAgents/com.dailybothq.dck.host-listener.plist")" "<key>KeepAlive</key><true/>" "launchd restarts it"
+  assert_contains "$(cat "$DCK_FAKE_LOG")" "sshd -t -f $dir/sshd_config" "the configuration is validated before loading"
+  assert_contains "$(cat "$DCK_FAKE_LOG")" "launchctl bootstrap gui/$(id -u)" "launchd loads it"
+  assert_contains "$(cat "$HOME/.config/dck/profile.toml")" "machine = true" "the profile records the host as a peer"
+  local key; key="$(cat "$dir/ssh_host_ed25519_key.pub")"
+  hl host listener enable
+  assert_rc 0 "enable is idempotent"
+  assert_eq "$(cat "$dir/ssh_host_ed25519_key.pub")" "$key" "the host key is never rotated silently"
+  assert_eq "$(grep -c '^\[host\]' "$HOME/.config/dck/profile.toml")" "1" "the profile table is written once"
+  hl host listener status
+  assert_contains "$RUN_OUT" "loaded           yes" "status sees the loaded agent"
+  hl host listener disable
+  assert_rc 0 "disable succeeds"
+  assert_not_file "$SANDBOX/LaunchAgents/com.dailybothq.dck.host-listener.plist" "the launchd agent is removed"
+  assert_not_file "$dir/sshd_config" "the configuration is removed"
+  assert_contains "$(cat "$DCK_FAKE_LOG")" "launchctl bootout" "launchd unloads it"
+}
+
+test_host_listener_refusals() {
+  HL_OS=Linux hl host listener enable
+  assert_rc 4 "enable is macOS-only"
+  mkdir -p "$HOME/.config/dck"
+  printf '[host]\nmachine = true\nlistener = "external"\nport = 22032\nhost_key = "~/k.pub"\n' > "$HOME/.config/dck/profile.toml"
+  hl host listener enable
+  assert_rc 3 "dck runs no listener when the profile uses an external one"
+  hl host listener status
+  assert_contains "$RUN_OUT" "port             22032" "status reports the external listener"
+  hl host listener bogus
+  assert_rc 2 "an unknown action is a usage error"
+}
+
+test_setup_offers_the_host_listener_once() {
+  mk_repo || return 0
+  denv DCK_HOST_OS=Darwin DCK_HOST_SSHD="$TESTS_DIR/fakes/sbin/sshd" DCK_LAUNCH_AGENTS_DIR="$SANDBOX/LaunchAgents" \
+    DCK_LISTENER_WAIT=0 DCK_HOST_LISTENER_ANSWER=n "$DCK" setup
+  assert_rc 0 "setup succeeds"
+  assert_contains "$(cat "$HOME/.config/dck/profile.toml")" "machine = false" "a no is recorded"
+  assert_not_file "$SANDBOX/LaunchAgents/com.dailybothq.dck.host-listener.plist" "nothing runs after a no"
+  denv DCK_HOST_OS=Darwin DCK_HOST_LISTENER_ANSWER=y "$DCK" setup
+  assert_not_file "$SANDBOX/LaunchAgents/com.dailybothq.dck.host-listener.plist" "a recorded answer is never asked again"
+  rm -f "$HOME/.config/dck/profile.toml"
+  denv DCK_HOST_OS=Darwin DCK_HOST_SSHD="$TESTS_DIR/fakes/sbin/sshd" DCK_LAUNCH_AGENTS_DIR="$SANDBOX/LaunchAgents" \
+    DCK_LISTENER_WAIT=0 DCK_HOST_LISTENER_ANSWER=y "$DCK" setup
+  assert_file "$SANDBOX/LaunchAgents/com.dailybothq.dck.host-listener.plist" "a yes enables the listener"
+  rm -f "$HOME/.config/dck/profile.toml"
+  denv DCK_HOST_OS=Darwin "$DCK" setup
+  assert_contains "$RUN_OUT" "dck host listener enable" "without a terminal setup only names the command"
+}
+
+test_up_authorizes_the_extra_keys() {
+  mk_repo || return 0
+  mkdir -p "$HOME/.config/dck" "$HOME/keys"
+  local k1="ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQExtraKeyOneFakeOnlyForTests me@host"
+  printf '%s\n# a comment\nnot a key\n' "$k1" > "$HOME/keys/one.pub"
+  ln -s "$HOME/keys/one.pub" "$HOME/keys/link.pub"
+  printf '[ssh]\nauthorized_extra = ["~/keys/one.pub", "~/keys/missing.pub", "~/keys/link.pub"]\n' > "$HOME/.config/dck/profile.toml"
+  d up
+  assert_rc 0 "up succeeds"
+  local ak; ak="$(cat "$DCK_FAKE_STATE/last_authorized_keys")"
+  assert_contains "$ak" "$(cat "$HOME/.config/dck/ssh/id_ed25519.pub")" "the dck key is still authorized"
+  assert_contains "$ak" "$k1" "a listed public key is authorized"
+  assert_not_contains "$ak" "not a key" "only public-key lines are taken"
+  assert_contains "$RUN_ERR" "missing.pub is missing" "a missing file is reported"
+  assert_contains "$RUN_ERR" "link.pub is missing (or a symlink)" "a symlink is never followed"
+  printf '' > "$HOME/.config/dck/profile.toml"
+  d up
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_authorized_keys")" "$(cat "$HOME/.config/dck/ssh/id_ed25519.pub")" "without the key only the dck key is authorized"
+}

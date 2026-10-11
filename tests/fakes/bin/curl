@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Fake curl: never touches the network. `-o FILE URL` copies
+# $DCK_FAKE_STATE/curl/<last path segment of URL> to FILE (exit 22 when absent).
+printf 'curl %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
+out=""; url=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift 2 ;;
+    --proto|--retry) shift 2 ;;
+    -*) shift ;;
+    *) url="$1"; shift ;;
+  esac
+done
+src="${DCK_FAKE_STATE:-/nonexistent}/curl/${url##*/}"
+[ -f "$src" ] || exit 22
+cp "$src" "$out"

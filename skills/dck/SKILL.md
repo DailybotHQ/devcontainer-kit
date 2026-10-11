@@ -3,7 +3,7 @@ name: dck
 description: Operate a repository's development container with devcontainer-kit (dck) — render the Dev Container template (dck init), start/enter/rebuild it from a terminal (dck setup|up|shell|exec|rebuild|down), SSH in with agent forwarding, register it as a Herdr machine (dck herdr add|status|repair), and diagnose it (dck doctor --json). Use only when the user mentions dck or devcontainer-kit, a dev container / devcontainer / .devcontainer/ or docker/local/ setup they want created or operated, or a container they want as a Herdr machine. Do not use for building or deploying production images, for Kubernetes, or merely because a repository contains a Dockerfile.
 license: MIT
 metadata:
-  version: 0.2.2
+  version: 0.2.3
   interface: 2
   homepage: https://github.com/DailybotHQ/devcontainer-kit
 ---
@@ -27,7 +27,7 @@ tell the user and show the pinned install line — do not install it without
 being asked:
 
 ```bash
-git clone --branch v0.2.2 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.2.3 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh
 ```
 
@@ -44,6 +44,9 @@ git clone --branch v0.2.2 https://github.com/DailybotHQ/devcontainer-kit
 | to see what dck resolved | `dck config`, `dck ports`, `dck ps`, `dck logs --no-follow` |
 | SSH into it | `dck ssh [cmd…]` |
 | it in Herdr | set `[herdr] machine = true` and `ssh_port` in `.devcontainer/dck.toml`, then `dck up` (or `dck herdr add`); `dck herdr status`; a client stuck on "reconnecting" → `dck herdr repair` |
+| agents inside to reach agents on the host | ask the user first (it lets any dck container open a shell on the host): `dck host listener enable` (macOS), or a `[host]` table with `listener = "external"` for a listener they already run; then `dck herdr mesh` |
+| agents inside to reach other containers | `dck herdr mesh` (also run by `dck up`): the other dck containers and the host's other loopback Herdr machines (`[mesh] external`); containers another kit manages log in with keys listed in `[ssh] authorized_extra` |
+| to list or ask agents from the host | `dck agents`, `dck ask <machine>:<pane> "<prompt>"` (herdr-peers; `dck host peers install` if missing) |
 | coding-agent CLIs inside | set `[layers] agents = true` and `[agents] clis = [...]` in `dck.toml`, `dck init` (shows the diff), `dck rebuild` |
 | to know what is wrong | `dck doctor` (human) or `dck doctor --json` (parse `problems`) |
 
@@ -91,6 +94,9 @@ What running this skill's commands may write, and nothing else:
 | `~/.config/dck/` (dedicated SSH key, dck known_hosts, profiles) | `dck setup`, `dck up`, `dck ssh` | first use |
 | `~/.ssh/config.d/dck` (provenance-guarded) and one `Include config.d/dck` line at the top of `~/.ssh/config` | `dck herdr add/repair/remove` | only for Herdr machines |
 | Herdr's saved machines | the `herdr` CLI, called by `dck herdr …` | only for Herdr machines |
+| `~/.config/dck/host-listener/` (sshd config, its host key, authorized_keys with only the dck key) and `~/Library/LaunchAgents/com.dailybothq.dck.host-listener.plist` | `dck host listener enable`, or a yes in `dck setup` | macOS, opt-in; `dck host listener disable` removes them |
+| the `[host]` table of your dck profile | `dck setup` (your answer), `dck host listener enable` | once, never rewritten |
+| `~/.local/share/dck-host/herdr-peers/<tag>/` (verified against the release SHA256SUMS) | `dck setup`, `dck host peers install` | when herdr is on the host |
 | Docker objects of this repository's compose project (containers, images, per-project volumes, declared external networks) | `dck up/build/rebuild/down/setup` | on those verbs |
 | `$TMPDIR/dck-<uid>/` (0700, compose overlay) | compose backend | on up/build |
 | `~/.local/share/dck/` and one PATH block in `~/.bashrc`/`~/.zshrc` | `install.sh` | only when the user installs |

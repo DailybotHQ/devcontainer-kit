@@ -31,12 +31,12 @@ identical otherwise.
   `~/.config/herdr/config.toml` (login shell, `new_cwd = /workspace`,
   `allow_nested = true`);
 - Neovim **0.12.5** (`/opt/nvim-0.12.5`, `/usr/local/bin/nvim`, SHA-256
-  pinned per architecture) and deepworkplan-vim **v0.5.1** in `~/.config/nvim`,
+  pinned per architecture) and deepworkplan-vim **v0.6.0** in `~/.config/nvim`,
   installed in its own image layer (`images/common/editor.sh`) by the
   project's official installer — the one `https://vim.deepworkplan.com/install.sh`
   serves — downloaded from the versioned release asset, checked against its
   pinned SHA-256 and then run as `dev` in container mode:
-  `bash install.sh --version 0.5.1 --skip-packages --strict`. `--strict` fails
+  `bash install.sh --version 0.6.0 --skip-packages --strict`. `--strict` fails
   the build if the headless plugin install fails, leaves a required plugin
   missing, or leaves a plugin away from the commit deepworkplan-vim pins in
   `pckr/lockfile.lua`, so the plugins are **baked in**, pinned, and `nvim`

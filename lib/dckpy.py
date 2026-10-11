@@ -83,7 +83,7 @@ def warn_all(warnings):
 
 def cmd_config(args):
     if not args:
-        return usage("config needs a command: validate | show | rules")
+        return usage("config needs a command: validate | show | host | rules")
     sub = args.pop(0)
     try:
         if sub == "validate":
@@ -106,6 +106,15 @@ def cmd_config(args):
                 emit_env(merged)
             else:
                 return usage("--format env|json")
+            return EXIT_OK
+        if sub == "host":
+            # The host-peer settings of the profile, as KEY=VALUE lines (no repository).
+            import devc
+            prof, warnings = config.load_profile(opt(args, "--profile"))
+            warn_all(warnings)
+            for k, v in devc.host_env(prof):
+                print("%s=%s" % (k, v))
+            print("DCK_SSH_IDENTITY=%s" % config.expand_home(prof["ssh.identity"], os.environ))
             return EXIT_OK
         if sub == "rules":
             out = {}
@@ -237,6 +246,12 @@ def cmd_sshconf(args):
             extra = (opt(args, "--extra") or "").split()
             sys.stdout.write(sshconf.host_identities(opt(args, "--config"), opt(args, "--home"), extra))
             return EXIT_OK
+        if sub == "aliases":
+            path = opt(args, "--file")
+            if os.path.exists(path):
+                for alias, _s, _e in sshconf._blocks(sshconf._read_owned(path)):
+                    print(alias)
+            return EXIT_OK
         if sub == "peers":
             labels = {}
             raw = sys.stdin.read() if "--labels-stdin" in args else ""
@@ -249,12 +264,25 @@ def cmd_sshconf(args):
                 data = []
             if isinstance(data, dict):
                 data = (data.get("result") or {}).get("machines") or data.get("machines") or []
-            for m in data if isinstance(data, list) else []:
+            machines = data if isinstance(data, list) else []
+            for m in machines:
                 if isinstance(m, dict) and m.get("target") and m.get("label"):
                     labels[str(m["target"])] = str(m["label"])
-            sys.stdout.write(sshconf.peers(opt(args, "--file"), opt(args, "--known-hosts"),
-                                           opt(args, "--exclude") or "", labels,
-                                           opt(args, "--host-user") or "", opt(args, "--host-key") or ""))
+            labels["dck-host"] = opt(args, "--host-label") or labels.get("dck-host", "host")
+            path, exclude = opt(args, "--file"), opt(args, "--exclude") or ""
+            host_user, host_port = opt(args, "--host-user") or "", opt(args, "--host-port") or "22"
+            external = []
+            if flag(args, "--external"):
+                dck_aliases = [a for a, _s, _e in sshconf._blocks(sshconf._read_owned(path))] if os.path.exists(path) else []
+                dck_ports = sshconf.alias_ports(path) if os.path.exists(path) else []
+                skip_ports = list(dck_ports) + ([host_port] if host_user else []) + [opt(args, "--self-port") or "0"]
+                external, notes = sshconf.external_peers(
+                    machines, skip_aliases=dck_aliases + [exclude, "dck-host"], skip_ports=skip_ports,
+                    known_hosts_files=(opt(args, "--user-known-hosts") or "").split(","))
+                for n in notes:
+                    sys.stderr.write("dck: %s\n" % n)
+            sys.stdout.write(sshconf.peers(path, opt(args, "--known-hosts"), exclude, labels,
+                                           host_user, opt(args, "--host-key") or "", host_port, external))
             return EXIT_OK
     except sshconf.SshConfError as exc:
         sys.stderr.write("dck: %s\n" % exc)

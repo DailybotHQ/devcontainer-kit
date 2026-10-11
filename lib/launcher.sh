@@ -50,6 +50,9 @@ usage: dck [--repo DIR] [--profile NAME] [--project NAME] [--trust] <verb> [args
   herdr add|status|repair|remove|mesh   the container as a Herdr machine; mesh: reach the others from inside
                                         (run explicitly, mesh works even with [herdr] mesh = false)
   herdr layout [--keep|--reset]   the standard sidebar inside: Home · Editor · Development · Agents
+  host listener enable|disable|status   the host as a mesh peer: a loopback sshd (macOS,
+                        launchd) that accepts only the dck key; see docs/herdr.md
+  host peers install|status   herdr-peers for the host (verified), used by agents and ask
   agents                the live agents on every Herdr machine (herdr-peers list)
   ask <machine>:<pane> "<prompt>"   ask one of them, with the reply grant (herdr-peers ask)
   doctor [--json] [--strict]   environment and repository health (interface 2)
@@ -125,6 +128,10 @@ load_context() {
   DCK_HAS_TOML=0; DCK_SSH_PORT=0; DCK_BIND=127.0.0.1; DCK_ALIAS=""; DCK_HERDR_MACHINE=0
   DCK_HERDR_LABEL=""; DCK_PORTS=""; DCK_SSH_IDENTITY=""; DCK_FLAVOUR=""
   export DCK_HOST_MACHINE="0"  # read by lib/herdr.sh (herdr_mesh)
+  export DCK_HOST_LISTENER="dck" DCK_HOST_PORT="0" DCK_HOST_KEY="" DCK_HOST_LABEL="host"  # herdr_mesh, lib/hostlistener.sh
+  export DCK_HOST_CONFIGURED="0"  # read by cmd_setup (the host listener offer)
+  export DCK_MESH_EXTERNAL="1"  # read by herdr_mesh (host-catalog peers)
+  export DCK_SSH_AUTHORIZED_EXTRA=""  # read by export_authorized_keys
   export DCK_HERDR_LAYOUT="standard"  # read by lib/herdr.sh (herdr_layout)
   export DCK_HERDR_MESH="1"  # read by lib/herdr.sh (dck_herdr_after_up)
   export DCK_SSH_AGENT="1"  # read by export_host_ssh_agent
@@ -135,7 +142,7 @@ load_context() {
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HOST_LISTENER|DCK_HOST_PORT|DCK_HOST_KEY|DCK_HOST_LABEL|DCK_HOST_CONFIGURED|DCK_MESH_EXTERNAL|DCK_SSH_AUTHORIZED_EXTRA|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out
@@ -521,11 +528,28 @@ dck_identity_ensure() {
   note "created the dck SSH key $(pretty_path "$id") (authorized only inside dck containers)"
 }
 
+# The dck key, plus the public keys the host profile lists in
+# [ssh] authorized_extra (for clients that log in with your own keys, such as
+# containers another kit manages). Only well-formed public-key lines are taken
+# from those files; the entrypoint filters again inside.
 export_authorized_keys() {
-  if ssh_enabled && [ -f "$DCK_SSH_IDENTITY.pub" ]; then
-    DCK_AUTHORIZED_KEYS="$(cat "$DCK_SSH_IDENTITY.pub")"
-    export DCK_AUTHORIZED_KEYS
-  fi
+  ssh_enabled || return 0
+  [ -f "$DCK_SSH_IDENTITY.pub" ] || return 0
+  local keys f line
+  keys="$(cat "$DCK_SSH_IDENTITY.pub")"
+  for f in ${DCK_SSH_AUTHORIZED_EXTRA:-}; do
+    case "$f" in *.pub) ;; *) warn "ssh: authorized_extra: skipping $f (not a .pub file)"; continue ;; esac
+    if [ ! -f "$f" ] || [ -L "$f" ]; then warn "ssh: authorized_extra: $f is missing (or a symlink); skipped"; continue; fi
+    while IFS= read -r line; do
+      case "$line" in
+        ssh-ed25519\ *|ssh-rsa\ *|ecdsa-sha2-nistp256\ *|ecdsa-sha2-nistp384\ *|ecdsa-sha2-nistp521\ *|sk-ssh-ed25519@openssh.com\ *|sk-ecdsa-sha2-nistp256@openssh.com\ *)
+          keys="$keys
+$line" ;;
+      esac
+    done < "$f"
+  done
+  DCK_AUTHORIZED_KEYS="$keys"
+  export DCK_AUTHORIZED_KEYS
 }
 
 # The repository's devcontainer.json and compose file run on YOUR Docker
@@ -600,6 +624,12 @@ EOF
     changed=$((changed + 1))
   fi
   warn_missing_host_binds
+  if declare -F dck_host_listener_offer >/dev/null 2>&1; then dck_host_listener_offer; fi
+  # dck agents / dck ask need herdr-peers on the host: install the verified copy.
+  if command -v herdr >/dev/null 2>&1 && ! command -v herdr-peers >/dev/null 2>&1 \
+     && declare -F dck_host_peers_install >/dev/null 2>&1 && ! dck_host_peers_bin >/dev/null 2>&1; then
+    dck_host_peers_install || warn "setup: herdr-peers was not installed (dck agents and dck ask need it; retry: dck host peers install)"
+  fi
   if [ "$changed" -eq 0 ]; then note "setup: everything was already in place"; else note "setup: done"; fi
 }
 

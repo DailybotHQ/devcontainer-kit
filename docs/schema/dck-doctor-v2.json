@@ -429,6 +429,17 @@
             "boolean",
             "null"
           ]
+        },
+        "peers_cli": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "herdr-peers used by dck agents/ask: on PATH, else dck's verified host copy (since v0.2.3)"
+        },
+        "host_ak": {
+          "type": "boolean",
+          "description": "coding-agents-kit (ak) is on the host's PATH (since v0.2.3)"
         }
       }
     },

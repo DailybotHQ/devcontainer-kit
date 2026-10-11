@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Fake launchctl. Logs argv; `print` succeeds when $DCK_FAKE_STATE/launchctl_loaded exists.
+st="${DCK_FAKE_STATE:-/nonexistent}"
+printf 'launchctl %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
+case "${1:-}" in
+  bootstrap) touch "$st/launchctl_loaded" ;;
+  bootout) rm -f "$st/launchctl_loaded" ;;
+  print) [ -f "$st/launchctl_loaded" ] || exit 113 ;;
+esac
+exit 0

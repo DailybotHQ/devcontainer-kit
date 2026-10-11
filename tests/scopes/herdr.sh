@@ -437,3 +437,119 @@ test_up_mesh_off() {
   assert_rc 0 "up succeeds with the mesh off"
   assert_not_contains "$(fake_calls docker)" "dck_mesh_apply" "mesh = false skips the mesh on up"
 }
+
+# A host-catalog machine: what `ssh -G` resolves for it and the key the host knows.
+ext_machine() { # <alias> <port> <user> <keychar>
+  printf 'hostname 127.0.0.1\nport %s\nuser %s\nhostkeyalias none\n' "$2" "$3" > "$DCK_FAKE_STATE/ssh_G_$1"
+  mkdir -p "$HOME/.ssh"
+  printf '[127.0.0.1]:%s ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI%s\n' "$2" "$(printf "$4%.0s" $(seq 1 43))" >> "$HOME/.ssh/known_hosts"
+}
+
+test_mesh_host_peer_and_external_peers() {
+  mk_repo proj 22040
+  d herdr add
+  mkdir -p "$HOME/.config/dck" "$SANDBOX/keys"
+  printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIListenerHostKeyFakeOnlyForTests00000000000 listener\n' > "$SANDBOX/keys/listener.pub"
+  printf '[host]\nmachine = true\nlistener = "external"\nport = 22032\nhost_key = "%s"\nlabel = "Mac"\n' "$SANDBOX/keys/listener.pub" > "$HOME/.config/dck/profile.toml"
+  python3 - "$DCK_FAKE_STATE/herdr_machines" <<'PY'
+import json, sys
+m = json.load(open(sys.argv[1]))
+m += [{"id": "a1", "label": "API", "target": "api", "enabled": True},
+      {"id": "w1", "label": "Web", "target": "webapp", "enabled": False},
+      {"id": "n1", "label": "NoKey", "target": "nokey", "enabled": True},
+      {"id": "h1", "label": "Mac listener", "target": "mac-listener", "enabled": True},
+      {"id": "r1", "label": "Remote", "target": "remote", "enabled": True}]
+json.dump(m, open(sys.argv[1], "w"))
+PY
+  ext_machine api 22024 dev-user A
+  ext_machine webapp 22023 node B
+  printf 'hostname 127.0.0.1\nport 22099\nuser node\n' > "$DCK_FAKE_STATE/ssh_G_nokey"
+  ext_machine mac-listener 22032 me C
+  printf 'hostname 198.51.100.7\nport 22\nuser me\n' > "$DCK_FAKE_STATE/ssh_G_remote"
+  : > "$DCK_FAKE_STATE/exec_stdin"
+  DCK_HOST_OS=Darwin d herdr mesh
+  assert_rc 0 "herdr mesh succeeds"
+  local s; s="$(cat "$DCK_FAKE_STATE/exec_stdin")"
+  assert_contains "$s" "peer dck-host 22032 $(id -un) Mac" "the host is pushed on its listener's port, with its label"
+  assert_contains "$s" "hostkey 22032 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIListenerHostKeyFakeOnlyForTests00000000000" "the host is pinned by the listener's key"
+  assert_contains "$s" "peer api 22024 dev-user API" "a loopback catalog machine is a peer, with its label"
+  assert_contains "$s" "hostkey 22024 ssh-ed25519 " "its key comes from your known_hosts"
+  assert_contains "$s" "peer webapp 22023 node Web" "a disabled catalog machine is still pushed"
+  assert_contains "$s" "disabled webapp" "and marked disabled"
+  assert_not_contains "$s" "disabled api" "an enabled machine is not marked"
+  assert_not_contains "$s" "peer nokey" "a machine with no pinned key is skipped"
+  assert_contains "$RUN_ERR" "skipped nokey (no ed25519 host key" "and the skip says why"
+  assert_not_contains "$s" "peer mac-listener" "the host's own listener is not pushed twice"
+  assert_not_contains "$s" "peer remote" "a non-loopback machine is not pushed"
+  assert_not_contains "$s" "peer dck-proj " "the container itself is never its own peer"
+  printf '[host]\nmachine = true\nlistener = "external"\nport = 22032\nhost_key = "%s"\n[mesh]\nexternal = false\n' "$SANDBOX/keys/listener.pub" > "$HOME/.config/dck/profile.toml"
+  : > "$DCK_FAKE_STATE/exec_stdin"
+  DCK_HOST_OS=Darwin d herdr mesh
+  assert_not_contains "$(cat "$DCK_FAKE_STATE/exec_stdin")" "peer api" "[mesh] external = false pushes no catalog machine"
+}
+
+test_mesh_refreshes_the_other_running_containers() {
+  mk_repo other 22041
+  DREPO="$SANDBOX/other" d herdr add
+  mk_repo proj 22040
+  d herdr add
+  rm -f "$DCK_FAKE_STATE"/ssh_stdin_*
+  DCK_HOST_OS=Darwin d herdr mesh
+  assert_rc 0 "herdr mesh succeeds"
+  assert_file "$DCK_FAKE_STATE/ssh_stdin_dck-other" "the other running container gets the mesh too"
+  assert_contains "$(cat "$DCK_FAKE_STATE/ssh_stdin_dck-other")" "peer dck-proj 22040" "and learns about this container"
+  assert_not_contains "$(cat "$DCK_FAKE_STATE/ssh_stdin_dck-other")" "peer dck-other " "never itself"
+  assert_contains "$RUN_OUT" "mesh: refreshed dck-other" "the refresh is reported"
+  assert_contains "$(grep dck_mesh_apply "$DCK_FAKE_LOG" | grep '^ssh')" "ForwardAgent=no" "the refresh never forwards the agent"
+}
+
+# A fake herdr-peers release: the archive, its SHA256SUMS and a pin file for it.
+peers_release() { # [tamper]
+  local r="$SANDBOX/rel" s
+  rm -rf "$r"; mkdir -p "$r/herdr-peers-0.1.0/skills/herdr-peers/scripts" "$DCK_FAKE_STATE/curl"
+  printf '#!/usr/bin/env bash\necho "fake herdr-peers $*"\n' > "$r/herdr-peers-0.1.0/skills/herdr-peers/scripts/herdr-peers"
+  chmod +x "$r/herdr-peers-0.1.0/skills/herdr-peers/scripts/herdr-peers"
+  printf -- '---\nname: herdr-peers\n---\n' > "$r/herdr-peers-0.1.0/skills/herdr-peers/SKILL.md"
+  (cd "$r/herdr-peers-0.1.0" && for f in skills/herdr-peers/SKILL.md skills/herdr-peers/scripts/herdr-peers; do
+     printf '%s  %s\n' "$(shasum -a 256 "$f" 2>/dev/null | awk '{print $1}' || sha256sum "$f" | awk '{print $1}')" "$f"; done) > "$DCK_FAKE_STATE/curl/SHA256SUMS"
+  [ "${1:-}" = tamper ] && printf '\necho tampered\n' >> "$r/herdr-peers-0.1.0/skills/herdr-peers/scripts/herdr-peers"
+  (cd "$r" && tar -czf "$DCK_FAKE_STATE/curl/v0.1.0" herdr-peers-0.1.0)
+  s="$(shasum -a 256 "$DCK_FAKE_STATE/curl/SHA256SUMS" 2>/dev/null | awk '{print $1}')"
+  [ -n "$s" ] || s="$(sha256sum "$DCK_FAKE_STATE/curl/SHA256SUMS" | awk '{print $1}')"
+  printf 'HERDR_PEERS_TAG=v0.1.0\nHERDR_PEERS_SUMS_SHA256=%s\n' "$s" > "$SANDBOX/versions.env"
+}
+hp() { run_cmd env DCK_VERSIONS_ENV="$SANDBOX/versions.env" "$DCK" "$@"; }
+
+test_host_peers_install_verified() {
+  peers_release
+  hp host peers install
+  assert_rc 0 "a verified release installs"
+  local b="$HOME/.local/share/dck-host/herdr-peers/v0.1.0/skills/herdr-peers/scripts/herdr-peers"
+  assert_file "$b" "the host copy lands outside dck's install directory"
+  assert_contains "$(cat "$DCK_FAKE_LOG")" "curl --proto =https" "downloads are https-only"
+  hp host peers install
+  assert_contains "$RUN_OUT" "already installed" "a second install is a no-op"
+  hp host peers status
+  assert_contains "$RUN_OUT" "dck host copy" "status names the host copy"
+  run_cmd env DCK_VERSIONS_ENV="$SANDBOX/versions.env" PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^$' | paste -sd: -)" "$DCK" agents
+  assert_contains "$RUN_OUT" "fake herdr-peers list" "dck agents falls back to the host copy"
+}
+
+test_host_peers_refuses_a_mismatch() {
+  peers_release tamper
+  hp host peers install
+  assert_rc 1 "a file that does not match SHA256SUMS is refused"
+  assert_contains "$RUN_ERR" "does not match its release SHA256SUMS" "and says why"
+  assert_not_file "$HOME/.local/share/dck-host/herdr-peers/v0.1.0/skills/herdr-peers/scripts/herdr-peers" "nothing is installed"
+  peers_release
+  printf 'HERDR_PEERS_TAG=v0.1.0\nHERDR_PEERS_SUMS_SHA256=%s\n' "$(printf '0%.0s' $(seq 1 64))" > "$SANDBOX/versions.env"
+  hp host peers install
+  assert_rc 1 "a SHA256SUMS that does not match its pin is refused"
+  assert_contains "$RUN_ERR" "SHA256SUMS checksum mismatch" "and says why"
+}
+
+test_doctor_reports_host_peers_and_ak() {
+  run_cmd "$DCK" doctor
+  assert_contains "$RUN_OUT" "herdr-peers" "doctor reports herdr-peers on the host"
+  assert_contains "$RUN_OUT" "ak (host)" "doctor reports coding-agents-kit on the host"
+}

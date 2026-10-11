@@ -7,6 +7,44 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-10-11
+
+Agent mesh out of the box: agents in a dck container reach and answer agents on the host,
+in the other dck containers and in the host's other loopback containers, and the reverse,
+surviving `rebuild`. Interface stays 2; every new profile key is optional. Upgrade with
+`dck init` (re-renders `dev.sh` and the vendored scripts), then `bash dev.sh rebuild`.
+
+### Added
+
+- **The host listener** (`dck host listener enable|disable|status`, macOS): a user-level
+  sshd on 127.0.0.1 (default port 22033, its own ed25519 host key) that authorizes only the
+  dck key, kept alive by a launchd agent. `dck setup` offers it once on a terminal and
+  records the answer in the profile. Opt-in and documented as a trust boundary in
+  `docs/SECURITY.md`.
+- **`[host]` profile table**: `machine`, `listener = "dck" | "external" | "remote-login"`,
+  `port`, `host_key`, `label`. `external` reuses a listener you already run (dck writes
+  nothing on the host); `host_machine` stays as the alias of `[host] machine`.
+- **Host-catalog peers** (`[mesh] external`, default on): the mesh also pushes the host's
+  other Herdr machines on loopback ports 22000-22999 — for example containers another kit
+  manages — pinned by the ed25519 key your `known_hosts` holds (unknown keys are skipped)
+  and with their enabled/disabled state mirrored inside.
+- **Refresh-all**: `dck herdr mesh` (and so `dck up`) re-applies the mesh to every other
+  running dck container, so containers started earlier learn about later ones.
+- **`[ssh] authorized_extra`**: public key files authorized in every container's dck block,
+  for clients that log in with your own keys. Host profile only.
+- **Host herdr-peers** (`dck host peers install|status`): installed by `dck setup` at the
+  images' pin, verified like the images do; `dck agents` and `dck ask` use it.
+  `dck doctor` reports it and coding-agents-kit (`ak`) on the host.
+- **`dev.sh` without dck**: the rendered `dev.sh` runs the container verbs on plain
+  `docker compose` when dck is absent, and `bash dev.sh install-dck` installs dck from the
+  rendered tag, verified against that release's `SHA256SUMS`.
+
+### Changed
+
+- Herdr's saved machines (`~/.local/state/herdr/client`) live on the `state` volume, so
+  machines registered inside a container survive `rebuild`.
+- DeepWorkPlan Vim pinned to **v0.6.0** (tag, commit and installer SHA-256 from its release).
+
 ### Fixed
 
 - Documentation audit: the host-profile docs name interface 2, `dck help` and the doctor

@@ -242,6 +242,7 @@ test_start_sequence() {
   assert_eq "$(readlink "$DCK_HOME/.config/gh")" "$V/state/config_gh" "gh auth lives on the state volume"
   assert_eq "$(readlink "$DCK_HOME/.config/herdr")" "$V/state/config_herdr" "the Herdr config lives on the state volume"
   assert_file "$V/state/config_herdr/config.toml" "the Herdr config is seeded"
+  assert_eq "$(readlink "$DCK_HOME/.local/state/herdr/client")" "$V/state/local_state_herdr_client" "Herdr's saved machines live on the state volume"
   assert_file "$DCK_HOME/.dck/env.sh" "the env profile is written"
   assert_file "$DCK_FAKE_STATE/sshd_started" "sshd is started"
   assert_contains "$(cat "$V/state/ssh/authorized_keys")" "$KEY1" "the key survives on the volume"
@@ -321,6 +322,18 @@ test_hostssh_apply() {
   assert_no_match "$(cat "$frag" "$DCK_HOME/.ssh/dck-host-keys/work.pub")" 'PRIVATE KEY' "no private key material"
 }
 
+test_herdr_catalog_survives_recreate() {
+  run_cmd bash -c '. "$1"; dck_start' _ "$LIB"
+  assert_rc 0 "dck_start completes"
+  printf '{"machines":["dck-other"]}\n' > "$DCK_HOME/.local/state/herdr/client/endpoints.json"
+  # A recreate: the image's home is fresh, the volume is not.
+  rm -rf "$DCK_HOME/.local" "$DCK_HOME/.config" "$DCK_HOME/.ssh"
+  run_cmd bash -c '. "$1"; dck_start' _ "$LIB"
+  assert_rc 0 "dck_start completes after a recreate"
+  assert_contains "$(cat "$DCK_HOME/.local/state/herdr/client/endpoints.json")" "dck-other" "the saved machines survive"
+  assert_eq "$(stat -c %U "$DCK_HOME/.local/state/herdr" 2>/dev/null || stat -f %Su "$DCK_HOME/.local/state/herdr")" "$(id -un)" "the Herdr state directory stays the user's"
+}
+
 test_mesh_apply() {
   local payload
   payload="$(printf '%s\n' \
@@ -362,4 +375,19 @@ test_skills_link() {
   assert_symlink "$DCK_HOME/.agents/skills/herdr-peers" "herdr-peers is linked into ~/.agents/skills"
   assert_symlink "$DCK_HOME/.claude/skills/herdr-peers" "herdr-peers is linked into ~/.claude/skills"
   assert_eq "$(cat "$DCK_HOME/.claude/skills/herdr/SKILL.md")" "mine" "a skill directory the user put there is never replaced"
+}
+
+test_mesh_apply_mirrors_disabled_peers() {
+  export PATH="$TESTS_DIR/fakes/bin:$PATH"
+  local payload
+  payload="$(printf '%s\n' 'peer api 22024 dev-user API' 'peer webapp 22023 node Web' 'disabled webapp' 'disabled bad;alias')"
+  run_cmd bash -c '. "$1"; printf "%s\n" "$2" | dck_mesh_apply' _ "$LIB" "$payload"
+  assert_rc 0 "the mesh applies"
+  local m; m="$(cat "$DCK_FAKE_STATE/herdr_machines")"
+  assert_contains "$m" '"target": "api"' "an enabled peer is registered"
+  assert_eq "$(python3 -c 'import json,sys; print([x["enabled"] for x in json.load(open(sys.argv[1])) if x["target"]=="webapp"][0])' "$DCK_FAKE_STATE/herdr_machines")" "False" "a disabled peer is registered disabled"
+  assert_eq "$(python3 -c 'import json,sys; print([x["enabled"] for x in json.load(open(sys.argv[1])) if x["target"]=="api"][0])' "$DCK_FAKE_STATE/herdr_machines")" "True" "an enabled peer stays enabled"
+  payload="$(printf '%s\n' 'peer api 22024 dev-user API' 'peer webapp 22023 node Web')"
+  run_cmd bash -c '. "$1"; printf "%s\n" "$2" | dck_mesh_apply' _ "$LIB" "$payload"
+  assert_eq "$(python3 -c 'import json,sys; print([x["enabled"] for x in json.load(open(sys.argv[1])) if x["target"]=="webapp"][0])' "$DCK_FAKE_STATE/herdr_machines")" "True" "re-enabled on the host, re-enabled inside"
 }
