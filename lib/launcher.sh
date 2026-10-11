@@ -50,6 +50,8 @@ usage: dck [--repo DIR] [--profile NAME] [--project NAME] [--trust] <verb> [args
   herdr add|status|repair|remove|mesh   the container as a Herdr machine; mesh: reach the others from inside
                                         (run explicitly, mesh works even with [herdr] mesh = false)
   herdr layout [--keep|--reset]   the standard sidebar inside: Home · Editor · Development · Agents
+  host listener enable|disable|status   the host as a mesh peer: a loopback sshd (macOS,
+                        launchd) that accepts only the dck key; see docs/herdr.md
   agents                the live agents on every Herdr machine (herdr-peers list)
   ask <machine>:<pane> "<prompt>"   ask one of them, with the reply grant (herdr-peers ask)
   doctor [--json] [--strict]   environment and repository health (interface 2)
@@ -604,6 +606,7 @@ EOF
     changed=$((changed + 1))
   fi
   warn_missing_host_binds
+  if declare -F dck_host_listener_offer >/dev/null 2>&1; then dck_host_listener_offer; fi
   if [ "$changed" -eq 0 ]; then note "setup: everything was already in place"; else note "setup: done"; fi
 }
 

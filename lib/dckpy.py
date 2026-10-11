@@ -114,6 +114,7 @@ def cmd_config(args):
             warn_all(warnings)
             for k, v in devc.host_env(prof):
                 print("%s=%s" % (k, v))
+            print("DCK_SSH_IDENTITY=%s" % config.expand_home(prof["ssh.identity"], os.environ))
             return EXIT_OK
         if sub == "rules":
             out = {}

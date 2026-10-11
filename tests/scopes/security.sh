@@ -328,3 +328,13 @@ test_workflow_inputs_go_through_env() {
   assert_contains "$w" 'SUFFIX: ${{ steps.tag.outputs.suffix }}' "the tag name reaches the script through env"
   assert_not_contains "$(sed -n '/name: record digest/,/upload-artifact/p' "$DCK_REPO/.github/workflows/images.yml" | sed -n '/run: |/,$p')" '${{' "no expression is expanded inside a run: script"
 }
+
+test_host_listener_posture() {
+  local l="$DCK_REPO/lib/hostlistener.sh"
+  assert_contains "$(cat "$l")" "ListenAddress 127.0.0.1" "the host listener is loopback-only"
+  assert_no_match "$(cat "$l")" 'ListenAddress (0\.0\.0\.0|::)' "the host listener never binds every interface"
+  assert_contains "$(cat "$l")" 'cp "$DCK_SSH_IDENTITY.pub" "$HOSTL_AUTH.tmp"' "the listener authorizes only the dck public key"
+  assert_contains "$(cat "$l")" "PasswordAuthentication no" "no passwords on the listener"
+  assert_contains "$(cat "$DCK_REPO/docs/SECURITY.md")" "dck host listener disable" "SECURITY.md documents how to turn the listener off"
+  assert_contains "$(cat "$DCK_REPO/docs/SECURITY.md")" "only with the host listener (opt-in)" "SECURITY.md lists the listener as a trust boundary"
+}

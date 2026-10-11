@@ -20,7 +20,8 @@ in your images, and your Herdr machines.
 | the repository's files → dck | **no** — you may run dck on a repository you just cloned | dck parses them (JSONC, TOML, compose); never writes or reads secrets through a symlink they plant; never imports a module from them; never forwards your agent to an address they choose |
 | the repository's container configuration → your Docker daemon | **only after review** | `up`/`start`/`build`/`rebuild` hand the repository's compose file and `devcontainer.json` to Docker (and the devcontainer CLI). Anything in them that reaches the host — `initializeCommand`, `privileged`, `cap_add`, host namespaces, devices, the Docker socket, bind mounts outside the repository, a compose file outside it — is refused until you pass `--trust` (or `DCK_TRUST=1`). dck-rendered setups contain none of these. Treat `--trust` like "trust this folder" in an editor |
 | the repository → its own container | yes, by design | the container exists to run the repository's code; its hook and its Dockerfile run there, with the dev user's sudo |
-| the container → your host | **no** | the container reaches the host through what you publish (loopback ports) and through your SSH agent: forwarded on the sessions you open, and — with `ssh_agent = true`, the default — its socket mounted for the container's lifetime. Code in the container can *use* the agent's keys (sign, never read them) while it runs: for git that is the point; for sensitive keys use `ssh-add -c` (confirm each use) or set `ssh_agent = false`. With `host_machine = true` and your key in your own `authorized_keys`, that also means a shell on the host |
+| the container → your host | **no** | the container reaches the host through what you publish (loopback ports) and through your SSH agent: forwarded on the sessions you open, and — with `ssh_agent = true`, the default — its socket mounted for the container's lifetime. Code in the container can *use* the agent's keys (sign, never read them) while it runs: for git that is the point; for sensitive keys use `ssh-add -c` (confirm each use) or set `ssh_agent = false`. With the host as a mesh peer (`[host] machine = true`) that also means a shell on the host — see the next row |
+| a dck container → your host's shell | **only with the host listener (opt-in)** | `dck host listener enable` (or a yes to the one question `dck setup` asks) runs a user-level sshd on **127.0.0.1** only (default port 22033, its own ed25519 host key, `AllowUsers` you, no passwords, no PAM, no root, no TCP forwarding) that authorizes **only the dck key**, kept alive by a launchd agent. While it runs, any process that can use the dck key through your agent — code in any running dck container with the agent socket — can open a shell on your host as you. That is what lets agents inside answer agents on the host. Turn it off with `dck host listener disable` (removes the launchd agent and its files), `[host] machine = false`, `ssh_agent = false` per repository, or `ssh-add -d ~/.config/dck/ssh/id_ed25519`. With `listener = "external"` dck reuses a listener you already run and writes nothing on the host; with `"remote-login"` it relies on the system sshd and your own `authorized_keys` |
 | one dck container → another dck container | **only through the mesh** | `[herdr] mesh = true` (the default; Docker Desktop only) loads the dck key into your agent so agents inside can ask agents in the other containers. Every container with the agent socket can then log in to every other dck container (they all authorize the dck key) and read what it holds (`.env`, logins). Only run untrusted repositories with `mesh = false` and `ssh_agent = false`, and remove the key from the agent (`ssh-add -d ~/.config/dck/ssh/id_ed25519`). The mesh never forwards the agent further (`ForwardAgent no`) |
 | other machines on your network → the container | **no** | nothing listens beyond 127.0.0.1 unless `bind` says so |
 | the network → the image build | **no** | every base-image download is pinned and checksum-verified; the opt-in layers install coding-agents-kit from its sha256-verified release tarball and resolve the Dailybot CLI's dependencies with uv (see Supply chain) |
@@ -88,8 +89,14 @@ own edit, outside dck's managed blocks, and its own decision.
 - **The mesh.** `dck herdr mesh` loads the dck key into your agent (never into
   the macOS Keychain) and pushes only public data into the container: peer
   aliases, ports, users, labels and pinned host keys. Peers are reached with
-  strict host keys and `ForwardAgent no`. See the trust boundaries above for
-  what it opens.
+  strict host keys and `ForwardAgent no`. With `[mesh] external = true` (the
+  default) it also pushes the host's other Herdr machines on loopback ports
+  22000-22999, pinned by the ed25519 key **your** `known_hosts` already holds
+  (a peer with no known key is skipped, never trusted on first use inside).
+  `[ssh] authorized_extra` (host profile only) adds the public keys you list to
+  every container's dck block, so clients that log in with your own keys (for
+  example containers another kit manages) can reach dck containers. See the
+  trust boundaries above for what it opens.
 - **Host keys** are generated at runtime into the per-project `state` volume
   (ed25519, 0600, directory 0700 root), never baked into an image (the build
   deletes the package's keys and generates none), so one image never ships one
@@ -187,6 +194,7 @@ possible only by an explicit edit outside the managed blocks.
 | The repository hook runs at every start | it is the repository's own code in its own container |
 | `--remove-orphans` is never passed | protecting shared projects outweighs orphan cleanup |
 | `--trust` is per invocation | an explicit, reviewable decision each time a host-reaching configuration is started |
+| The host listener is opt-in, asked once | a shell on your host from any dck container is a real widening; the question says so, the answer is recorded in your profile, and `dck host listener disable` undoes it |
 | The mesh is on by default | agents inside a container asking agents in the other containers is the point of the Herdr integration; with it, every dck container can log in to the others (see the trust boundaries). Untrusted repositories: `[herdr] mesh = false`, `ssh_agent = false` |
 
 ## Coding agents
