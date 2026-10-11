@@ -125,6 +125,10 @@ load_context() {
   DCK_HAS_TOML=0; DCK_SSH_PORT=0; DCK_BIND=127.0.0.1; DCK_ALIAS=""; DCK_HERDR_MACHINE=0
   DCK_HERDR_LABEL=""; DCK_PORTS=""; DCK_SSH_IDENTITY=""; DCK_FLAVOUR=""
   export DCK_HOST_MACHINE="0"  # read by lib/herdr.sh (herdr_mesh)
+  export DCK_HOST_LISTENER="dck" DCK_HOST_PORT="0" DCK_HOST_KEY="" DCK_HOST_LABEL="host"  # herdr_mesh, lib/hostlistener.sh
+  export DCK_HOST_CONFIGURED="0"  # read by cmd_setup (the host listener offer)
+  export DCK_MESH_EXTERNAL="1"  # read by herdr_mesh (host-catalog peers)
+  export DCK_SSH_AUTHORIZED_EXTRA=""  # read by export_authorized_keys
   export DCK_HERDR_LAYOUT="standard"  # read by lib/herdr.sh (herdr_layout)
   export DCK_HERDR_MESH="1"  # read by lib/herdr.sh (dck_herdr_after_up)
   export DCK_SSH_AGENT="1"  # read by export_host_ssh_agent
@@ -135,7 +139,7 @@ load_context() {
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HOST_LISTENER|DCK_HOST_PORT|DCK_HOST_KEY|DCK_HOST_LABEL|DCK_HOST_CONFIGURED|DCK_MESH_EXTERNAL|DCK_SSH_AUTHORIZED_EXTRA|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out

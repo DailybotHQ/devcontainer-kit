@@ -83,7 +83,7 @@ def warn_all(warnings):
 
 def cmd_config(args):
     if not args:
-        return usage("config needs a command: validate | show | rules")
+        return usage("config needs a command: validate | show | host | rules")
     sub = args.pop(0)
     try:
         if sub == "validate":
@@ -106,6 +106,14 @@ def cmd_config(args):
                 emit_env(merged)
             else:
                 return usage("--format env|json")
+            return EXIT_OK
+        if sub == "host":
+            # The host-peer settings of the profile, as KEY=VALUE lines (no repository).
+            import devc
+            prof, warnings = config.load_profile(opt(args, "--profile"))
+            warn_all(warnings)
+            for k, v in devc.host_env(prof):
+                print("%s=%s" % (k, v))
             return EXIT_OK
         if sub == "rules":
             out = {}

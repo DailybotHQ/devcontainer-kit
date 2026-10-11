@@ -91,6 +91,19 @@ def read(repo):
     }
 
 
+def host_env(prof):
+    """The host-peer settings of a profile as KEY=VALUE pairs (no repository needed)."""
+    h = config.host_settings(prof)
+    return [("DCK_HOST_MACHINE", "1" if h["host_machine"] else "0"),
+            ("DCK_HOST_LISTENER", h["host_listener"]),
+            ("DCK_HOST_PORT", str(h["host_port"])),
+            ("DCK_HOST_KEY", h["host_key"]),
+            ("DCK_HOST_LABEL", h["host_label"]),
+            ("DCK_HOST_CONFIGURED", "1" if h["host_configured"] else "0"),
+            ("DCK_MESH_EXTERNAL", "1" if h["mesh_external"] else "0"),
+            ("DCK_SSH_AUTHORIZED_EXTRA", " ".join(h["ssh_authorized_extra"]))]
+
+
 def env_lines(repo, dck_tag, profile=None):
     """KEY=VALUE lines for bash (never eval'd). Values are single-line by
     construction (validated config; paths without newlines are refused)."""
@@ -110,6 +123,13 @@ def env_lines(repo, dck_tag, profile=None):
                 ("DCK_SSH_IDENTITY", merged["ssh_identity"]),
                 ("DCK_HERDR_MACHINE", "1" if merged["herdr.machine"] else "0"),
                 ("DCK_HOST_MACHINE", "1" if merged.get("host_machine") else "0"),
+                ("DCK_HOST_LISTENER", merged["host_listener"]),
+                ("DCK_HOST_PORT", str(merged["host_port"])),
+                ("DCK_HOST_KEY", merged["host_key"]),
+                ("DCK_HOST_LABEL", merged["host_label"]),
+                ("DCK_HOST_CONFIGURED", "1" if merged["host_configured"] else "0"),
+                ("DCK_MESH_EXTERNAL", "1" if merged["mesh_external"] else "0"),
+                ("DCK_SSH_AUTHORIZED_EXTRA", " ".join(merged["ssh_authorized_extra"])),
                 ("DCK_HERDR_LAYOUT", merged["herdr.layout"]),
                 ("DCK_HERDR_MESH", "1" if merged["herdr.mesh"] else "0"),
                 ("DCK_SSH_AGENT", "1" if merged["ssh_agent"] else "0"),
@@ -124,6 +144,7 @@ def env_lines(repo, dck_tag, profile=None):
         warnings = []
         prof, warnings = config.load_profile(profile)
         out += [("DCK_HAS_TOML", "0"), ("DCK_SSH_IDENTITY", config.expand_home(prof["ssh.identity"], os.environ))]
+        out += host_env(prof)
     for k, v in out:
         if "\n" in v or "\r" in v:
             raise DevcError("refusing a multi-line value for %s" % k)

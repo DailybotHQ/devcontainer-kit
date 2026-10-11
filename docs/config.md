@@ -87,12 +87,21 @@ name = "acme"
 compose_project_prefix = "acme-"   # compose project = <prefix><repo-slug>
 network = "acme-dev"               # shared external network ("" = none)
 alias_prefix = "acme-"             # SSH alias = <alias_prefix><repo-slug>
-host_machine = false               # the host as a mesh peer (dck-host); see docs/herdr.md
+host_machine = false               # alias of [host] machine (profiles written before v0.2.3)
 [labels]
 machine = "{project} · {repo}"     # Herdr label when the repo sets none
 [ssh]
 identity = "~/.config/dck/ssh/id_ed25519"   # dedicated key dck authorizes in containers
 host_extra = []                    # aliases or host names beyond git services to copy inside (opt-in)
+authorized_extra = []              # extra PUBLIC key files authorized in every container (opt-in)
+[host]
+machine = true                     # the host as a mesh peer (dck-host); see docs/herdr.md
+listener = "dck"                   # dck | external | remote-login
+port = 0                           # 0 = the listener's default (dck 22033, remote-login 22)
+host_key = ""                      # the listener's public ed25519 host key ("" = its default)
+label = "host"                     # the host's Herdr label inside containers
+[mesh]
+external = true                    # also push the host's other loopback Herdr machines
 ```
 
 | Key | Type | Default | Rule |
@@ -102,10 +111,17 @@ host_extra = []                    # aliases or host names beyond git services t
 | `compose_project_prefix` | string | `""` | empty or `^[a-z0-9][a-z0-9_-]{0,31}$`; include your own separator |
 | `network` | string | `""` | docker network name, empty for none |
 | `alias_prefix` | string | `dck-` | `^[a-z0-9][a-z0-9._-]{0,31}$` |
-| `host_machine` | boolean | `false` | the mesh also pushes the host as `dck-host` (your user, port 22): agents inside can reach it when Remote Login is on and your key is in your `authorized_keys`. dck configures nothing on the host itself ([SECURITY.md](SECURITY.md)) |
+| `host_machine` | boolean | `false` | alias of `host.machine`, kept for profiles written before v0.2.3; `host.machine` wins when both are set |
+| `host.machine` | boolean | unset (→ `host_machine`) | the mesh pushes the host as `dck-host`, so agents inside reach agents on the host. `dck setup` offers it once on a terminal and records the answer here |
+| `host.listener` | string | `dck` | `dck`: dck's own loopback listener (`dck host listener enable`, macOS); `external`: one you already run (set `port` and `host_key`; dck writes nothing on the host); `remote-login`: the system sshd on port 22 with your key in your own `authorized_keys` ([SECURITY.md](SECURITY.md)) |
+| `host.port` | integer | `0` | `0` (the listener's default: `dck` 22033, `remote-login` 22) or 1024-65535; required for `external` |
+| `host.host_key` | string | `""` | path of the listener's **public** ed25519 host key, pinned inside; empty = the listener's default; required for `external` |
+| `host.label` | string | `host` | the host's Herdr machine label inside containers |
+| `mesh.external` | boolean | `true` | the mesh also pushes the host's other Herdr machines on loopback ports 22000-22999 (for example containers another kit manages), with their enabled state and the ed25519 key your `known_hosts` already pins |
 | `labels.machine` | string | `{repo}` | same placeholders as `herdr.label` |
 | `ssh.identity` | string | `~/.config/dck/ssh/id_ed25519` | `~` expands to `$HOME` |
 | `ssh.host_extra` | array of strings | `[]` | aliases or host names beyond the git hosting services whose `~/.ssh/config` blocks `ssh_host_config` also copies into containers. Host-side only — a repository's `dck.toml` cannot set it. Every container with the agent socket can then reach those hosts as you |
+| `ssh.authorized_extra` | array of strings | `[]` | public key files (paths ending in `.pub`, at most 16) added to the dck block of every container's `authorized_keys` at `dck up`, for clients that log in with your own keys (for example containers another kit manages). Host-side only; each listed key can open a shell in your containers |
 
 ## Precedence
 

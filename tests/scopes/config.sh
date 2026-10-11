@@ -267,3 +267,57 @@ test_schema_files_are_valid_json() {
     assert_rc 0 "$(basename "$f") is a draft 2020-12 JSON Schema"
   done
 }
+
+test_host_and_mesh_profile_keys() {
+  local repo
+  repo="$(make_repo "$(cat "$CFIX/valid-minimal.toml")")"
+  mkdir -p "$XDG_CONFIG_HOME/dck"
+  run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_contains "$RUN_OUT" '"host_machine": false' "the host is not a peer by default"
+  assert_contains "$RUN_OUT" '"host_listener": "dck"' "dck's own listener is the default kind"
+  assert_contains "$RUN_OUT" '"host_port": 22033' "the dck listener's default port"
+  assert_contains "$RUN_OUT" "\"host_key\": \"$HOME/.config/dck/host-listener/ssh_host_ed25519_key.pub\"" "the dck listener's host key path"
+  assert_contains "$RUN_OUT" '"mesh_external": true' "host-catalog peers are on by default"
+  assert_contains "$RUN_OUT" '"ssh_authorized_extra": []' "no extra key by default"
+  printf 'host_machine = true\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_contains "$RUN_OUT" '"host_machine": true' "the old host_machine key still works"
+  assert_contains "$RUN_OUT" '"host_configured": true' "an explicit host_machine counts as configured"
+  printf 'host_machine = true\n[host]\nmachine = false\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_contains "$RUN_OUT" '"host_machine": false' "[host] machine wins over the alias"
+  printf '[host]\nmachine = true\nlistener = "external"\nport = 22032\nhost_key = "~/keys/listener.pub"\nlabel = "Mac"\n[mesh]\nexternal = false\n[ssh]\nauthorized_extra = ["~/.ssh/id_rsa.pub"]\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_rc 0 "a full host table validates"
+  assert_contains "$RUN_OUT" '"host_port": 22032' "an external listener's port"
+  assert_contains "$RUN_OUT" "\"host_key\": \"$HOME/keys/listener.pub\"" "the host key path expands ~"
+  assert_contains "$RUN_OUT" '"host_label": "Mac"' "the host label"
+  assert_contains "$RUN_OUT" '"mesh_external": false' "host-catalog peers can be turned off"
+  assert_contains "$RUN_OUT" "\"$HOME/.ssh/id_rsa.pub\"" "extra keys expand ~"
+  printf '[host]\nmachine = true\nlistener = "remote-login"\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_contains "$RUN_OUT" '"host_port": 22' "remote-login listens on 22"
+  assert_contains "$RUN_OUT" '"host_key": "/etc/ssh/ssh_host_ed25519_key.pub"' "remote-login is pinned by the system host key"
+  run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" config host
+  assert_rc 0 "config host needs no repository"
+  assert_contains "$RUN_OUT" "DCK_HOST_LISTENER=remote-login" "config host prints the host settings"
+}
+
+test_invalid_host_and_extra_keys() {
+  local repo
+  repo="$(make_repo "$(cat "$CFIX/valid-minimal.toml")")"
+  mkdir -p "$XDG_CONFIG_HOME/dck"
+  printf '[host]\nlistener = "external"\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  run_cmd "${PYCFG[@]}" show --repo "$repo"
+  assert_rc 3 "an external listener without a port and key is refused"
+  assert_contains "$RUN_ERR" "host.port: listener" "the missing port is reported"
+  assert_contains "$RUN_ERR" "host.host_key: listener" "the missing key is reported"
+  printf '[host]\nlistener = "telnet"\nport = 80\n[ssh]\nauthorized_extra = ["~/.ssh/id_rsa", "a b.pub", "../x.pub"]\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  run_cmd "${PYCFG[@]}" show --repo "$repo"
+  assert_rc 3 "invalid host and extra-key values are refused"
+  assert_contains "$RUN_ERR" "host.listener: invalid value" "an unknown listener kind"
+  assert_contains "$RUN_ERR" "host.port: expected 0" "a privileged port"
+  assert_contains "$RUN_ERR" "invalid public key file '~/.ssh/id_rsa'" "a private key path is refused"
+  assert_contains "$RUN_ERR" "invalid public key file 'a b.pub'" "whitespace is refused"
+  assert_contains "$RUN_ERR" "invalid public key file '../x.pub'" "a parent path is refused"
+}
