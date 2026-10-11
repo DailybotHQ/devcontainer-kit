@@ -230,7 +230,7 @@ test_mesh_pushes_the_peers() {
   assert_not_contains "$s" "peer dck-proj " "the container itself is not its own peer"
   assert_contains "$s" "hostkey 22041 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPeerHostKeyFakeOnlyForTests000000000000" "the peer's pinned host key is pushed"
   assert_no_match "$s" 'PRIVATE KEY|id_ed25519' "no private key material or key path is pushed"
-  assert_contains "$(fake_calls docker)" "exec -T --user root app bash -c . /usr/local/lib/dck/entrypoint.sh && dck_mesh_apply" "the payload is applied inside the container"
+  assert_contains "$(fake_calls docker)" "exec -T --user root -e DCK_MESH_FORCE=1 app bash -c . /usr/local/lib/dck/entrypoint.sh && dck_mesh_apply" "the payload is applied inside the container"
   assert_contains "$RUN_OUT" "mesh: 1 peer(s) reachable from inside app" "the peer count is reported"
   assert_not_contains "$(cat "$DCK_REPO/lib/herdr.sh")" "--apple-use-keychain" "the dck key never goes into the macOS Keychain"
   : > "$DCK_FAKE_STATE/exec_stdin"
@@ -436,6 +436,7 @@ test_up_mesh_off() {
   DCK_HOST_OS=Darwin d up
   assert_rc 0 "up succeeds with the mesh off"
   assert_not_contains "$(fake_calls docker)" "dck_mesh_apply" "mesh = false skips the mesh on up"
+  assert_contains "$(fake_calls docker)" "dck_mesh_optout set" "mesh = false is recorded inside, so refreshes from elsewhere are ignored"
 }
 
 # A host-catalog machine: what `ssh -G` resolves for it and the key the host knows.
@@ -552,4 +553,32 @@ test_doctor_reports_host_peers_and_ak() {
   run_cmd "$DCK" doctor
   assert_contains "$RUN_OUT" "herdr-peers" "doctor reports herdr-peers on the host"
   assert_contains "$RUN_OUT" "ak (host)" "doctor reports coding-agents-kit on the host"
+}
+
+
+test_host_peers_partial_copy_is_not_installed() {
+  peers_release
+  local d="$HOME/.local/share/dck-host/herdr-peers/v0.1.0"
+  mkdir -p "$d/skills/herdr-peers/scripts"
+  printf '#!/usr/bin/env bash\necho partial\n' > "$d/skills/herdr-peers/scripts/herdr-peers"; chmod +x "$d/skills/herdr-peers/scripts/herdr-peers"
+  hp host peers status
+  assert_contains "$RUN_OUT" "not installed" "a tree without its completion marker is not installed"
+  hp host peers install
+  assert_rc 0 "install replaces the partial copy"
+  assert_file "$d/.dck-verified" "the completion marker is written after the verified copy"
+  assert_not_contains "$(cat "$d/skills/herdr-peers/scripts/herdr-peers")" "partial" "the partial copy is gone"
+}
+
+
+test_mesh_labels_and_aliases_are_sanitized() {
+  local d="$SANDBOX/kh"; mkdir -p "$d"
+  printf '# dck-provenance: v1\n# >>> dck:dck-a >>>\nHost dck-a\n  Port 22051\n  User dev\n# <<< dck:dck-a <<<\n' > "$d/dck"
+  run_cmd bash -c 'printf "%s" "$1" | python3 -I "$2" sshconf peers --labels-stdin --file "$3" --known-hosts /nonexistent --exclude ""' _ \
+    '[{"target":"dck-a","label":"--evil $(touch x); `id` <b>"}]' "$DCK_REPO/lib/dckpy.py" "$d/dck"
+  assert_rc 0 "peers runs"
+  assert_contains "$RUN_OUT" "peer dck-a 22051 dev evil (touch x) id b" "a dck peer's label is reduced to a safe character set, no leading dash"
+  # External peers: an alias starting with '-' is never pushed.
+  printf 'hostname 127.0.0.1\nport 22024\nuser dev\n' > "$DCK_FAKE_STATE/ssh_G_-oProxyCommand=x"
+  run_cmd python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import sshconf; print(sshconf.external_peers([{"target": "-oProxyCommand=x", "label": "x"}]))' "$DCK_REPO/lib"
+  assert_contains "$RUN_OUT" "([], [])" "an alias starting with '-' is refused"
 }

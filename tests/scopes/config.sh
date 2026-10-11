@@ -312,7 +312,7 @@ test_invalid_host_and_extra_keys() {
   assert_rc 3 "an external listener without a port and key is refused"
   assert_contains "$RUN_ERR" "host.port: listener" "the missing port is reported"
   assert_contains "$RUN_ERR" "host.host_key: listener" "the missing key is reported"
-  printf '[host]\nlistener = "telnet"\nport = 80\n[ssh]\nauthorized_extra = ["~/.ssh/id_rsa", "a b.pub", "../x.pub"]\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  printf '[host]\nlistener = "telnet"\nport = 80\n[ssh]\nauthorized_extra = ["~/.ssh/id_rsa", "a b.pub", "../x.pub", "~/.ssh/*.pub"]\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
   run_cmd "${PYCFG[@]}" show --repo "$repo"
   assert_rc 3 "invalid host and extra-key values are refused"
   assert_contains "$RUN_ERR" "host.listener: invalid value" "an unknown listener kind"
@@ -320,4 +320,5 @@ test_invalid_host_and_extra_keys() {
   assert_contains "$RUN_ERR" "invalid public key file '~/.ssh/id_rsa'" "a private key path is refused"
   assert_contains "$RUN_ERR" "invalid public key file 'a b.pub'" "whitespace is refused"
   assert_contains "$RUN_ERR" "invalid public key file '../x.pub'" "a parent path is refused"
+  assert_contains "$RUN_ERR" "invalid public key file '~/.ssh/*.pub'" "a glob is refused"
 }

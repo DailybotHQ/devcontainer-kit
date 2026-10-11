@@ -175,8 +175,8 @@ def _check(key, value, rule, problems):
         if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
             return bad("expected an array of public key file paths, got %s" % _type_name(value))
         for item in value:
-            if not item.endswith(".pub") or re.search(r"[\s\x00]", item) or "/../" in item or item.startswith("../"):
-                bad("invalid public key file %r (a path ending in .pub, no whitespace or ..)" % item)
+            if not item.endswith(".pub") or re.search(r"[\s\x00*?\[\]{}]", item) or "/../" in item or item.startswith("../"):
+                bad("invalid public key file %r (a path ending in .pub, no whitespace, glob characters or ..)" % item)
         if len(value) > 16:
             bad("at most 16 keys")
     elif kind == "kind_list":

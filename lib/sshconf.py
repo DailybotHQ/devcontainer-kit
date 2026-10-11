@@ -192,6 +192,12 @@ def _known_port(hosts, by_alias, ports):
     return None
 
 
+def _label(raw, fallback):
+    """A Herdr label safe to push: a fixed character set, no leading '-'."""
+    label = re.sub(r"[^A-Za-z0-9 ._:@()/-]", "", str(raw or "")).strip().lstrip("- ").strip()
+    return label or fallback
+
+
 def alias_ports(path):
     """The Port of every managed block of the include."""
     lines = _read_owned(path)
@@ -229,8 +235,8 @@ def peers(path, known_hosts, exclude="", labels=None, host_user="", host_key_fil
             m = re.match(r"^\s+User\s+(%s)\s*$" % USER_RE, ln)
             if m:
                 user = m.group(1)
-        if port and user:
-            out.append("peer %s %s %s %s" % (alias, port, user, labels.get(alias, alias)))
+        if port and user and re.match(r"^[A-Za-z0-9]", alias):
+            out.append("peer %s %s %s %s" % (alias, port, user, _label(labels.get(alias, alias), alias)))
             ports.add(port)
             by_alias[alias] = port
     if known_hosts and os.path.exists(known_hosts):
@@ -252,7 +258,7 @@ def peers(path, known_hosts, exclude="", labels=None, host_user="", host_key_fil
             raise SshConfError("invalid host user %r" % host_user, 2)
         if not re.match(r"^\d{1,5}$", str(host_port)) or not 1 <= int(host_port) <= 65535:
             raise SshConfError("invalid host port %r" % host_port, 2)
-        out.append("peer dck-host %s %s %s" % (host_port, host_user, labels.get("dck-host", "host")))
+        out.append("peer dck-host %s %s %s" % (host_port, host_user, _label(labels.get("dck-host", "host"), "host")))
         if host_key_file and os.path.exists(host_key_file):
             parts = open(host_key_file).read().split()
             if len(parts) >= 2:
@@ -269,7 +275,7 @@ def _ssh_g(alias, ssh="ssh"):
     """`ssh -G alias` -> {hostname, port, user, hostkeyalias} (lower-case keys)."""
     import subprocess
     try:
-        r = subprocess.run([ssh, "-G", alias], capture_output=True, text=True, timeout=10)
+        r = subprocess.run([ssh, "-G", "--", alias], capture_output=True, text=True, timeout=10)
     except (OSError, subprocess.SubprocessError):
         return {}
     if r.returncode != 0:
@@ -314,7 +320,7 @@ def external_peers(machines, skip_aliases=(), skip_ports=(), known_hosts_files=(
         if not isinstance(m, dict):
             continue
         alias = str(m.get("target") or "")
-        if not alias or alias in skip_aliases or not re.match(r"^[A-Za-z0-9._-]{1,128}$", alias):
+        if not alias or alias in skip_aliases or not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$", alias):
             continue
         cfg = _ssh_g(alias, ssh)
         host, port, user = cfg.get("hostname", ""), cfg.get("port", ""), cfg.get("user", "")
@@ -332,7 +338,7 @@ def external_peers(machines, skip_aliases=(), skip_ports=(), known_hosts_files=(
         if not key:
             notes.append("mesh: skipped %s (no ed25519 host key in your known_hosts; connect once from this host)" % alias)
             continue
-        label = re.sub(r"[^A-Za-z0-9 ._:@()/-]", "", str(m.get("label") or alias)).strip() or alias
+        label = _label(m.get("label"), alias)
         out.append("peer %s %s %s %s" % (alias, port, user, label))
         out.append("hostkey %s ssh-ed25519 %s" % (port, key))
         if not m.get("enabled", True):

@@ -220,8 +220,10 @@ def host_peers_cli():
     if not tag:
         return None
     base = os.environ.get("XDG_DATA_HOME") or os.path.join(os.environ.get("HOME", ""), ".local", "share")
-    p = os.path.join(base, "dck-host", "herdr-peers", tag, "skills", "herdr-peers", "scripts", "herdr-peers")
-    return p if os.path.isfile(p) and os.access(p, os.X_OK) else None
+    root = os.path.join(base, "dck-host", "herdr-peers", tag)
+    p = os.path.join(root, "skills", "herdr-peers", "scripts", "herdr-peers")
+    ok = os.path.isfile(os.path.join(root, ".dck-verified")) and os.path.isfile(p) and os.access(p, os.X_OK)
+    return p if ok else None
 
 
 def herdr_info(merged, problems):
