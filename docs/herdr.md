@@ -197,6 +197,10 @@ dck ask dck-other:w1:p2 "Which test covers the parser?"   # herdr-peers ask, wit
 - **herdr-peers on the host.** `dck setup` installs a verified copy (the
   images' pin) in `~/.local/share/dck-host/herdr-peers/<tag>` when Herdr is on
   the host; `dck agents` and `dck ask` use it (`dck host peers install|status`).
+- **The agent in Herdr panes.** Herdr points a pane's `SSH_AUTH_SOCK` at its forwarded-agent
+  link, which dangles when the client that attached forwarded no agent. Since v0.2.8 the login
+  profile falls back to the host agent dck mounts and the entrypoint repoints a dangling link, so
+  mesh hops and `herdr-peers reply` keep working.
 - **Credentials.** No private key enters the container. Hops out of it
   authenticate with keys held by the host's ssh-agent, reached through
   agent forwarding (Herdr and `dck ssh` sessions) or the mounted agent
