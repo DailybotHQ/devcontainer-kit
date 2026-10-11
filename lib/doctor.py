@@ -226,6 +226,35 @@ def host_peers_cli():
     return p if ok else None
 
 
+def catalog_info(merged, installed):
+    """What `dck herdr mesh` mirrors into containers: the host's Herdr catalog
+    entries they can reach (the host's own ids, needed for herdr-peers replies),
+    and the host's own entry."""
+    if not installed:
+        return None
+    rc, out = run(["herdr", "machine", "list", "--json"])
+    if rc != 0:
+        return None
+    try:
+        raw = out[min([i for i in (out.find("["), out.find("{")) if i >= 0] or [0]):]
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            data = (data.get("result") or {}).get("machines") or data.get("machines") or []
+    except ValueError:
+        return None
+    import sshconf
+    inc = os.path.join(os.environ.get("HOME", ""), ".ssh", "config.d", "dck")
+    aliases = {a for a, _s, _e in sshconf._blocks(sshconf._read_owned(inc))} if os.path.exists(inc) else set()
+    self_alias = None
+    if merged and merged.get("host_machine"):
+        me = sshconf.host_self(data, merged.get("host_port"))
+        self_alias = str(me["target"]) if me else None
+        if self_alias:
+            aliases.add(self_alias)
+    mirrored = sum(1 for m in data if isinstance(m, dict) and m.get("target") in aliases)
+    return {"host_self": self_alias, "mirrored_dck": mirrored, "entries": len(data)}
+
+
 def herdr_info(merged, problems):
     h = {"installed": bool(which("herdr")), "version": None, "machine": None, "alias": None,
          "include_present": None, "registered": None, "enabled": None, "server_answering": None}
@@ -233,6 +262,7 @@ def herdr_info(merged, problems):
         h["version"] = first_version(run(["herdr", "--version"])[1])
     h["peers_cli"] = host_peers_cli()
     h["host_ak"] = bool(which("ak"))
+    h["catalog"] = catalog_info(merged, h["installed"])
     if merged is None:
         return h
     h["machine"] = bool(merged["herdr.machine"])
@@ -253,6 +283,10 @@ def herdr_info(merged, problems):
                 h["enabled"] = bool(found[0].get("enabled", True)) if found else None
             except ValueError:
                 pass
+    c = h.get("catalog")
+    if merged.get("host_machine") and c is not None and not c["host_self"]:
+        problems.append("the host has no entry for itself in its Herdr catalog: replies to asks from the host "
+                        "cannot be routed (dck herdr mesh registers dck-host)")
     if h["machine"] and h["registered"] is False:
         problems.append("herdr.machine is on but %s is not registered (dck herdr add)" % merged["alias"])
     return h
@@ -399,6 +433,11 @@ def text(report):
     h = report["herdr"]
     out.append("herdr-peers      %s" % (h.get("peers_cli") or "not installed (dck host peers install)"))
     out.append("ak (host)        %s" % ("installed" if h.get("host_ak") else "not installed (coding-agents-kit)"))
+    c = h.get("catalog")
+    if c is not None:
+        out.append("herdr catalog    %d entr%s; mirrored into containers: %d dck machine(s)%s" % (
+            c["entries"], "y" if c["entries"] == 1 else "ies", c["mirrored_dck"],
+            ", host self %s" % (c["host_self"] or "MISSING") if report["layers"] is not None else ""))
     out.append("herdr            %s%s" % (h["version"] or "not installed",
                                           "" if h["machine"] is None else ", machine %s, alias %s, registered %s, server %s" % (
                                               yes(h["machine"]), h["alias"], yes(h["registered"]), yes(h["server_answering"]))))

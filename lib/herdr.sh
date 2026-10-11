@@ -138,6 +138,11 @@ herdr_mesh() {
   fi
   herdr_agent_key
   local catalog payload n alias
+  # The host must have its own entry in its Herdr catalog: asks from the host
+  # carry that entry's id as their reply address.
+  if [ "${DCK_HOST_MACHINE:-0}" = "1" ] && declare -F dck_host_self_register >/dev/null 2>&1; then
+    dck_host_self_register || true
+  fi
   catalog="$(herdr machine list --json 2>/dev/null || true)"
   payload="$(herdr_mesh_payload "$DCK_ALIAS" "$DCK_SSH_PORT" "$catalog")" || exit $?
   n="$(printf '%s\n' "$payload" | grep -c '^peer ' || true)"
@@ -184,7 +189,7 @@ herdr_mesh_payload() {
   printf '%s' "$catalog" | dckpy sshconf peers --labels-stdin \
     --file "$HERDR_INCLUDE" --known-hosts "$HERDR_KNOWN_HOSTS" --exclude "$self" \
     --host-user "$host_user" --host-key "$host_key" --host-port "${DCK_HOST_PORT:-22}" \
-    --host-label "${DCK_HOST_LABEL:-host}" ${ext[@]+"${ext[@]}"}
+    --host-label "${DCK_HOST_LABEL:-host}" --catalog ${ext[@]+"${ext[@]}"}
 }
 
 # herdr_layout [--keep|--reset] — create the standard sidebar inside the container,

@@ -189,6 +189,7 @@ hostl_enable() {
     warn "host listener: loaded, but 127.0.0.1:$HOSTL_PORT is not answering yet (log: $(pretty_path "$HOSTL_LOG"))"
   fi
   [ "${DCK_HOST_CONFIGURED:-0}" = 1 ] || hostl_record_profile true
+  DCK_HOST_MACHINE=1 DCK_HOST_PORT="$HOSTL_PORT" DCK_HOST_KEY="$HOSTL_KEY.pub" dck_host_self_register || true
   note "host listener: containers learn about it on their next dck up (or: dck herdr mesh)"
 }
 
@@ -227,6 +228,40 @@ hostl_status() {
   else
     note "host key         absent — run: dck host listener enable"
   fi
+}
+
+# dck_host_self_register — the host's own entry in its Herdr catalog. A
+# herdr-peers ask carries the asker's machine id from ITS catalog; containers get
+# a copy of the host's catalog (dck herdr mesh), so the host needs an entry for
+# itself there. When none resolves to 127.0.0.1:<listener port>, register
+# `dck-host` once: a Host block in ~/.ssh/config.d/dck (the dck key, the
+# listener's pinned host key) and `herdr machine add`.
+dck_host_self_register() {
+  command -v herdr >/dev/null 2>&1 || return 0
+  [ "${DCK_HOST_MACHINE:-0}" = 1 ] || return 0
+  local port="${DCK_HOST_PORT:-0}" key="${DCK_HOST_KEY:-}" inc known r kt kb
+  [ "$port" != 0 ] || return 0
+  if herdr machine list --json 2>/dev/null | dckpy sshconf host-self --port "$port" >/dev/null 2>&1; then
+    return 0
+  fi
+  [ -n "$key" ] && [ -f "$key" ] || { warn "host: no host key at ${key:-?} to pin the host's own Herdr entry (dck host listener enable?)"; return 1; }
+  read -r kt kb _ < "$key" || return 1
+  [ "$kt" = ssh-ed25519 ] || { warn "host: the listener's host key is not ed25519 (Herdr requires it)"; return 1; }
+  inc="$HOME/.ssh/config.d/dck"
+  known="$(dck_config_home)/ssh/known_hosts"
+  (umask 077 && mkdir -p "$HOME/.ssh/config.d" "$(dirname "$known")")
+  r="$(dckpy sshconf upsert --file "$inc" --alias dck-host --host 127.0.0.1 --port "$port" \
+        --user "$(id -un)" --identity "$DCK_SSH_IDENTITY" --known-hosts "$known")" || return 1
+  dckpy sshconf include --config "$HOME/.ssh/config" >/dev/null || return 1
+  touch "$known"
+  grep -qxF "dck-host $kt $kb" "$known" || printf 'dck-host %s %s\n' "$kt" "$kb" >> "$known"
+  [ "$r" = unchanged ] || note "host: $r host dck-host (127.0.0.1:$port) in $(pretty_path "$inc")"
+  if herdr machine list --json 2>/dev/null | dckpy herdr find --target dck-host >/dev/null 2>&1; then
+    return 0
+  fi
+  herdr machine add --label "${DCK_HOST_LABEL:-host}" dck-host >/dev/null 2>&1 \
+    || { warn "host: herdr machine add dck-host failed (is the listener answering? dck host listener status)"; return 1; }
+  note "host: registered this host in its own Herdr catalog as dck-host (\"${DCK_HOST_LABEL:-host}\") so replies find it"
 }
 
 # dck_host_listener_offer — called by `dck setup`: on a terminal, ask once

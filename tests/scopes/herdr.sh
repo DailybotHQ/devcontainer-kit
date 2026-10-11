@@ -471,7 +471,8 @@ PY
   DCK_HOST_OS=Darwin d herdr mesh
   assert_rc 0 "herdr mesh succeeds"
   local s; s="$(cat "$DCK_FAKE_STATE/exec_stdin")"
-  assert_contains "$s" "peer dck-host 22032 $(id -un) Mac" "the host is pushed on its listener's port, with its label"
+  assert_contains "$s" "peer mac-listener 22032 $(id -un) Mac listener" "the host is pushed as its own catalog entry, on its listener's port"
+  assert_not_contains "$s" "peer dck-host " "no invented host alias when the host has its own entry"
   assert_contains "$s" "hostkey 22032 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIListenerHostKeyFakeOnlyForTests00000000000" "the host is pinned by the listener's key"
   assert_contains "$s" "peer api 22024 dev-user API" "a loopback catalog machine is a peer, with its label"
   assert_contains "$s" "hostkey 22024 ssh-ed25519 " "its key comes from your known_hosts"
@@ -480,7 +481,7 @@ PY
   assert_not_contains "$s" "disabled api" "an enabled machine is not marked"
   assert_not_contains "$s" "peer nokey" "a machine with no pinned key is skipped"
   assert_contains "$RUN_ERR" "skipped nokey (no ed25519 host key" "and the skip says why"
-  assert_not_contains "$s" "peer mac-listener" "the host's own listener is not pushed twice"
+  assert_eq "$(printf '%s\n' "$s" | grep -c '^peer mac-listener ')" "1" "the host's own listener is not pushed twice"
   assert_not_contains "$s" "peer remote" "a non-loopback machine is not pushed"
   assert_not_contains "$s" "peer dck-proj " "the container itself is never its own peer"
   printf '[host]\nmachine = true\nlistener = "external"\nport = 22032\nhost_key = "%s"\n[mesh]\nexternal = false\n' "$SANDBOX/keys/listener.pub" > "$HOME/.config/dck/profile.toml"
@@ -581,4 +582,73 @@ test_mesh_labels_and_aliases_are_sanitized() {
   printf 'hostname 127.0.0.1\nport 22024\nuser dev\n' > "$DCK_FAKE_STATE/ssh_G_-oProxyCommand=x"
   run_cmd python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import sshconf; print(sshconf.external_peers([{"target": "-oProxyCommand=x", "label": "x"}]))' "$DCK_REPO/lib"
   assert_contains "$RUN_OUT" "([], [])" "an alias starting with '-' is refused"
+}
+
+# The fake herdr's catalog: a JSON list of machines with fixed 32-hex ids.
+add_machine() { # <id char> <target> <label> <enabled true|false>
+  python3 - "$DCK_FAKE_STATE/herdr_machines" "$(printf "$1%.0s" $(seq 1 32))" "$2" "$3" "$4" <<'PY'
+import json, os, sys
+p, mid, target, label, enabled = sys.argv[1:]
+m = json.load(open(p)) if os.path.exists(p) else []
+m.append({"id": mid, "label": label, "target": target, "session": "default", "enabled": enabled == "true", "selected": False})
+json.dump(m, open(p, "w"))
+PY
+}
+
+test_mesh_pushes_the_host_catalog_with_its_ids() {
+  mk_repo other 22041
+  DREPO="$SANDBOX/other" d herdr add
+  mk_repo proj 22040
+  d herdr add
+  mkdir -p "$HOME/.config/dck" "$SANDBOX/keys"
+  printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIListenerHostKeyFakeOnlyForTests00000000000 l\n' > "$SANDBOX/keys/listener.pub"
+  printf '[host]\nmachine = true\nlistener = "external"\nport = 22032\nhost_key = "%s"\n' "$SANDBOX/keys/listener.pub" > "$HOME/.config/dck/profile.toml"
+  add_machine c mac-self "0 - Mac" true
+  ext_machine mac-self 22032 me C
+  add_machine a api "API --x" true
+  ext_machine api 22024 dev-user A
+  add_machine f unreachable "Far" true
+  printf 'hostname 203.0.113.9\nport 22\nuser me\n' > "$DCK_FAKE_STATE/ssh_G_unreachable"
+  python3 - "$DCK_FAKE_STATE/herdr_machines" <<'PY'
+import json, sys
+m = json.load(open(sys.argv[1]))
+m.append({"id": "not-hex", "label": "Bad", "target": "api", "session": "default", "enabled": True})
+json.dump(m, open(sys.argv[1], "w"))
+PY
+  : > "$DCK_FAKE_STATE/exec_stdin"
+  DCK_HOST_OS=Darwin d herdr mesh
+  assert_rc 0 "herdr mesh succeeds"
+  local s ids
+  s="$(cat "$DCK_FAKE_STATE/exec_stdin")"
+  ids="$(python3 -c 'import json,sys; print(" ".join("%s=%s" % (m["target"], m["id"]) for m in json.load(open(sys.argv[1]))))' "$DCK_FAKE_STATE/herdr_machines")"
+  assert_contains "$s" "self dck-proj 22040 dev" "the container reaches itself (herdr-peers finds its own machine)"
+  assert_contains "$s" "catalog $(printf '%s\n' $ids | sed -n 's/^dck-proj=//p') 1 default dck-proj" "its own catalog entry carries the host's id"
+  assert_contains "$s" "catalog $(printf '%s\n' $ids | sed -n 's/^dck-other=//p') 1 default dck-other" "another dck container keeps the host's id"
+  assert_contains "$s" "catalog $(printf 'c%.0s' $(seq 1 32)) 1 default mac-self 0 - Mac" "the host's own entry is mirrored with its id"
+  assert_contains "$s" "catalog $(printf 'a%.0s' $(seq 1 32)) 1 default api API --x" "a reachable loopback machine is mirrored with its label"
+  assert_not_contains "$s" "unreachable" "an entry the container cannot reach is not mirrored"
+  assert_not_contains "$s" "not-hex" "an entry with an invalid id is not mirrored"
+  assert_contains "$s" "peer mac-self 22032" "the host peer is the host's own entry"
+}
+
+test_host_self_is_registered_once_when_missing() {
+  mkdir -p "$HOME/.config/dck/ssh" "$SANDBOX/keys"
+  ssh-keygen -q -t ed25519 -N '' -f "$HOME/.config/dck/ssh/id_ed25519" </dev/null
+  ssh-keygen -q -t ed25519 -N '' -f "$SANDBOX/keys/listener" </dev/null
+  run_cmd env DCK_HOST_MACHINE=1 DCK_HOST_PORT=22033 DCK_HOST_KEY="$SANDBOX/keys/listener.pub" DCK_HOST_LABEL="This Mac" \
+    DCK_SSH_IDENTITY="$HOME/.config/dck/ssh/id_ed25519" DCK_ROOT="$DCK_REPO" DCK_LIB="$DCK_REPO/lib" bash -c '. "$1/lib/common.sh"; . "$1/lib/launcher.sh"; . "$1/lib/herdr.sh"; . "$1/lib/hostlistener.sh"; dck_host_self_register' _ "$DCK_REPO"
+  assert_rc 0 "the host registers itself"
+  assert_contains "$(cat "$HOME/.ssh/config.d/dck")" "Host dck-host" "a Host block for the host's own entry"
+  assert_contains "$(cat "$HOME/.ssh/config.d/dck")" "Port 22033" "on the listener's port"
+  assert_contains "$(cat "$HOME/.config/dck/ssh/known_hosts")" "dck-host ssh-ed25519 " "pinned by the listener's host key"
+  assert_contains "$(machines)" '"target": "dck-host"' "registered in the host's Herdr catalog"
+  assert_contains "$(machines)" '"label": "This Mac"' "with the profile label"
+  # A host entry that resolves to the listener counts: nothing is added again.
+  printf 'hostname 127.0.0.1\nport 22033\nuser me\n' > "$DCK_FAKE_STATE/ssh_G_dck-host"
+  : > "$DCK_FAKE_LOG"
+  run_cmd env DCK_HOST_MACHINE=1 DCK_HOST_PORT=22033 DCK_HOST_KEY="$SANDBOX/keys/listener.pub" \
+    DCK_SSH_IDENTITY="$HOME/.config/dck/ssh/id_ed25519" DCK_ROOT="$DCK_REPO" DCK_LIB="$DCK_REPO/lib" bash -c '. "$1/lib/common.sh"; . "$1/lib/launcher.sh"; . "$1/lib/herdr.sh"; . "$1/lib/hostlistener.sh"; dck_host_self_register' _ "$DCK_REPO"
+  assert_not_contains "$(cat "$DCK_FAKE_LOG")" "machine add" "an existing self entry is reused"
+  run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" sshconf aliases --file "$HOME/.ssh/config.d/dck"
+  assert_not_contains "$RUN_OUT" "dck-host" "the host's entry is never refreshed as a container"
 }

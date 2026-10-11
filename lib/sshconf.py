@@ -210,22 +210,29 @@ def alias_ports(path):
     return ports
 
 
+HOST_SELF_ALIAS = "dck-host"  # the host's own entry dck registers when it has none
+
+
 def peers(path, known_hosts, exclude="", labels=None, host_user="", host_key_file="",
-          host_port="22", external=None):
+          host_port="22", external=None, host_alias=HOST_SELF_ALIAS, with_self=False):
     """The mesh payload `dck_mesh_apply` reads inside a container: one
     `peer <alias> <port> <user> <label>` line per managed block of the include
-    except `exclude`, one `hostkey <port> <type> <key>` line per pinned host key
-    of those peers (from dck's known_hosts: entries for the alias — dck pins
-    with HostKeyAlias — plain or hashed, or legacy `[127.0.0.1]:<port>`), and,
-    when host_user is set, the host itself (`dck-host`, on host_port: 22 for
-    Remote Login, the listener's port otherwise) with its own host key, then the
-    lines of `external` (host-catalog peers, see external_peers). Public data
-    only: aliases, ports, users, labels, public keys."""
+    except `exclude` (with with_self, that one is a `self <alias> <port> <user>`
+    line instead: the container reaching itself, which herdr-peers needs to find
+    its own machine), one `hostkey <port> <type> <key>` line per pinned host key
+    of those (from dck's known_hosts: entries for the alias — dck pins with
+    HostKeyAlias — plain or hashed, or legacy `[127.0.0.1]:<port>`), and, when
+    host_user is set, the host itself (`host_alias` — its own entry in the host's
+    Herdr catalog — on host_port) with its listener's host key, then the lines
+    of `external` (host-catalog peers, see external_peers). Public data only:
+    aliases, ports, users, labels, public keys."""
     labels = labels or {}
     lines = _read_owned(path) if os.path.exists(path) else []
     out, ports, by_alias = [], set(), {}
     for alias, start, end in _blocks(lines):
-        if alias == exclude:
+        if alias == HOST_SELF_ALIAS:
+            continue  # the host's own entry: pushed below as the host
+        if alias == exclude and not with_self:
             continue
         port = user = None
         for ln in lines[start:end]:
@@ -236,7 +243,10 @@ def peers(path, known_hosts, exclude="", labels=None, host_user="", host_key_fil
             if m:
                 user = m.group(1)
         if port and user and re.match(r"^[A-Za-z0-9]", alias):
-            out.append("peer %s %s %s %s" % (alias, port, user, _label(labels.get(alias, alias), alias)))
+            if alias == exclude:
+                out.append("self %s %s %s" % (alias, port, user))
+            else:
+                out.append("peer %s %s %s %s" % (alias, port, user, _label(labels.get(alias, alias), alias)))
             ports.add(port)
             by_alias[alias] = port
     if known_hosts and os.path.exists(known_hosts):
@@ -258,13 +268,53 @@ def peers(path, known_hosts, exclude="", labels=None, host_user="", host_key_fil
             raise SshConfError("invalid host user %r" % host_user, 2)
         if not re.match(r"^\d{1,5}$", str(host_port)) or not 1 <= int(host_port) <= 65535:
             raise SshConfError("invalid host port %r" % host_port, 2)
-        out.append("peer dck-host %s %s %s" % (host_port, host_user, _label(labels.get("dck-host", "host"), "host")))
+        if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$", host_alias or ""):
+            raise SshConfError("invalid host alias %r" % host_alias, 2)
+        out.append("peer %s %s %s %s" % (host_alias, host_port, host_user,
+                                         _label(labels.get(host_alias, "host"), "host")))
         if host_key_file and os.path.exists(host_key_file):
             parts = open(host_key_file).read().split()
             if len(parts) >= 2:
                 out.append("hostkey %s %s %s" % (host_port, parts[0], parts[1]))
     out.extend(external or [])
     return "\n".join(out) + ("\n" if out else "")
+
+
+RE_CATALOG_ID = r"^[0-9a-f]{32}$"
+RE_SESSION = r"^[A-Za-z0-9._-]+$"
+
+
+def catalog_lines(machines, reachable):
+    """`catalog <id> <enabled 0|1> <session> <target> <label...>` for every entry
+    of the host's Herdr catalog whose target the payload defines (`reachable`):
+    the container gets the host's own ids, so a herdr-peers reply address
+    (`<machine id>:<pane>`) means the same machine on both sides."""
+    out = []
+    for m in machines:
+        if not isinstance(m, dict):
+            continue
+        mid, target = str(m.get("id") or ""), str(m.get("target") or "")
+        session = str(m.get("session") or "default")
+        if target not in reachable or not re.match(RE_CATALOG_ID, mid) or not re.match(RE_SESSION, session):
+            continue
+        out.append("catalog %s %s %s %s %s" % (mid, "1" if m.get("enabled", True) else "0", session,
+                                              target, _label(m.get("label"), target)))
+    return out
+
+
+def host_self(machines, port, ssh="ssh"):
+    """The host's own entry in its Herdr catalog: the machine whose alias resolves
+    (ssh -G) to a loopback address on the listener's port. None when absent."""
+    for m in machines:
+        if not isinstance(m, dict):
+            continue
+        alias = str(m.get("target") or "")
+        if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$", alias):
+            continue
+        cfg = _ssh_g(alias, ssh)
+        if cfg.get("hostname") in LOOPBACK and cfg.get("port") == str(port):
+            return m
+    return None
 
 
 EXTERNAL_PORTS = (22000, 22999)  # the loopback container-sshd convention
