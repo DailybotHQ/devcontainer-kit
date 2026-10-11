@@ -78,7 +78,7 @@ install_dck() {
         { echo "dev.sh: $f is not covered by the release SHA256SUMS" >&2; exit 1; }
     done &&
     sum -c --quiet "$work/SHA256SUMS" &&
-    ./install.sh --no-rc &&
+    bash ./install.sh --no-rc &&
     printf '%s %s\n' "$DCK_RENDERED_WITH" "$(sum "$work/SHA256SUMS" | cut -d' ' -f1)" > "$dest/RELEASE_SUMS_SHA256"
   ) || rc=$?
   rm -rf "$work"

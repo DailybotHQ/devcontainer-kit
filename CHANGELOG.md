@@ -7,6 +7,14 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.2.5] — 2026-10-11
+
+### Fixed
+
+- `install.sh` is executable in the repository, so the documented `./devcontainer-kit/install.sh`
+  works (it was mode 644 since v0.1 and failed with "permission denied"); the rendered `dev.sh`
+  runs it through `bash` in `install-dck` regardless of the mode.
+
 ## [0.2.4] — 2026-10-11
 
 Security patch for v0.2.3 (findings of its security review). Upgrade with `dck init`
@@ -337,6 +345,7 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
 [Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.4...HEAD
+[0.2.5]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.5
 [0.2.4]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.4
 [0.2.3]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.3
 [0.2.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.2
