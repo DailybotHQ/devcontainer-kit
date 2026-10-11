@@ -500,6 +500,81 @@
           }
         }
       }
+    },
+    "host_profiles": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "[agents] host_profiles (host profile): what dck up shares, names only",
+      "required": [
+        "enabled",
+        "shared",
+        "codex",
+        "skipped",
+        "env_names",
+        "notes"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "shared": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "claude",
+              "codex",
+              "pi",
+              "cline",
+              "grok",
+              "opencode"
+            ]
+          }
+        },
+        "codex": {
+          "type": "boolean",
+          "description": "the host's Codex home (@default) is shared read-write"
+        },
+        "skipped": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "cli",
+              "reason"
+            ],
+            "properties": {
+              "cli": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "env_names": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "description": "variable names in the container's env file (never values)"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }

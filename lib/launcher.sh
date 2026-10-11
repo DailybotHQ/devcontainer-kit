@@ -137,12 +137,13 @@ load_context() {
   export DCK_SSH_AGENT="1"  # read by export_host_ssh_agent
   export DCK_SSH_HOST_CONFIG="1"  # read by host_ssh_identities
   export DCK_SSH_HOST_EXTRA=""  # read by host_ssh_identities
+  DCK_HOST_PROFILES="0"  # [agents] host_profiles (host profile) with the agents layer on
   while IFS= read -r line; do
     k="${line%%=*}"; v="${line#*=}"
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HOST_LISTENER|DCK_HOST_PORT|DCK_HOST_KEY|DCK_HOST_LABEL|DCK_HOST_CONFIGURED|DCK_MESH_EXTERNAL|DCK_SSH_AUTHORIZED_EXTRA|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HOST_LISTENER|DCK_HOST_PORT|DCK_HOST_KEY|DCK_HOST_LABEL|DCK_HOST_CONFIGURED|DCK_MESH_EXTERNAL|DCK_SSH_AUTHORIZED_EXTRA|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_HOST_PROFILES|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out
@@ -199,9 +200,17 @@ resolve_backend() {
       command -v devcontainer >/dev/null 2>&1 || die "$DCK_EXIT_ENV" "DCK_BACKEND=devcontainer but the devcontainer CLI is not installed"
       BACKEND=devcontainer ;;
     auto)
-      if [ -z "$DCK_PROJECT_OVERRIDE" ] && command -v devcontainer >/dev/null 2>&1; then BACKEND=devcontainer; else BACKEND=compose; fi ;;
+      if [ -z "$DCK_PROJECT_OVERRIDE" ] && [ "${DCK_HOST_PROFILES:-0}" != "1" ] && command -v devcontainer >/dev/null 2>&1; then
+        BACKEND=devcontainer
+      else
+        BACKEND=compose
+      fi ;;
     *) die "$DCK_EXIT_USAGE" "DCK_BACKEND must be auto, compose or devcontainer" ;;
   esac
+  # The host-profiles overlay is a compose file the devcontainer CLI never reads.
+  if [ "$BACKEND" = devcontainer ] && [ "${DCK_HOST_PROFILES:-0}" = "1" ]; then
+    warn "host profiles: DCK_BACKEND=devcontainer does not apply [agents] host_profiles (use the compose backend)"
+  fi
 }
 
 require_docker() {
@@ -232,9 +241,42 @@ ensure_overlay_dir() {
 }
 
 write_overlay() {
+  write_agents_overlay
   if [ "$DC_MOUNTS" = "0" ] && [ "$DC_ENVS" = "0" ]; then return 0; fi
   ensure_overlay_dir
   dckpy devc overlay --repo "$DC_REPO" --project "$PROJECT" --out "$(overlay_path)" >/dev/null
+}
+
+# [agents] host_profiles: the host's ak profiles, Codex home and allow-listed
+# env file, through a second runtime overlay next to the first (never in the
+# repository). Written when on, removed when off; names only are printed.
+agents_overlay_path() {
+  local base="${TMPDIR:-/tmp}"
+  printf '%s/dck-%s/%s-agents.yml' "${base%/}" "$(id -u)" "$PROJECT"
+}
+
+write_agents_overlay() {
+  local f out line k v args
+  f="$(agents_overlay_path)"
+  # Off and never written: nothing to clean up.
+  if [ "${DCK_HOST_PROFILES:-0}" != "1" ] && [ ! -f "$f" ]; then return 0; fi
+  ensure_overlay_dir
+  args=(agents overlay --repo "$DC_REPO" --project "$PROJECT" --out "$f")
+  [ -n "${DCK_PROFILE_NAME:-}" ] && args+=(--profile "$DCK_PROFILE_NAME")
+  out="$(dckpy "${args[@]}")" || die "$DCK_EXIT_REFUSED" "host profiles: the overlay could not be written"
+  [ "${DCK_HOST_PROFILES:-0}" = "1" ] || return 0
+  while IFS= read -r line; do
+    k="${line%%=*}"; v="${line#*=}"
+    case "$k" in
+      shared) note "host profiles: ak profiles shared for ${v:-no CLI}" ;;
+      codex) [ "$v" = 1 ] && note "host profiles: the host's Codex home is shared (one active writer per account)" ;;
+      env) note "host profiles: env file names: ${v:-none}" ;;
+      skipped) [ -n "$v" ] && note "host profiles: not shared: $v (dck doctor says why)" ;;
+    esac
+  done <<OUT
+$out
+OUT
+  return 0
 }
 
 # NOTE: --remove-orphans is never passed and must not be added. A compose
@@ -246,6 +288,9 @@ dc() {
   for f in "${DC_COMPOSE_FILES[@]}"; do args+=(-f "$f"); done
   if { [ "$DC_MOUNTS" != "0" ] || [ "$DC_ENVS" != "0" ]; } && [ -f "$(overlay_path)" ]; then
     args+=(-f "$(overlay_path)")
+  fi
+  if [ "${DCK_HOST_PROFILES:-0}" = "1" ] && [ -f "$(agents_overlay_path)" ]; then
+    args+=(-f "$(agents_overlay_path)")
   fi
   docker compose "${args[@]}" "$@"
 }

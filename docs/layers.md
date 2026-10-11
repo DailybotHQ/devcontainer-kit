@@ -86,6 +86,75 @@ RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}
   preset (`claude-glm`, `codex-glm`, `codex-azure`, `codex-xai`, …), loaded by
   every bash the dev user starts.
 
+## Host accounts
+
+Containers can use the agent accounts you already have on the host, like git already
+works through the host's SSH agent: no login inside. Opt in once, in your **host
+profile** (`~/.config/dck/profile.toml`; a repository cannot ask for it):
+
+```toml
+[agents]
+host_profiles = true
+host_env_keys = ["OPENAI_API_KEY"]   # optional: more names for the container's env file
+```
+
+Then `dck up` (or `dck up --recreate` for a running container) adds a runtime compose
+overlay — written next to dck's other overlay under `$TMPDIR/dck-<uid>/`, never into
+the repository — that binds:
+
+| Host | Container | Mode |
+| --- | --- | --- |
+| `$AGENTKIT_PROFILES_DIR/<cli>` (default `~/.local/share/agentkit/profiles/<cli>`) for each CLI in `[agents] clis` that has host profiles: claude, codex, pi, cline, grok, opencode | `~/.dck/host/agentkit/profiles/<cli>`; `AGENTKIT_PROFILES_DIR` points there | read-write |
+| `$CODEX_HOME` or `~/.codex` (the Codex `@default` login), when codex is installed | `~/.dck/host/codex`; `~/.codex` links to it | read-write |
+| `~/.config/dck/agents/<project>.env`, generated (0600) from the host's ak env file | `~/.dck/host/agentkit/env`; `AGENTKIT_ENV` points there | read-only |
+
+- **Only the CLIs the repository installs**, and only file-portable profiles: cursor
+  (and antigravity) profiles hold absolute host symlinks and are skipped. The whole
+  `AGENTKIT_HOME` is never mounted (it would shadow the ak the image pins).
+- **Claude:** a profile logged in through the macOS keychain cannot reach a container.
+  Give each such account a long-lived token — `claude setup-token`, then store it with
+  `ak env` as `CLAUDE_CODE_OAUTH_TOKEN` (`@default`) or `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`
+  (`@name`: the name upper-cased, every character outside `A-Z0-9_` replaced by `_`;
+  `@team-b` → `CLAUDE_CODE_OAUTH_TOKEN_TEAM_B`). Those names are always in the env file.
+- **Codex:** `auth.json` is shared read-write; keep one active writer per account
+  (see [SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles)).
+- **The env file** holds only `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN_*` and
+  the names in `host_env_keys`; values are never printed. `dck up` lists the names it
+  shared; `dck doctor` reports the shared CLIs, the env file's names and the Claude
+  profiles that still need a token (it asks the host's `ak profiles --json`,
+  schema `profiles-v1`, coding-agents-kit v0.5.0+).
+- **Compose backend:** the overlay is a compose file, so with the option on `dck up`
+  uses compose even when the devcontainer CLI is installed; an editor that opens the
+  container itself does not apply it.
+- Turning the option off (or the repository's agents layer off) removes the overlay
+  and the env file at the next `dck up`; `~/.codex` goes back to its volume, whose
+  contents were kept.
+
+## Unattended agent launches
+
+An orchestrating agent (or you) must be able to start a new agent in the container —
+`ak claude`, `ak codex @work1`, a new Herdr pane — and have it work at once, with no
+first-run screen waiting for a key nobody presses. With autonomy on (the default) the
+entrypoint does this at every start, for the CLIs in `[agents] clis`:
+
+- **Folder trust for the app path** (`workspace`, `/app` by default): Claude's "trust
+  this folder" and Codex's "Trust this folder?" are pre-answered — in the container's
+  own CLI homes **and** in shared host profiles (an entry for `/app` is inert on the host).
+- **Claude's bypass-permissions acknowledgement** (and its onboarding): written **only**
+  in the container's own CLI homes — the container is the sandbox you chose for autonomy —
+  **never** in a shared host profile, which also drives your Claude on the host, where a
+  human acknowledges it once per profile.
+- With `AGENTKIT_PERMISSIONS=ask` (the opt-out, in `docker/local/<service>/.env` or in
+  ak's env file) neither is written.
+
+If a screen still appears (a CLI version that asks something new, or a host profile
+whose bypass acknowledgement was never given), the orchestrator answers it through
+Herdr, under your standing authorization: `herdr pane read <pane> --source visible` to see the screen,
+then `herdr pane send-keys <pane> <key>…` to choose the option (for Claude's folder
+question, move from the preselected "No, exit" to "Yes" before Enter). Prefer giving the
+acknowledgement once on the host (`ak claude @<name>`, accept, exit) so later launches
+never stop.
+
 ## dailybot
 
 Only when the `dailybot` addon asks for it. Renders
@@ -111,7 +180,7 @@ with the dispatcher `/usr/local/bin/dck-layer`. They run only during the
 **repository's** image build. Every download goes through one verified
 `fetch`; nothing is piped into a shell.
 
-## Status in v0.2.x
+## Status in v0.3.x
 
 The `agents` layer is verified end to end with coding-agents-kit `v0.4.0`
 (installed from its sha256-verified release tarball; `ak` interface 1, permissions

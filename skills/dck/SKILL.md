@@ -3,7 +3,7 @@ name: dck
 description: Operate a repository's development container with devcontainer-kit (dck) — render the Dev Container template (dck init), start/enter/rebuild it from a terminal (dck setup|up|shell|exec|rebuild|down), SSH in with agent forwarding, register it as a Herdr machine (dck herdr add|status|repair), and diagnose it (dck doctor --json). Use only when the user mentions dck or devcontainer-kit, a dev container / devcontainer / .devcontainer/ or docker/local/ setup they want created or operated, or a container they want as a Herdr machine. Do not use for building or deploying production images, for Kubernetes, or merely because a repository contains a Dockerfile.
 license: MIT
 metadata:
-  version: 0.2.11
+  version: 0.3.0
   interface: 2
   homepage: https://github.com/DailybotHQ/devcontainer-kit
 ---
@@ -27,7 +27,7 @@ tell the user and show the pinned install line — do not install it without
 being asked:
 
 ```bash
-git clone --branch v0.2.11 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.3.0 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh
 ```
 
@@ -48,6 +48,7 @@ git clone --branch v0.2.11 https://github.com/DailybotHQ/devcontainer-kit
 | agents inside to reach other containers | `dck herdr mesh` (also run by `dck up`): the other dck containers and the host's other loopback Herdr machines (`[mesh] external`); containers another kit manages log in with keys listed in `[ssh] authorized_extra` |
 | to list or ask agents from the host | `dck agents`, `dck ask <machine>:<pane> "<prompt>"` (herdr-peers; `dck host peers install` if missing) |
 | coding-agent CLIs inside | set `[layers] agents = true` and `[agents] clis = [...]` in `dck.toml`, `dck init` (shows the diff), `dck rebuild` |
+| the host's agent accounts inside (no login in the container) | ask the user first (it shares their credentials with the container): they set `[agents] host_profiles = true` in their **host profile** (`~/.config/dck/profile.toml`, never `dck.toml`), then `dck up --recreate`; `dck doctor` names what is shared and which Claude profiles need `claude setup-token` + `ak env` |
 | to know what is wrong | `dck doctor` (human) or `dck doctor --json` (parse `problems`) |
 
 Configuration lives in `.devcontainer/dck.toml` (per repo, committed) and
@@ -77,6 +78,13 @@ host.
 - Coding agents inside the container run through coding-agents-kit (`ak`),
   whose agents run in autonomy by default inside the container. The opt-out
   is `AGENTKIT_PERMISSIONS=ask`; never remove it once the user has set it.
+  With autonomy on, new agents start unattended: the entrypoint pre-trusts the
+  app path for Claude and Codex (bypass acknowledgement only in the container's
+  own homes, never in shared host profiles). A first-run screen that still
+  appears is answered through Herdr (`herdr pane read`, `herdr pane send-keys`)
+  under the user's standing authorization.
+- Never turn on `[agents] host_profiles` or edit `host_env_keys` yourself, and
+  never read or print `~/.config/dck/agents/*.env`.
 - Prefer `dck shell -c` / `dck exec` over raw `docker compose`: dck applies the
   right project, user, workspace and overlay, and never `--remove-orphans`.
 
@@ -92,6 +100,8 @@ What running this skill's commands may write, and nothing else:
 | your ssh-agent: your own keys that `~/.ssh/config` aliases use (`ssh-add`, `--apple-use-keychain` on macOS) | `dck up`, `dck rebuild` with `ssh_host_config` | only a key the agent lacks; asks for its passphrase on a terminal |
 | the container's `~/.ssh/config.d/dck-host`, `dck-host-keys/*.pub`, `known_hosts.dck-host` (public data from your `~/.ssh`) | `dck up`, `dck rebuild` with `ssh_host_config` | never a private key |
 | `~/.config/dck/` (dedicated SSH key, dck known_hosts, profiles) | `dck setup`, `dck up`, `dck ssh` | first use |
+| `~/.config/dck/agents/<project>.env` (0600, allow-listed names from your ak env file) and `$TMPDIR/dck-<uid>/<project>-agents.yml` | `dck up`, `dck start/restart/build/rebuild` | only with `[agents] host_profiles` in your host profile; removed when it is off |
+| the app path's folder-trust entry in the shared host ak profiles' Claude/Codex config | the container's entrypoint | with `[agents] host_profiles` and autonomy on; inert on the host |
 | `~/.ssh/config.d/dck` (provenance-guarded) and one `Include config.d/dck` line at the top of `~/.ssh/config` | `dck herdr add/repair/remove` | only for Herdr machines |
 | Herdr's saved machines | the `herdr` CLI, called by `dck herdr …` | only for Herdr machines |
 | `~/.config/dck/host-listener/` (sshd config, its host key, authorized_keys with only the dck key) and `~/Library/LaunchAgents/com.dailybothq.dck.host-listener.plist` | `dck host listener enable`, or a yes in `dck setup` | macOS, opt-in; `dck host listener disable` removes them |

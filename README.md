@@ -26,7 +26,9 @@ that setup done once, as a tool, with safe defaults and tests. Built on the
   [herdr-peers](https://github.com/DailybotHQ/herdr-peers), gh, git over SSH through the
   host's agent (no key copied in), and — opt-in — every coding agent through
   [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit) (`ak`, autonomy by
-  default, with the familiar `claudex` / `codex-glm` names);
+  default, with the familiar `claudex` / `codex-glm` names) that starts unattended and,
+  opt-in from your host profile (`[agents] host_profiles`), uses the host's own accounts
+  with no login inside;
 - **Herdr, both ways**: the host Herdr attaches the container as a machine and it opens
   with the standard sidebar (App · Editor · Development · Agents); agents inside ask and
   answer agents on the host (through an opt-in loopback listener, `dck host listener`),
@@ -43,7 +45,7 @@ Requires bash 3.2+ and python3 ≥ 3.11 on a Linux or macOS host; Docker (Deskto
 colima or Engine) with Compose v2 for the container verbs.
 
 ```bash
-git clone --branch v0.2.11 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.3.0 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh          # --no-rc for scripted installs, --uninstall to remove
 dck --version
 ```
@@ -139,7 +141,8 @@ each item is one check:
 Loopback-only ports; the host's SSH agent (forwarded or the Docker Desktop socket),
 never key copies or a mounted `~/.ssh`; host keys generated at runtime, never baked;
 coding agents in autonomy by default inside the container — the sandbox — with an
-`AGENTKIT_PERMISSIONS=ask` opt-out; no `cap_add`/`privileged`/Docker socket in the template; `.env`
+`AGENTKIT_PERMISSIONS=ask` opt-out; the host's agent accounts shared only when your host
+profile opts in, never at a repository's request; no `cap_add`/`privileged`/Docker socket in the template; `.env`
 files 0600 and never printed; every image input pinned by version and checksum;
 repository configuration that reaches the host needs `--trust`. Report vulnerabilities
 privately — see [SECURITY.md](SECURITY.md).

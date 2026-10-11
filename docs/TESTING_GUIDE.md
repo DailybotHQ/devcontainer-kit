@@ -36,6 +36,7 @@ change touches shared code (`lib/common.sh`, `lib/dckpy.py`, `bin/dck`).
 | `entrypoint` | `lib/entrypoint.sh` (sandbox root, fake `sshd`) | no |
 | `launcher` | `bin/dck`, `bin/devcontainer-kit`, `lib/*.sh`, `install.sh` (fake `docker`/`devcontainer`) | no |
 | `layers` | the agents/editor/dailybot layers in the template and entrypoint | no |
+| `agents` | `[agents] host_profiles`: `lib/hostagents.py`, the runtime overlay and env file (`lib/launcher.sh`), the doctor's report, the entrypoint's host Codex home and `dck_agent_trust` (fake `docker`, a fake host `ak profiles --json`) | no |
 | `herdr` | `lib/herdr.sh`, `lib/sshconf.py` (fake `herdr`/`ssh`/`docker`, sandbox `~/.ssh`) | no |
 | `doctor` | `lib/doctor.py`, `lib/doctor.sh`, `docs/schema/dck-doctor-v2.json` (validated by `tests/py/minischema.py`), `skills/dck/` | no |
 | `security` | static posture checks over `src/template/`, `images/`, `lib/` | no |
@@ -69,7 +70,14 @@ assertion, is a failure.
 
 - **Sandbox, never the real home.** `HOME`, every XDG base directory and git's
   global/system config point into a per-test temporary directory; `DCK_*`
-  variables from the caller are cleared. Nothing is installed anywhere.
+  variables from the caller are cleared, and so are `AGENTKIT_*`, `HERDR_*`,
+  `CLAUDE_*`, `CODEX_*`, the vendors' `*_API_KEY`/`*_TOKEN`/`*_SECRET` variables.
+  Nothing is installed anywhere.
+- **PATH-hermetic.** The runner hides the developer's own ecosystem tools — `ak`,
+  `agentkit`, `herdr`, `herdr-peers`, `dck`, the agent CLIs (`DCK_TEST_HIDDEN` in
+  `tests/run.sh`): each `PATH` directory holding one is replaced by a mirror of its
+  other executables, so docker, the devcontainer CLI, python3 and git still resolve.
+  A test that needs one of them uses a fake.
 - **No network** in the unit scopes. The `docker` scope pulls base images and
   release assets because building an image does. It runs with the sandbox
   `HOME` (docker reads an empty `$HOME/.docker`) and `DCK_SSH_CONFIG=/dev/null`,

@@ -67,7 +67,7 @@ mesh = true                    # dck up runs `dck herdr mesh` (Docker Desktop on
 | `layers.agents` | boolean | `false` | see [layers.md](layers.md) |
 | `layers.dailybot` | boolean | `false` | see [layers.md](layers.md) |
 | `layers.editor` | boolean | `true` | see [layers.md](layers.md) |
-| `agents.clis` | array | `[]` | kinds from `claude codex cursor opencode pi cline grok`, no duplicates; a warning when set while `layers.agents` is false |
+| `agents.clis` | array | `[]` | kinds from `claude codex cursor opencode pi cline grok`, no duplicates; a warning when set while `layers.agents` is false. Also the CLIs whose host accounts `agents.host_profiles` (host profile) shares |
 | `herdr.machine` | boolean | `false` | requires a non-zero `ssh_port` |
 | `herdr.label` | string | `{repo}` | 1–64 chars; placeholders `{repo}` `{service}` `{project}` `{user}` |
 | `herdr.layout` | string | `standard` | `standard` (App · Editor · Development · Agents, created by `dck up`) or `none` ([herdr.md](herdr.md)) |
@@ -102,6 +102,9 @@ host_key = ""                      # the listener's public ed25519 host key ("" 
 label = "host"                     # the host's Herdr label inside containers
 [mesh]
 external = true                    # also push the host's other loopback Herdr machines
+[agents]
+host_profiles = false              # true → containers use the host's agent accounts (opt-in)
+host_env_keys = []                 # extra names copied into the container's ak env file
 ```
 
 | Key | Type | Default | Rule |
@@ -121,6 +124,8 @@ external = true                    # also push the host's other loopback Herdr m
 | `labels.machine` | string | `{repo}` | same placeholders as `herdr.label` |
 | `ssh.identity` | string | `~/.config/dck/ssh/id_ed25519` | `~` expands to `$HOME` |
 | `ssh.host_extra` | array of strings | `[]` | aliases or host names beyond the git hosting services whose `~/.ssh/config` blocks `ssh_host_config` also copies into containers. Host-side only — a repository's `dck.toml` cannot set it. Every container with the agent socket can then reach those hosts as you |
+| `agents.host_profiles` | boolean | `false` | `dck up` shares the host's agent accounts with containers whose repository turns `layers.agents` on: the host's ak profiles (`$AGENTKIT_PROFILES_DIR/<cli>`, default `~/.local/share/agentkit/profiles/<cli>`) of the CLIs in that repository's `agents.clis` — claude, codex, pi, cline, grok, opencode; never cursor, whose profiles hold absolute host symlinks — the host's Codex home (`$CODEX_HOME` or `~/.codex`) when codex is installed, and an allow-listed env file, read-only. Through a runtime compose overlay, never written into the repository; uses the compose backend. Host-side only — a repository's `dck.toml` cannot set it. See [layers.md](layers.md#host-accounts) and [SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles) |
+| `agents.host_env_keys` | array of strings | `[]` | variable names (`^[A-Z_][A-Z0-9_]*$`, or a `NAME_*` prefix; at most 64) copied from the host's ak env file into the container's, besides the default `CLAUDE_CODE_OAUTH_TOKEN` and `CLAUDE_CODE_OAUTH_TOKEN_*`. Values never appear in compose files, logs or `dck doctor` |
 | `ssh.authorized_extra` | array of strings | `[]` | public key files (paths ending in `.pub`, at most 16) added to the dck block of every container's `authorized_keys` at `dck up`, for clients that log in with your own keys (for example containers another kit manages). Host-side only; each listed key can open a shell in your containers |
 
 ## Precedence
@@ -128,6 +133,10 @@ external = true                    # also push the host's other loopback Herdr m
 - The repo file decides everything about the container; the profile decides
   host-side naming (project prefix, network, SSH alias, label format, key).
 - `herdr.label` in the repo wins over `labels.machine` in the profile.
+- Credentials are the host's decision: `agents.host_profiles` and `agents.host_env_keys`
+  are read from the profile only; in a repository's `dck.toml` they are ignored with a
+  warning. The repository still decides *which* CLIs exist (`agents.clis`), so only
+  their accounts are shared.
 - The repo **slug** is the directory name lower-cased with every character
   outside `[a-z0-9_-]` replaced by `-` (`My Repo` → `my-repo`).
 

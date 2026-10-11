@@ -39,6 +39,8 @@ RE_PROFILE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$"
 RE_PREFIX = r"^([a-z0-9][a-z0-9_-]{0,31})?$"
 RE_NETWORK = r"^([A-Za-z0-9][A-Za-z0-9_.-]{0,62})?$"
 RE_ALIAS_PREFIX = r"^[a-z0-9][a-z0-9._-]{0,31}$"
+# An environment variable name, or a name prefix ending in "*" (FOO_*).
+RE_ENV_NAME = r"^[A-Z_][A-Z0-9_]{0,127}\*?$"
 
 # key path -> (type, default, constraint). "required" defaults are REQUIRED.
 REQUIRED = object()
@@ -89,8 +91,16 @@ PROFILE_RULES = {
     "host.label": ("label", "host", ("placeholders", LABEL_PLACEHOLDERS)),
     # The mesh also pushes the host's other loopback Herdr machines.
     "mesh.external": ("bool", True, None),
+    # The host's agent accounts inside containers (docs/config.md): the ak
+    # profiles of the CLIs a repository installs, the host's Codex home and an
+    # allow-listed env file. Host profile only — a repository cannot ask for
+    # your credentials.
+    "agents.host_profiles": ("bool", False, None),
+    "agents.host_env_keys": ("env_name_list", [], ("pattern", RE_ENV_NAME)),
 }
-TABLES = {"repo": ("layers", "agents", "herdr"), "profile": ("labels", "ssh", "host", "mesh")}
+TABLES = {"repo": ("layers", "agents", "herdr"), "profile": ("labels", "ssh", "host", "mesh", "agents")}
+# Keys only the host profile may set; in a repository's dck.toml they are ignored.
+HOST_ONLY_REPO_KEYS = ("agents.host_profiles", "agents.host_env_keys")
 
 # Where each listener kind listens and which public host key pins it.
 LISTENER_DEFAULT_PORT = {"dck": 22033, "remote-login": 22, "external": 0}
@@ -179,6 +189,15 @@ def _check(key, value, rule, problems):
                 bad("invalid public key file %r (a path ending in .pub, no whitespace, glob characters or ..)" % item)
         if len(value) > 16:
             bad("at most 16 keys")
+    elif kind == "env_name_list":
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            return bad("expected an array of variable names, got %s" % _type_name(value))
+        for item in value:
+            if not re.match(carg, item):
+                bad("invalid variable name %r (upper-case letters, digits and _, "
+                    "optionally ending in * for a prefix)" % item)
+        if len(value) > 64:
+            bad("at most 64 names")
     elif kind == "kind_list":
         if not isinstance(value, list):
             return bad("expected an array of strings, got %s" % _type_name(value))
@@ -210,7 +229,10 @@ def validate(data, kind="repo", path="dck.toml"):
     problems, warnings = [], []
     flat = _flatten(data, TABLES[kind], problems)
     for key in flat:
-        if key not in rules:
+        if kind == "repo" and key in HOST_ONLY_REPO_KEYS:
+            warnings.append("%s: %s is a host-profile setting (~/.config/dck/profile.toml); "
+                            "a repository cannot set it — ignored" % (path, key))
+        elif key not in rules:
             warnings.append("%s: unknown key %s ignored" % (path, key))
     effective = {}
     for key, rule in rules.items():
@@ -370,6 +392,8 @@ def effective(repo, default_tag, profile_name=None, env=None):
         "alias": prof["alias_prefix"] + rslug,
         "ssh_identity": expand_home(prof["ssh.identity"], env),
         "ssh_host_extra": list(prof["ssh.host_extra"]),
+        "host_profiles": bool(prof["agents.host_profiles"]),
+        "host_env_keys": list(prof["agents.host_env_keys"]),
     })
     merged.update(host_settings(prof, env))
     merged["herdr.label"] = expand_label(label_fmt, {

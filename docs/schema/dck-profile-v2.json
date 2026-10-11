@@ -128,6 +128,27 @@
           "description": "the mesh also pushes the host's other loopback Herdr machines (ports 22000-22999, ed25519 key in your known_hosts), mirroring enabled/disabled"
         }
       }
+    },
+    "agents": {
+      "type": "object",
+      "description": "the host's agent accounts inside containers (docs/config.md); host profile only",
+      "properties": {
+        "host_profiles": {
+          "type": "boolean",
+          "default": false,
+          "description": "dck up mounts the host's ak profiles of the CLIs the repository installs (claude codex pi cline grok opencode), the host's ~/.codex when codex is installed, and an allow-listed env file read-only"
+        },
+        "host_env_keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z_][A-Z0-9_]{0,127}\\*?$"
+          },
+          "maxItems": 64,
+          "default": [],
+          "description": "variable names (or NAME_* prefixes) copied from the host's ak env file into the container's env file, besides CLAUDE_CODE_OAUTH_TOKEN and CLAUDE_CODE_OAUTH_TOKEN_*"
+        }
+      }
     }
   }
 }
