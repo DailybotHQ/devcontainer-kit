@@ -7,6 +7,21 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.2.10] — 2026-10-11
+
+### Changed
+
+- **The agents layer installs coding-agents-kit v0.4.0** (`AGENTKIT_TAG`, verified by
+  `AGENTKIT_SHA256`): `ak usage` shows the quota and usage of every account and profile,
+  and `ak setup` probes, verifies and repairs the kit, inside the container as on the host.
+
+### Fixed
+
+- The agents layer runs the `ak` it just installed, not whichever `ak` is first on `PATH`
+  (an older copy in an image, or the host's during the tests).
+
+Upgrade with `dck init` and `bash dev.sh rebuild`.
+
 ## [0.2.9] — 2026-10-11
 
 ### Changed
@@ -403,6 +418,7 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
 [Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.6...HEAD
+[0.2.10]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.10
 [0.2.9]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.9
 [0.2.8]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.8
 [0.2.7]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.7
