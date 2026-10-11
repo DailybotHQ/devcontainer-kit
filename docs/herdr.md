@@ -97,8 +97,9 @@ sessions keep running) and the include block.
 - edit Herdr's own files (`~/.config/herdr`, `~/.local/state/herdr`, its
   endpoint catalogs) — it only calls the `herdr` CLI;
 - copy a private key into a container, or authorize "every `~/.ssh/*.pub`";
-- add a listener or an `authorized_keys` entry on your host (`host_machine`
-  only tells the mesh about your host's own sshd, when you run one).
+- add a listener or an `authorized_keys` entry on your host **unless you ask
+  for it**: the dck host listener (below) is opt-in — `dck setup` asks once,
+  `dck host listener enable|disable` turns it on and off.
 
 ## Inside the container
 
@@ -126,7 +127,7 @@ says so and skips. It widens trust between your containers — read
 [SECURITY.md](SECURITY.md) first for untrusted repositories.
 
 ```bash
-dck herdr mesh      # make every other dck container (and the host, with host_machine) reachable from inside
+dck herdr mesh      # make the other dck containers, the host ([host] machine) and the host's other loopback machines reachable from inside
 dck agents          # herdr-peers list: the live agents on every machine
 dck ask dck-other:w1:p2 "Which test covers the parser?"   # herdr-peers ask, with the reply grant
 ```
@@ -138,13 +139,44 @@ dck ask dck-other:w1:p2 "Which test covers the parser?"   # herdr-peers ask, wit
   - its pinned host key (from dck's `known_hosts`);
   - its Herdr label.
 
+  - with `[mesh] external = true` (the default), every **other** machine in
+    your host Herdr whose SSH alias resolves (`ssh -G`) to a loopback address
+    on a port in 22000-22999 — for example containers another kit manages —
+    with its label, its enabled/disabled state and the ed25519 key **your**
+    `~/.ssh/known_hosts` already pins (no pinned key: skipped, with a note).
+
   Inside, `dck_mesh_apply` writes `~/.ssh/config.d/dck-peers`
   (`HostName host.docker.internal`, `ForwardAgent no`, strict host keys),
-  the pinned `known_hosts.dck-peers` and a Herdr machine per peer.
-- **The host as a peer.** Set `host_machine = true` in your host profile.
-  The host is then reachable as `dck-host` (`host.docker.internal:22`, your
-  user, the host's ed25519 host key). This needs Remote Login (sshd) on the
-  host, and your key in its `authorized_keys`.
+  the pinned `known_hosts.dck-peers` and a Herdr machine per peer, enabled or
+  disabled as on the host. Herdr's saved machines live on the `state` volume,
+  so they survive `rebuild`.
+- **Every running container learns about the others.** After updating its own
+  container, `dck herdr mesh` re-applies the mesh to every other running dck
+  container over its alias (`ForwardAgent no`), so a container started earlier
+  sees one started later.
+- **The host as a peer** (`[host]` in your profile, see
+  [config.md](config.md)). The host is reachable inside as `dck-host`
+  (`host.docker.internal:<port>`, your user, pinned by the listener's ed25519
+  host key). Three ways to give it a listener:
+  - `listener = "dck"` (default): **`dck host listener enable`** (macOS) runs a
+    user-level sshd on `127.0.0.1:22033` with its own host key, authorizing
+    **only the dck key**, kept alive by a launchd agent
+    (`~/Library/LaunchAgents/com.dailybothq.dck.host-listener.plist`, files in
+    `~/.config/dck/host-listener/`). `dck setup` offers it once on a terminal
+    and records your answer (`[host] machine`). `dck host listener status`
+    shows it; `disable` removes it.
+  - `listener = "external"` with `port` and `host_key`: a loopback listener
+    you already run (for example one another kit set up); dck writes nothing on
+    the host.
+  - `listener = "remote-login"`: the system sshd on port 22, with your key in
+    your own `authorized_keys`.
+- **Containers another kit manages reaching dck containers.** They usually log
+  in with your own keys, which dck containers do not accept by default: list
+  their public files in `[ssh] authorized_extra` (host profile) and run
+  `dck up`.
+- **herdr-peers on the host.** `dck setup` installs a verified copy (the
+  images' pin) in `~/.local/share/dck-host/herdr-peers/<tag>` when Herdr is on
+  the host; `dck agents` and `dck ask` use it (`dck host peers install|status`).
 - **Credentials.** No private key enters the container. Hops out of it
   authenticate with keys held by the host's ssh-agent, reached through
   agent forwarding (Herdr and `dck ssh` sessions) or the mounted agent

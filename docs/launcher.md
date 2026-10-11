@@ -19,7 +19,7 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
 | Verb | What it does |
 | --- | --- |
 | `init [flags]` | render or reconcile the template ([init.md](init.md)) |
-| `setup` | create each `docker/local/**/.env` from its `.env.example` at **0600** (an existing readable one is narrowed to 0600, loudly), create missing external networks, create the dedicated dck SSH key |
+| `setup` | create each `docker/local/**/.env` from its `.env.example` at **0600** (an existing readable one is narrowed to 0600, loudly), create missing external networks, create the dedicated dck SSH key; with Herdr on the host, install a verified herdr-peers for it and, once on a terminal (macOS), offer the host listener ([herdr.md](herdr.md)) |
 | `up [--recreate] [svc…]` | start `runServices`, detached. A second `up` leaves running containers alone; `--recreate` applies compose changes. Registers the Herdr machine afterwards when `dck.toml` says so ([herdr.md](herdr.md)) |
 | `down [svc…]` | stop and remove this repository's services — never `compose down`; named volumes and the project network are kept (the next `up` reuses them). To retire a repository completely: `docker volume rm <project>_state …` and `docker network rm <project>_default` |
 | `stop` / `start` / `restart` `[svc…]` | as compose; `stop` skips the environment checks so a stack can always be stopped |
@@ -33,7 +33,10 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
 | `ports` | the published loopback ports and whether the service runs |
 | `ssh [cmd…]` | SSH into the container with **agent forwarding** (see below) |
 | `doctor [--json] [--strict]` | environment and repository health, interface 2; `--strict` exits 1 while `problems` is not empty ([doctor.md](doctor.md)) |
-| `herdr add\|status\|repair\|remove\|mesh` | the container as a Herdr machine; `mesh` makes the other dck containers reachable from inside ([herdr.md](herdr.md)) |
+| `herdr add\|status\|repair\|remove\|mesh` | the container as a Herdr machine; `mesh` makes the other dck containers, the host and the host's other loopback machines reachable from inside, and refreshes every running dck container ([herdr.md](herdr.md)) |
+| `host listener enable\|disable\|status` | the host as a mesh peer: an opt-in loopback sshd (macOS, launchd) that accepts only the dck key ([herdr.md](herdr.md), [SECURITY.md](SECURITY.md)) |
+| `host peers install\|status` | herdr-peers for the host, verified against its release `SHA256SUMS`; used by `agents` and `ask` |
+| `agents`, `ask <machine>:<pane> "<prompt>"` | herdr-peers `list` / `ask` from the host |
 | `herdr layout [--keep\|--reset]` | the standard sidebar inside: Home · Editor · Development · Agents ([herdr.md](herdr.md)) |
 | `--skill`, `--version`, `help` | the bundled agent skill, the version, usage |
 
@@ -114,7 +117,7 @@ entrypoint). `dck ssh` connects to `127.0.0.1:<ssh_port>` with:
 ## Install
 
 ```bash
-git clone --branch v0.2.2 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.2.3 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh            # or --no-rc for scripted installs
 ```
 

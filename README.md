@@ -28,8 +28,10 @@ that setup done once, as a tool, with safe defaults and tests. Built on the
   [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit) (`ak`, autonomy by
   default, with the familiar `claudex` / `codex-glm` names);
 - **Herdr, both ways**: the host Herdr attaches the container as a machine and it opens
-  with the standard sidebar (Home · Editor · Development · Agents); agents inside can ask
-  agents on the host and in other containers;
+  with the standard sidebar (Home · Editor · Development · Agents); agents inside ask and
+  answer agents on the host (through an opt-in loopback listener, `dck host listener`),
+  in the other dck containers and in the host's other loopback containers — and they
+  ask back. Machines registered inside survive `rebuild`;
 - **the `dck-dockerfile` skill**: an agent creates or regenerates a repository's
   container on request and proves it with a real build;
 - **an entrypoint library** (persistent volumes, SSH, environment for SSH sessions,
@@ -41,7 +43,7 @@ Requires bash 3.2+ and python3 ≥ 3.11 on a Linux or macOS host; Docker (Deskto
 colima or Engine) with Compose v2 for the container verbs.
 
 ```bash
-git clone --branch v0.2.2 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.2.3 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh          # --no-rc for scripted installs, --uninstall to remove
 dck --version
 ```
@@ -97,7 +99,9 @@ each item is one check:
    `dck herdr status`.
 4. **Agents talk across machines** — inside, `herdr-peers list` shows the agents on the
    host and the other containers, and an `herdr-peers ask` gets its reply back:
-   `bash dev.sh agents`.
+   `bash dev.sh agents`. The host is a peer once you accept the listener `dck setup`
+   offers (or `dck host listener enable`); `dck setup` also installs a verified
+   herdr-peers for the host, so `dck agents` / `dck ask` work there too.
 5. **Git over SSH, no key inside** — `bash dev.sh shell -c 'ssh-add -l && git config user.name'`
    shows your agent's keys and your identity; `ssh -T git@github.com` greets you, and your
    `~/.ssh/config` aliases (`git@github.com-work:…`) work the same inside.
