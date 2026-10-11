@@ -194,16 +194,19 @@ herdr-peers connect them across machines, DeepWorkPlan Vim is the editor.
 
 ## Part of the DeepWorkPlan ecosystem
 
+[DeepWorkPlan](https://deepworkplan.com) turns any repository into an AI-first,
+agent-pilotable codebase. These projects ship together; every addon is optional.
+
 | Repository | Role | Purpose |
 | --- | --- | --- |
-| [deepworkplan-skill](https://github.com/DailybotHQ/deepworkplan-skill) | pack | the DeepWorkPlan methodology as an installable agent skill: plans, gates, addons |
-| [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit) | addon | one command surface for every terminal coding agent, its accounts and profiles (`ak`) |
-| [devcontainer-kit](https://github.com/DailybotHQ/devcontainer-kit) (this repository) | addon | an agent-ready development container for any repository (`dck`) |
-| [herdr-peers](https://github.com/DailybotHQ/herdr-peers) | addon | agents in Herdr panes ask each other across machines and get one authorized reply |
-| [deepworkplan-vim](https://github.com/DailybotHQ/deepworkplan-vim) | addon | DeepWorkPlan's editor: a Neovim configuration for humans and terminal agents |
-| [ai-diff-reviewer](https://github.com/DailybotHQ/ai-diff-reviewer) | addon | AI review of every pull request, in CI and locally |
-| [agent-skill](https://github.com/DailybotHQ/agent-skill) | addon | Dailybot's agent skill pack: progress reports, check-ins and team messages from agents |
-| [deepworkplan.com](https://deepworkplan.com) | site | the methodology, the specification and the kit catalog |
+| [deepworkplan-skill](https://github.com/DailybotHQ/deepworkplan-skill) | Pack | The methodology, specification and kit as an installable agent skill |
+| [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit) | Addon: agentkit | One command for every coding agent: accounts, quota, `ak pick`, headless runs |
+| [devcontainer-kit](https://github.com/DailybotHQ/devcontainer-kit) (this repository) | Addon: devcontainer | A reproducible dev container per repository, wired to Herdr and the host's accounts |
+| [herdr-peers](https://github.com/DailybotHQ/herdr-peers) | Addon: Herdr | Ask an agent in another Herdr pane, on any machine, and get one authorized reply |
+| [deepworkplan-vim](https://github.com/DailybotHQ/deepworkplan-vim) | Addon: DeepWorkPlan Vim | The terminal editor for plans: plan browser, lanes view, Markdown viewer |
+| [ai-diff-reviewer](https://github.com/DailybotHQ/ai-diff-reviewer) | Required local review | Reviews a change set locally and in CI; every Final Review runs it |
+| [agent-skill](https://github.com/DailybotHQ/agent-skill) | Addon: Dailybot | The Dailybot agent skill: progress reports, check-ins, chat and more |
+| [deepworkplan.com](https://deepworkplan.com) ([source](https://github.com/DailybotHQ/deepworkplan-website)) | Site and hub | The methodology, specification, kit catalog and `/init.md`; coordinates the ecosystem |
 
 ## Documentation
 
