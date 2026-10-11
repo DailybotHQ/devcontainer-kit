@@ -365,12 +365,12 @@ test_layout_creates_the_standard_sidebar() {
   rm -f "$SANDBOX/layout.json"
   LAYOUT_ARGS=--keep layout
   assert_rc 0 "the layout is created"
-  assert_eq "$(lstate '[w["label"] for w in s["ws"]]')" "['Home', 'Editor', 'Development', 'Agents']" "four workspaces: Home, Editor, Development, Agents"
+  assert_eq "$(lstate '[w["label"] for w in s["ws"]]')" "['App', 'Editor', 'Development', 'Agents']" "four workspaces: App, Editor, Development, Agents"
   assert_eq "$(lstate '[t["label"] for w in s["ws"] if w["label"]=="Development" for t in w["tabs"]]')" "['Development']" "Development has one tab, labelled Development"
   assert_eq "$(lstate 'sum(len(t["panes"]) for w in s["ws"] if w["label"]=="Development" for t in w["tabs"])')" "2" "Development is server | tests"
   assert_eq "$(lstate '[t["label"] for w in s["ws"] if w["label"]=="Agents" for t in w["tabs"]]')" "['Agent 1', 'Agent 2', 'Agent 3', 'Agent 4']" "Agents has tabs Agent 1..4"
-  assert_eq "$(lstate 'sorted(s["names"].values())')" "['editor', 'home', 'server', 'tests']" "panes are named home, editor, server, tests"
-  assert_eq "$(lstate 'next(w["label"] for w in s["ws"] if w["id"]==s["focused"])')" "Home" "Home has the focus at the end"
+  assert_eq "$(lstate 'sorted(s["names"].values())')" "['app', 'editor', 'server', 'tests']" "panes are named app, editor, server, tests"
+  assert_eq "$(lstate 'next(w["label"] for w in s["ws"] if w["id"]==s["focused"])')" "App" "App has the focus at the end"
   assert_not_contains "$(fake_calls herdr)" "--focus " "nothing is created with focus"
   assert_eq "$(grep -c -- 'create.*--no-focus' "$DCK_FAKE_LOG")" "$(grep -c 'herdr workspace create\|herdr tab create' "$DCK_FAKE_LOG")" "every create uses --no-focus"
   assert_not_contains "$(fake_calls herdr)" "agent start" "the layout starts no program"
@@ -405,18 +405,30 @@ test_layout_reset_touches_only_the_standard_workspaces() {
   python3 -c 'import json,sys; p=sys.argv[1]; s=json.load(open(p)); s["ws"]+= [{"id":"wapp","label":"app","tabs":[{"id":"tapp","label":"1","panes":["papp"]}]},{"id":"wold","label":"Home (~)","tabs":[{"id":"told","label":"1","panes":["pold"]}]}]; json.dump(s,open(p,"w"))' "$SANDBOX/layout.json"
   LAYOUT_ARGS=--reset layout
   assert_rc 0 "--reset succeeds"
-  assert_eq "$(lstate 'sorted(w["label"] for w in s["ws"])')" "['Agents', 'Development', 'Editor', 'Home', 'app']" "--reset recreates the four and keeps other workspaces; the legacy Home (~) is closed"
+  assert_eq "$(lstate 'sorted(w["label"] for w in s["ws"])')" "['Agents', 'App', 'Development', 'Editor', 'app']" "--reset recreates the four and keeps other workspaces; the legacy Home (~) is closed"
   LAYOUT_ARGS="--keep --reset" layout
   assert_rc 2 "--keep with --reset is a usage error"
   LAYOUT_ARGS="" layout
   assert_rc 0 "no flag without a TTY keeps"
 }
 
+test_layout_renames_home_and_drops_the_default_home_workspace() {
+  # An earlier layout (Home) plus Herdr's auto-created "~" (one idle pane) and a
+  # "~" a user is working in (an agent): Home becomes App, only the idle ~ goes.
+  python3 -c 'import json,sys; json.dump({"n":50,"ws":[{"id":"w0","label":"~","tabs":[{"id":"t0","label":"1","panes":["p0"]}]},{"id":"wbusy","label":"~","agent":"working","tabs":[{"id":"tb","label":"1","panes":["pb"]}]},{"id":"wh","label":"Home","tabs":[{"id":"th","label":"1","panes":["ph"]}]}]},open(sys.argv[1],"w"))' "$SANDBOX/layout.json"
+  LAYOUT_ARGS=--keep layout
+  assert_rc 0 "the layout runs over an earlier one"
+  assert_eq "$(lstate '[w["id"] for w in s["ws"] if w["label"]=="App"]')" "['wh']" "the earlier Home is kept, renamed App"
+  assert_eq "$(lstate 'sorted(w["id"] for w in s["ws"] if w["label"]=="~")')" "['wbusy']" "the idle default ~ is closed; a ~ with an agent is kept"
+  assert_contains "$RUN_OUT" "renamed Home to App" "the rename is reported"
+  assert_contains "$RUN_OUT" "ready — App · Editor · Development · Agents" "the summary names the App layout"
+}
+
 test_layout_runs_inside_the_container() {
   mk_repo
   d herdr layout --reset
   assert_rc 0 "dck herdr layout runs"
-  assert_contains "$(fake_calls docker)" "exec -T --user dev -e HOME=/home/dev -e USER=dev -e LOGNAME=dev -e DCK_LAYOUT_CWD=/workspace app dck-herdr-layout --reset" "it runs inside the service as the container user"
+  assert_contains "$(fake_calls docker)" "exec -T --user dev -e HOME=/home/dev -e USER=dev -e LOGNAME=dev -e DCK_LAYOUT_CWD=/app app dck-herdr-layout --reset" "it runs inside the service as the container user"
   d herdr layout --bogus
   assert_rc 2 "an unknown layout flag is a usage error"
   : > "$DCK_FAKE_LOG"

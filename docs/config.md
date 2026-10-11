@@ -30,7 +30,7 @@ like every other change.
 interface = 2
 service = "app"                # compose service the tools attach to
 user = "dev"                   # remoteUser
-workspace = "/workspace"       # workspaceFolder
+workspace = "/app"             # workspaceFolder: every Herdr workspace and pane opens here
 flavour = "node-24"            # python-3.13 | node-24 | debian (official image, digest-pinned)
 # base_image = "node:22.20.0-trixie-slim@sha256:<64 hex>"   # optional override, digest required
 ssh_agent = true               # share the host's SSH agent (git over SSH); keys never enter
@@ -55,7 +55,7 @@ mesh = true                    # dck up runs `dck herdr mesh` (Docker Desktop on
 | `interface` | integer | **required** | `2`; `1` is read for migration only (warning; `dck init` rewrites it); another value is refused |
 | `service` | string | **required** | compose service name, `^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$` |
 | `user` | string | `dev` | `^[a-z_][a-z0-9_-]{0,31}$`; the base images create `dev` with uid 1000 |
-| `workspace` | string | `/workspace` | absolute path of safe characters |
+| `workspace` | string | `/app` | absolute path of safe characters; the app path: the repository mount, and where every Herdr workspace and new pane opens (`new_cwd`) |
 | `flavour` | string | **required** | `python-3.13`, `node-24` or `debian` |
 | `base_image` | string | the flavour's pin in `versions.env` | an official image pinned by digest: `name[:tag]@sha256:<64 hex>`, no registry host |
 | `image_tag` | string | — | interface 1 only; ignored since v0.2.0 (warning), removed by `dck init` |
@@ -70,7 +70,7 @@ mesh = true                    # dck up runs `dck herdr mesh` (Docker Desktop on
 | `agents.clis` | array | `[]` | kinds from `claude codex cursor opencode pi cline grok`, no duplicates; a warning when set while `layers.agents` is false |
 | `herdr.machine` | boolean | `false` | requires a non-zero `ssh_port` |
 | `herdr.label` | string | `{repo}` | 1–64 chars; placeholders `{repo}` `{service}` `{project}` `{user}` |
-| `herdr.layout` | string | `standard` | `standard` (Home · Editor · Development · Agents, created by `dck up`) or `none` ([herdr.md](herdr.md)) |
+| `herdr.layout` | string | `standard` | `standard` (App · Editor · Development · Agents, created by `dck up`) or `none` ([herdr.md](herdr.md)) |
 | `herdr.mesh` | boolean | `true` | `dck up` runs `dck herdr mesh`: agents inside reach the other dck containers (and the host, with `host_machine`). Docker Desktop only; widens trust between containers ([SECURITY.md](SECURITY.md)) |
 
 ## Host profile

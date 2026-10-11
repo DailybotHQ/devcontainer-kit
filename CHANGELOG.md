@@ -7,6 +7,20 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.2.9] — 2026-10-11
+
+### Changed
+
+- **The Herdr layout is App · Editor · Development · Agents.** The first workspace is now
+  App (an existing Home is renamed on `--keep`), and the `~` workspace Herdr's server opens
+  in the home directory before the layout runs is closed while it still holds one idle pane.
+- **Every workspace and pane opens in the app path.** Herdr's `new_cwd` follows `dck.toml`
+  `workspace` (the image's seeded `/workspace` is repaired), so panes opened later with
+  Herdr's "new" start there too; `dck init` now defaults `workspace` to `/app`.
+
+Upgrade with `dck init`, `bash dev.sh rebuild` and `bash dev.sh up` (or
+`dck herdr layout --keep`).
+
 ## [0.2.8] — 2026-10-11
 
 ### Fixed
@@ -389,6 +403,7 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
 [Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.6...HEAD
+[0.2.9]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.9
 [0.2.8]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.8
 [0.2.7]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.7
 [0.2.6]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.6

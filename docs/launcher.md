@@ -37,7 +37,7 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
 | `host listener enable\|disable\|status` | the host as a mesh peer: an opt-in loopback sshd (macOS, launchd) that accepts only the dck key ([herdr.md](herdr.md), [SECURITY.md](SECURITY.md)) |
 | `host peers install\|status` | herdr-peers for the host, verified against its release `SHA256SUMS`; used by `agents` and `ask` |
 | `agents`, `ask <machine>:<pane> "<prompt>"` | herdr-peers `list` / `ask` from the host |
-| `herdr layout [--keep\|--reset]` | the standard sidebar inside: Home · Editor · Development · Agents ([herdr.md](herdr.md)) |
+| `herdr layout [--keep\|--reset]` | the standard sidebar inside: App · Editor · Development · Agents ([herdr.md](herdr.md)) |
 | `--skill`, `--version`, `help` | the bundled agent skill, the version, usage |
 
 ## Rules it follows
@@ -117,7 +117,7 @@ entrypoint). `dck ssh` connects to `127.0.0.1:<ssh_port>` with:
 ## Install
 
 ```bash
-git clone --branch v0.2.8 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.2.9 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh            # or --no-rc for scripted installs
 ```
 

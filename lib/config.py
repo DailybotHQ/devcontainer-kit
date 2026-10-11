@@ -46,7 +46,7 @@ REPO_RULES = {
     "interface": ("int", REQUIRED, ("interface", INTERFACES)),
     "service": ("str", REQUIRED, ("pattern", RE_SERVICE)),
     "user": ("str", "dev", ("pattern", RE_USER)),
-    "workspace": ("str", "/workspace", ("pattern", RE_WORKSPACE)),
+    "workspace": ("str", "/app", ("pattern", RE_WORKSPACE)),
     "flavour": ("str", REQUIRED, ("enum", FLAVOURS)),
     "image_tag": ("str", None, ("pattern", RE_TAG)),  # interface 1 only; ignored since v0.2.0
     "base_image": ("str", None, ("pattern", RE_IMAGE_PIN)),  # None -> the flavour's pinned image

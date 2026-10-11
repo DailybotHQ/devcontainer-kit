@@ -28,7 +28,7 @@ identical otherwise.
   volume ([entrypoint.md](entrypoint.md));
 - Herdr **0.9.3** at `/usr/local/bin/herdr` (on the PATH of non-login SSH
   sessions, which is how a Herdr client starts the remote server) and a seeded
-  `~/.config/herdr/config.toml` (login shell, `new_cwd = /workspace`,
+  `~/.config/herdr/config.toml` (login shell, `new_cwd` = the app path (dck.toml `workspace`, default `/app`),
   `allow_nested = true`);
 - Neovim **0.12.5** (`/opt/nvim-0.12.5`, `/usr/local/bin/nvim`, SHA-256
   pinned per architecture) and deepworkplan-vim **v0.6.0** in `~/.config/nvim`,

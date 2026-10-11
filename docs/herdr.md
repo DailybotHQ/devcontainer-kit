@@ -229,7 +229,7 @@ program: agents are started by you, or through `ak`.
 ```bash
 dck herdr layout           # with a TTY: ask whether to reset (default keep); without one: keep
 dck herdr layout --keep    # create only what is missing
-dck herdr layout --reset   # close Home, Editor, Development, Agents (and the legacy "Home (~)") and recreate them
+dck herdr layout --reset   # close App, Editor, Development, Agents (and the legacy "Home", "Home (~)") and recreate them
 bash dev.sh herdr-layout   # the same, from the repository
 ```
 

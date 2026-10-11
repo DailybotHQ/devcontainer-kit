@@ -18,7 +18,7 @@ Set by the compose file `dck init` renders ([init.md](init.md)):
 | --- | --- | --- |
 | `DCK_USER` | `dev` | the user whose home is managed |
 | `DCK_HOME` | that user's home | |
-| `DCK_WORKSPACE` | `/workspace` | the repository mount |
+| `DCK_WORKSPACE` | `/app` (dck.toml `workspace`) | the repository mount; Herdr opens every workspace and new pane here |
 | `DCK_SSH` | `0` | `1` starts sshd (`ssh_port` ≠ 0 in `dck.toml`) |
 | `DCK_AUTHORIZED_KEYS` | empty | public key(s) to authorize; `dck up` passes the dedicated dck key |
 | `DCK_PERSIST_ROOT` | `$DCK_HOME/.dck/volumes` | where named volumes are mounted, one directory per volume |
