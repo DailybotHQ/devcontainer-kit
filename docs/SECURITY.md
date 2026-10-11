@@ -210,6 +210,9 @@ trusted at each start, for the CLIs the repository installs:
 With `AGENTKIT_PERMISSIONS=ask` (in the service `.env` or in ak's env file) neither is
 written. Files are changed only when a key is missing and replaced atomically; an
 invalid file is left alone. The host's Codex home receives no container skill links.
+No agent keys through the bypass-permissions acknowledgement: a leftover one in a shared
+host profile is escalated to the developer, who accepts it once per profile
+([layers.md](layers.md#unattended-agent-launches)).
 
 ### Auth volumes per project
 

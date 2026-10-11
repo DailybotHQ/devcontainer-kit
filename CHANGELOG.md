@@ -7,6 +7,13 @@ and the interface number).
 
 ## [Unreleased]
 
+### Changed
+
+- Docs: no agent keys through Claude's bypass-permissions acknowledgement. A leftover one
+  is escalated to the developer, who accepts it once per profile; folder trust is the only
+  screen an agent may key through, and only on a pane it launched itself when
+  `--trust-cwd` was unavailable (`docs/layers.md`, the `dck` skill, `docs/SECURITY.md`).
+
 ## [0.3.0] — 2026-10-11
 
 Interface stays **2**: every new key is optional and off by default.

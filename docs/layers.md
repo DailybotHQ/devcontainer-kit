@@ -156,13 +156,14 @@ entrypoint does this at every start, for the CLIs in `[agents] clis`:
 - With `AGENTKIT_PERMISSIONS=ask` (the opt-out, in `docker/local/<service>/.env` or in
   ak's env file) neither is written.
 
-If a screen still appears (a CLI version that asks something new, or a host profile
-whose bypass acknowledgement was never given), the orchestrator answers it through
-Herdr, under your standing authorization: `herdr pane read <pane> --source visible` to see the screen,
-then `herdr pane send-keys <pane> <key>…` to choose the option (for Claude's folder
-question, move from the preselected "No, exit" to "Yes" before Enter). Prefer giving the
-acknowledgement once on the host (`ak claude @<name>`, accept, exit) so later launches
-never stop.
+No agent ever keys through Claude's bypass-permissions acknowledgement. A leftover one
+(a shared host profile whose acknowledgement was never given) is escalated to you: accept
+it once per profile on the host (`ak claude @<name>`, accept, exit) and later launches
+never stop. Folder trust is the only screen an agent may key through, and only on a pane
+it launched itself when `--trust-cwd` was unavailable: `herdr pane read <pane> --source
+visible` to see the screen, then `herdr pane send-keys <pane> <key>…` to move from the
+preselected "No, exit" to "Yes" before Enter. Any other new screen (a CLI version that
+asks something new) is escalated too.
 
 ## dailybot
 
