@@ -41,6 +41,10 @@ Interface stays **2**: every new key is optional and off by default.
 
 ### Changed
 
+- **The agents layer installs coding-agents-kit v0.5.0** (`AGENTKIT_TAG`, verified by
+  `AGENTKIT_SHA256`): accounts and quota (`ak usage`, `ak pick`), the per-profile Claude
+  token (`CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`) and `ak profiles --json` (`profiles-v1`),
+  which `host_profiles` and `dck doctor` build on.
 - **Pins:** herdr-peers **v0.2.1** (`HERDR_PEERS_TAG`, verified by the sha256 of its
   release `SHA256SUMS`) inside the images and for `dck host peers install`, and
   deepworkplan-vim **v0.7.0** (`DWP_VIM_TAG`, its tag commit and installer sha256) as

@@ -290,6 +290,7 @@ cat <<'J'
  {"cli": "claude", "profile": "@work1", "path_relative": "claude/work1", "isolation": "env", "login": "keychain", "key_names_set": []},
  {"cli": "claude", "profile": "@team-b", "path_relative": "claude/team-b", "isolation": "env", "login": "keychain", "key_names_set": []},
  {"cli": "codex", "profile": "@default", "path_relative": null, "isolation": "env", "login": "file", "key_names_set": []},
+ {"cli": "codex", "profile": "@work1", "path_relative": "codex/work1", "isolation": "env", "login": "unknown", "key_names_set": []},
  {"cli": "cursor", "profile": "@work1", "path_relative": "cursor/work1", "isolation": "cursor-home", "login": "file", "key_names_set": []}
 ]}
 J
@@ -309,6 +310,8 @@ host_env_keys = ["OPENAI_API_KEY"]'
   assert_contains "$RUN_OUT" "codex@default (the host's Codex home) rw — Codex refreshes its login in auth.json" "the Codex home's reason"
   assert_contains "$RUN_OUT" "env file (ro) names: CLAUDE_CODE_OAUTH_TOKEN, CLAUDE_CODE_OAUTH_TOKEN_WORK1, OPENAI_API_KEY" "names only, read-only"
   assert_contains "$RUN_OUT" "cursor ak profiles not shared" "and the skipped ones"
+  assert_contains "$RUN_OUT" "codex @work1 (login: unknown)" "the login kind unknown is reported as is"
+  assert_contains "$RUN_OUT" "codex @default (login: file)" "and file"
   assert_not_contains "$RUN_OUT" "claude @work1 logs in through the macOS keychain" "a keychain login with its token stored is fine"
   assert_contains "$RUN_OUT" "claude @team-b logs in through the macOS keychain" "a keychain-only login is flagged"
   assert_contains "$RUN_OUT" "claude setup-token" "with the fix: a long-lived token"
