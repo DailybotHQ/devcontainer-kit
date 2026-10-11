@@ -41,6 +41,10 @@ Interface stays **2**: every new key is optional and off by default.
 
 ### Changed
 
+- **Pins:** herdr-peers **v0.2.1** (`HERDR_PEERS_TAG`, verified by the sha256 of its
+  release `SHA256SUMS`) inside the images and for `dck host peers install`, and
+  deepworkplan-vim **v0.7.0** (`DWP_VIM_TAG`, its tag commit and installer sha256) as
+  the editor.
 - With `host_profiles` on, `dck up` uses the compose backend (the overlay is a compose
   file the devcontainer CLI never reads).
 - The test suite is PATH-hermetic: the developer's own `ak`, `herdr`, `herdr-peers`,
