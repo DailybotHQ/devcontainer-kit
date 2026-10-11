@@ -332,6 +332,27 @@ def config_version():
         return "0.0.0"
 
 
+def host_profiles_info(merged, problems):
+    """[agents] host_profiles: what is shared, by name only (never a value)."""
+    import hostagents
+    lines, p = hostagents.report(merged)
+    for level, msg in lines:
+        if level == "warn":
+            problems.append(msg)
+    mounts = [{"profile": "%s@%s" % (s["cli"], s["profile"][1:]), "mode": s["mode"], "reason": s["why"]}
+              for s in p["shared"]]
+    if p["codex"]:
+        mounts.append({"profile": "codex@default", "mode": p["codex"]["mode"], "reason": p["codex"]["why"]})
+    if p["env_names"]:
+        mounts.append({"profile": "env", "mode": hostagents.MOUNT_MODES["env"][0],
+                       "reason": hostagents.MOUNT_MODES["env"][1]})
+    return {"enabled": p["enabled"], "reason": p["reason"] or None,
+            "shared": hostagents.shared_clis(p), "profiles": hostagents.profile_refs(p),
+            "mounts": mounts, "codex": bool(p["codex"]),
+            "skipped": [{"cli": c, "reason": r} for c, r in p["skipped"]],
+            "env_names": p["env_names"], "notes": [m for _lvl, m in lines]}
+
+
 def collect(start, profile=None):
     problems = []
     version = config_version()
@@ -355,7 +376,7 @@ def collect(start, profile=None):
         "python": {"version": platform.python_version(), "ok": py_ok},
         "runtime": rt,
         "profile": prof_out,
-        "repo": None, "layers": None, "ssh": None, "herdr": None, "drift": [],
+        "repo": None, "layers": None, "ssh": None, "herdr": None, "drift": [], "host_profiles": None,
         "problems": problems,
     }
     merged = None
@@ -381,6 +402,7 @@ def collect(start, profile=None):
                 if not ssh["answering"]:
                     problems.append("sshd does not answer on %s:%s" % (host, merged["ssh_port"]))
             report["ssh"] = ssh
+            report["host_profiles"] = host_profiles_info(merged, problems)
     h = herdr_info(merged, problems)
     if h["registered"] and report["ssh"] and report["ssh"]["answering"]:
         rc, _ = run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=3", h["alias"],
@@ -430,6 +452,9 @@ def text(report):
     if s:
         out.append("ssh              %s" % ("off" if not s["enabled"] else "%s:%s, key %s, answering %s" % (
             s["bind"], s["port"], "present" if s["identity_present"] else "missing", yes(s["answering"]))))
+    hp = report.get("host_profiles")
+    if hp:
+        out += ["%-17s%s" % ("host profiles", m[len("host profiles: "):]) for m in hp["notes"]]
     h = report["herdr"]
     out.append("herdr-peers      %s" % (h.get("peers_cli") or "not installed (dck host peers install)"))
     out.append("ak (host)        %s" % ("installed" if h.get("host_ak") else "not installed (coding-agents-kit)"))

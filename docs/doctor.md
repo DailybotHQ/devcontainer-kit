@@ -30,6 +30,7 @@ retyped. Interface 2 (v0.2.0) replaced the base-image keys of interface 1 (`imag
 | `ssh` | `enabled`, `port`, `bind`, `identity`, `identity_present`, `answering` (true only when sshd sends its `SSH-` banner on the published port — a bare TCP accept can be Docker's userland proxy; probed only when the container runs), `banner` |
 | `herdr` | `installed`, `version`, `machine` (dck.toml), `alias`, `include_present`, `registered`, `enabled`, `server_answering` |
 | `drift` | [{`name`, `pinned`, `installed`, `status` (`ok`/`drift`/`unknown`), `note`}]: the kit the repository was rendered with (`kit`) vs the installed dck; the host's Herdr client vs the image pin (informative: they need not match); inside a running container built from a dck image, gh/herdr/nvim/deepworkplan-vim vs `images/versions.env` |
+| `host_profiles` | null outside a configured repository; else `enabled`, `reason` (why it is off), `shared` (CLIs whose host ak profiles `dck up` binds), `profiles` (the shared profiles as `cli@name`; the Codex home is `codex@default`), `mounts` [{`profile`, `mode` (`ro`/`rw`), `reason`}] (every shared directory and the env file), `codex` (the host's Codex home is shared), `skipped` [{`cli`, `reason`}], `env_names` (names in the container's env file — never values), `notes` (the text report's lines) |
 | `os`, `python`, `profile` | host system/arch; python version and whether it is ≥ 3.11; the host profile in use and whether it is valid |
 | `problems`, `ok` | human-readable findings; `ok` is true when there are none |
 
@@ -47,7 +48,14 @@ by other accounts is a problem (`dck setup` narrows it to 0600).
 - a `bind` other than `127.0.0.1`;
 - sshd not answering while the container runs;
 - `herdr.machine = true` but the machine is not registered;
-- tool drift inside the container, or a repository pinned to another dck tag.
+- tool drift inside the container, or a repository pinned to another dck tag;
+- with `[agents] host_profiles`: a shared Claude profile that logs in through the macOS
+  keychain without its token variable in the env file (run `claude setup-token`, then
+  store the token in ak's env file — `~/.config/agentkit/env`, or `ak env import <file>` —
+  as `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`, or
+  `CLAUDE_CODE_OAUTH_TOKEN` for `@default`), and a listed variable whose value
+  could not be copied. Logins are read from the host's `ak profiles --json`
+  (schema `profiles-v1`, coding-agents-kit v0.5.0+); without it the doctor says so.
 
 ## Not in v0.1
 

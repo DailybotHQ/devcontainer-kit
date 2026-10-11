@@ -351,12 +351,42 @@ def cmd_herdr(args):
     return EXIT_FAIL
 
 
+def cmd_agents(args):
+    """`agents overlay --repo DIR --project NAME --out FILE [--profile NAME]`:
+    the runtime overlay of [agents] host_profiles (written, or removed when off)."""
+    import devc
+    import hostagents
+    if not args or args[0] != "overlay":
+        return usage("agents overlay --repo DIR --project NAME --out FILE [--profile NAME]")
+    args = args[1:]
+    repo, project, out = opt(args, "--repo"), opt(args, "--project"), opt(args, "--out")
+    profile = opt(args, "--profile")
+    if not (repo and project and out):
+        return usage("agents overlay --repo DIR --project NAME --out FILE")
+    try:
+        merged, _ = config.effective(repo, default_tag(), profile)
+        p = hostagents.write(merged, devc.read(repo)["service"], project, out)
+    except (hostagents.HostAgentsError, devc.DevcError, OSError) as exc:
+        sys.stderr.write("dck: host profiles: %s\n" % exc)
+        return EXIT_REFUSED
+    except config.ConfigError as exc:
+        sys.stderr.write("dck: invalid configuration\n%s\n" % exc)
+        return EXIT_CONFIG
+    # Names only: never a value.
+    print("enabled=%s" % ("1" if p["enabled"] else "0"))
+    print("shared=%s" % " ".join(hostagents.profile_refs(p)))
+    print("codex=%s" % ("1" if p["codex"] else "0"))
+    print("env=%s" % " ".join(p["env_names"]))
+    print("skipped=%s" % " ".join(c for c, _ in p["skipped"]))
+    return EXIT_OK
+
+
 def cmd_doctor(args):
     import doctor
     return doctor.main(args)
 
 
-GROUPS = {"doctor": cmd_doctor, "config": cmd_config, "init": cmd_init, "devc": cmd_devc, "sshconf": cmd_sshconf, "herdr": cmd_herdr}
+GROUPS = {"agents": cmd_agents, "doctor": cmd_doctor, "config": cmd_config, "init": cmd_init, "devc": cmd_devc, "sshconf": cmd_sshconf, "herdr": cmd_herdr}
 
 
 def main(argv):

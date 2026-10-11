@@ -23,6 +23,9 @@ Set by the compose file `dck init` renders ([init.md](init.md)):
 | `DCK_AUTHORIZED_KEYS` | empty | public key(s) to authorize; `dck up` passes the dedicated dck key |
 | `DCK_PERSIST_ROOT` | `$DCK_HOME/.dck/volumes` | where named volumes are mounted, one directory per volume |
 | `DCK_REPO_HOOK` | `$DCK_WORKSPACE/docker/local/dev-setup-hook.sh` | the repository hook |
+| `DCK_HOST_PROFILES` | empty | the CLIs whose ak profiles are the host's (`[agents] host_profiles`, set by `dck up`'s runtime overlay) |
+| `DCK_HOST_CODEX` | empty | the mounted host Codex home (`$DCK_HOME/.dck/host/codex`); `~/.codex` links to it. Ignored outside `$DCK_HOME/.dck/host/` |
+| `AGENTKIT_PERMISSIONS` | empty | `ask` turns autonomy off: `dck_agent_trust` then writes nothing |
 
 ## Functions
 
@@ -94,6 +97,17 @@ when the file exists. A non-zero exit is reported and the container keeps
 running. Put project-specific start-up here instead of forking the
 entrypoint.
 
+### `dck_agent_trust`
+
+Unattended agent launches ([layers.md](layers.md#unattended-agent-launches)): with
+autonomy on, the workspace is marked trusted for the CLIs in `DCK_AGENTS` — Claude's
+`projects[<workspace>].hasTrustDialogAccepted` and Codex's
+`[projects."<workspace>"] trust_level = "trusted"` in the container's own homes and in
+the shared host profiles; Claude's bypass-permissions acknowledgement and onboarding
+only in the container's own homes (`~/.claude.json`, `~/.claude/settings.json`, and
+profiles on the container's volume), never in a profile listed by `DCK_HOST_PROFILES`.
+Idempotent; an invalid file is left alone; only the number of files changed is logged.
+
 ### `dck_start`
 
 The standard sequence:
@@ -102,10 +116,11 @@ The standard sequence:
    machines (`~/.local/state/herdr/client`) and `~/.bash_history` on
    the per-project `state` volume (and the agents layer's homes, see
    [layers.md](layers.md));
-2. `dck_herdr_config`;
-3. `dck_env_profile`;
-4. `dck_sshd`;
-5. `dck_repo_hook`.
+2. git identity, SSH agent access, skills links and `dck_agent_trust`;
+3. `dck_herdr_config`;
+4. `dck_env_profile`;
+5. `dck_sshd`;
+6. `dck_repo_hook`.
 
 ## Using it from your own entrypoint
 

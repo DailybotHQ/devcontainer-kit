@@ -7,6 +7,62 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-10-11
+
+Interface stays **2**: every new key is optional and off by default.
+
+### Added
+
+- **Containers can use the host's agent accounts** (`[agents] host_profiles = true`, host
+  profile only — a repository's `dck.toml` cannot turn it on). `dck up` adds a runtime
+  compose overlay, never written into the repository, that binds the host's
+  coding-agents-kit profiles of the CLIs the repository installs (`[agents] clis`;
+  claude, codex, pi, cline, grok, opencode — never cursor, whose profiles hold absolute
+  host symlinks), one bind per profile, with `AGENTKIT_PROFILES_DIR` pointing at them;
+  `[agents] host_profile_names` limits them to the profiles listed (`"claude@work1"`).
+  Also the host's Codex home (`codex@default`) when codex is installed, and a generated
+  env file (0600, under `~/.config/dck/agents/`) read-only with `AGENTKIT_ENV` pointing
+  at it. Mounts are read-write only where the CLI writes, each reason documented and
+  shown by the doctor. The env file has no implicit secret: only the Claude token of
+  each shared Claude profile and the exact names in `[agents] host_env_keys`; with the
+  option off nothing is copied. Values never appear in compose files, logs or the
+  doctor; the names do.
+- `dck doctor` reports the shared profiles with their mount mode and reason, the env
+  file's names and, from the host's
+  `ak profiles --json` (`profiles-v1`, coding-agents-kit v0.5.0+), the Claude profiles
+  that log in through the macOS keychain without a token variable (with the fix:
+  `claude setup-token`, then store it in ak's env file as `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`).
+  `doctor --json` gains an optional `host_profiles` object (`profiles`, `mounts`, …).
+- **Unattended agent launches.** With autonomy on, the entrypoint marks the app path as
+  trusted for Claude and Codex at each start — in the container's own CLI homes and in
+  shared host profiles — and writes Claude's bypass-permissions acknowledgement only in
+  the container's own homes, never in a shared host profile. `AGENTKIT_PERMISSIONS=ask`
+  writes neither. The Herdr fallback for a screen that still appears is documented.
+
+### Changed
+
+- **The agents layer installs coding-agents-kit v0.5.0** (`AGENTKIT_TAG`, verified by
+  `AGENTKIT_SHA256`): accounts and quota (`ak usage`, `ak pick`), the per-profile Claude
+  token (`CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`) and `ak profiles --json` (`profiles-v1`),
+  which `host_profiles` and `dck doctor` build on.
+- **Pins:** herdr-peers **v0.2.1** (`HERDR_PEERS_TAG`, verified by the sha256 of its
+  release `SHA256SUMS`) inside the images and for `dck host peers install`, and
+  deepworkplan-vim **v0.7.0** (`DWP_VIM_TAG`, its tag commit and installer sha256) as
+  the editor.
+- With `host_profiles` on, `dck up` uses the compose backend (the overlay is a compose
+  file the devcontainer CLI never reads).
+- The test suite is PATH-hermetic: the developer's own `ak`, `herdr`, `herdr-peers`,
+  `dck` and agent CLIs are hidden from every test, and `AGENTKIT_*`, `HERDR_*`,
+  `CLAUDE_*`, `CODEX_*` and credential-shaped variables are cleared in the sandbox.
+
+### Security
+
+- Credential sharing is opt-in and documented in `docs/SECURITY.md`: Codex `auth.json`
+  is shared read-write, so keep one active writer per account.
+
+Upgrade: install v0.3.0, then (optionally) set `[agents] host_profiles = true` in your
+host profile and `dck up --recreate`.
+
 ## [0.2.11] — 2026-10-11
 
 ### Fixed
@@ -425,7 +481,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.6...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.0
 [0.2.11]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.11
 [0.2.10]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.10
 [0.2.9]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.9

@@ -22,7 +22,7 @@ After changing the file, run `dck init` (it shows the diff and asks), then
 ## agents
 
 Installs [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit)
-at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v0.4.0**) into the
+at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v0.5.0**) into the
 dev user's home, following the kit's install contract: the release tarball, verified
 against the pinned `AGENTKIT_SHA256` before it is unpacked, then `install.sh --no-rc`, then `ak install <kind>…` for the
 kinds in `agents.clis`, each through its vendor's official channel.
@@ -86,6 +86,84 @@ RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}
   preset (`claude-glm`, `codex-glm`, `codex-azure`, `codex-xai`, …), loaded by
   every bash the dev user starts.
 
+## Host accounts
+
+Containers can use the agent accounts you already have on the host, like git already
+works through the host's SSH agent: no login inside. Opt in once, in your **host
+profile** (`~/.config/dck/profile.toml`; a repository cannot ask for it):
+
+```toml
+[agents]
+host_profiles = true
+host_profile_names = []   # optional: only these, e.g. ["claude@work1", "codex@default"]
+host_env_keys = []        # optional: exact names to copy besides the Claude tokens
+```
+
+Then `dck up` (or `dck up --recreate` for a running container) adds a runtime compose
+overlay — written next to dck's other overlay under `$TMPDIR/dck-<uid>/`, never into
+the repository — that binds:
+
+| Host | Container | Mode |
+| --- | --- | --- |
+| each ak profile `$AGENTKIT_PROFILES_DIR/<cli>/<name>` (default root `~/.local/share/agentkit/profiles`) of the CLIs in `[agents] clis` — claude, codex, pi, cline, grok, opencode — or only those in `host_profile_names` | `~/.dck/host/agentkit/profiles/<cli>/<name>`; `AGENTKIT_PROFILES_DIR` points there | read-write: the CLI writes its state there |
+| `$CODEX_HOME` or `~/.codex` (the Codex `@default` login), when codex is installed and `codex@default` shared | `~/.dck/host/codex`; `~/.codex` links to it | read-write: token refresh in `auth.json` |
+| `~/.config/dck/agents/<project>.env`, generated (0600) on the host | `~/.dck/host/agentkit/env`; `AGENTKIT_ENV` points there | read-only |
+
+Each read-write mount and its reason is listed in
+[SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles) and by `dck doctor`.
+
+- **Only the CLIs the repository installs**, and only file-portable profiles: cursor
+  (and antigravity) profiles hold absolute host symlinks and are skipped. The whole
+  `AGENTKIT_HOME` is never mounted (it would shadow the ak the image pins), nor a whole
+  CLI directory: profiles are bound one by one.
+- **Claude:** a profile logged in through the macOS keychain cannot reach a container.
+  Give each such account a long-lived token — `claude setup-token`, then store it in
+  ak's env file (`~/.config/agentkit/env`, mode 600; `ak env import <file>` copies
+  `KEY=value` lines from a file) as `CLAUDE_CODE_OAUTH_TOKEN` (`@default`) or
+  `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>` (`@name`: the name upper-cased, every character
+  outside `A-Z0-9_` replaced by `_`; `@team-b` → `CLAUDE_CODE_OAUTH_TOKEN_TEAM_B`).
+- **The env file has no implicit secret:** the token of each Claude profile actually
+  shared (`CLAUDE_CODE_OAUTH_TOKEN` when `claude@default` is), and the exact names in
+  `host_env_keys` — nothing else. `host_env_keys = []` copies only those tokens; with
+  `host_profiles` off nothing is copied. Values are never printed: the overlay,
+  `dck up` and `dck doctor` state the names. The doctor also reports each shared
+  profile with its mount mode and reason, and the Claude profiles that still need a
+  token (from the host's `ak profiles --json`, schema `profiles-v1`,
+  coding-agents-kit v0.5.0+).
+- **Codex:** `auth.json` is shared read-write; keep one active writer per account
+  (see [SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles)).
+- **Compose backend:** the overlay is a compose file, so with the option on `dck up`
+  uses compose even when the devcontainer CLI is installed; an editor that opens the
+  container itself does not apply it.
+- Turning the option off (or the repository's agents layer off) removes the overlay
+  and the env file at the next `dck up`; `~/.codex` goes back to its volume, whose
+  contents were kept.
+
+## Unattended agent launches
+
+An orchestrating agent (or you) must be able to start a new agent in the container —
+`ak claude`, `ak codex @work1`, a new Herdr pane — and have it work at once, with no
+first-run screen waiting for a key nobody presses. With autonomy on (the default) the
+entrypoint does this at every start, for the CLIs in `[agents] clis`:
+
+- **Folder trust for the app path** (`workspace`, `/app` by default): Claude's "trust
+  this folder" and Codex's "Trust this folder?" are pre-answered — in the container's
+  own CLI homes **and** in shared host profiles (an entry for `/app` is inert on the host).
+- **Claude's bypass-permissions acknowledgement** (and its onboarding): written **only**
+  in the container's own CLI homes — the container is the sandbox you chose for autonomy —
+  **never** in a shared host profile, which also drives your Claude on the host, where a
+  human acknowledges it once per profile.
+- With `AGENTKIT_PERMISSIONS=ask` (the opt-out, in `docker/local/<service>/.env` or in
+  ak's env file) neither is written.
+
+If a screen still appears (a CLI version that asks something new, or a host profile
+whose bypass acknowledgement was never given), the orchestrator answers it through
+Herdr, under your standing authorization: `herdr pane read <pane> --source visible` to see the screen,
+then `herdr pane send-keys <pane> <key>…` to choose the option (for Claude's folder
+question, move from the preselected "No, exit" to "Yes" before Enter). Prefer giving the
+acknowledgement once on the host (`ak claude @<name>`, accept, exit) so later launches
+never stop.
+
 ## dailybot
 
 Only when the `dailybot` addon asks for it. Renders
@@ -111,9 +189,9 @@ with the dispatcher `/usr/local/bin/dck-layer`. They run only during the
 **repository's** image build. Every download goes through one verified
 `fetch`; nothing is piped into a shell.
 
-## Status in v0.2.x
+## Status in v0.3.x
 
-The `agents` layer is verified end to end with coding-agents-kit `v0.4.0`
+The `agents` layer is verified end to end with coding-agents-kit `v0.5.0`
 (installed from its sha256-verified release tarball; `ak` interface 1, permissions
 `auto` by default; `ak install codex pi`, the `classic` and `providers` presets; the
 `docker` test scope builds a rendered node fixture with the layer on every CI run). Each

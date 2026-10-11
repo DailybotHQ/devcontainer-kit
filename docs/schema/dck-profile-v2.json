@@ -128,6 +128,37 @@
           "description": "the mesh also pushes the host's other loopback Herdr machines (ports 22000-22999, ed25519 key in your known_hosts), mirroring enabled/disabled"
         }
       }
+    },
+    "agents": {
+      "type": "object",
+      "description": "the host's agent accounts inside containers (docs/config.md); host profile only",
+      "properties": {
+        "host_profiles": {
+          "type": "boolean",
+          "default": false,
+          "description": "dck up binds the host's ak profiles of the CLIs the repository installs (claude codex pi cline grok opencode), the host's Codex home when codex@default is shared, and an env file read-only; read-write only where the CLI writes"
+        },
+        "host_env_keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z_][A-Z0-9_]{0,127}$"
+          },
+          "maxItems": 64,
+          "default": [],
+          "description": "exact variable names copied into the container's env file besides the Claude token of each shared Claude profile; [] copies nothing else"
+        },
+        "host_profile_names": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(claude|codex|pi|cline|grok|opencode)@[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+          },
+          "maxItems": 64,
+          "default": [],
+          "description": "only these host profiles (\"cli@name\", \"cli@default\" for the CLI's own home) are shared and get their token; [] = every profile of the repository's CLIs"
+        }
+      }
     }
   }
 }

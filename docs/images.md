@@ -31,7 +31,7 @@ identical otherwise.
   `~/.config/herdr/config.toml` (login shell, `new_cwd` = the app path (dck.toml `workspace`, default `/app`),
   `allow_nested = true`);
 - Neovim **0.12.5** (`/opt/nvim-0.12.5`, `/usr/local/bin/nvim`, SHA-256
-  pinned per architecture) and deepworkplan-vim **v0.6.0** in `~/.config/nvim`,
+  pinned per architecture) and deepworkplan-vim **v0.7.0** in `~/.config/nvim`,
   installed in its own image layer (`images/common/editor.sh`) by the
   project's official installer — the one `https://vim.deepworkplan.com/install.sh`
   serves — downloaded from the versioned release asset, checked against its
