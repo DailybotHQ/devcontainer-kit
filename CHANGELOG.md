@@ -9,6 +9,9 @@ and the interface number).
 
 ### Changed
 
+- Agent tooling: the vendored `deepworkplan` skill moves to v7.6.0 and the AI Diff
+  Reviewer skill to v3.3.9 (`skills-lock.json`, `.dwp/config.json`, AGENTS.md
+  provenance), through the pack's own addon planner.
 - Docs: no agent keys through Claude's bypass-permissions acknowledgement. A leftover one
   is escalated to the developer, who accepts it once per profile; folder trust is the only
   screen an agent may key through, and only on a pane it launched itself when

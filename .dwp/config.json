@@ -1,13 +1,13 @@
 {
-  "benchmark": {
-    "enabled": true,
-    "learnings": true
-  },
   "addons": {
     "ai-diff-reviewer": {
       "enabled": true,
-      "version": "v3.3.0"
+      "version": "v3.3.9"
     }
+  },
+  "benchmark": {
+    "enabled": true,
+    "learnings": true
   },
   "schema": "https://deepworkplan.com/schema/dwp-config/v1.json"
 }
