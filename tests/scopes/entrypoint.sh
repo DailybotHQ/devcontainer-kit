@@ -376,3 +376,18 @@ test_skills_link() {
   assert_symlink "$DCK_HOME/.claude/skills/herdr-peers" "herdr-peers is linked into ~/.claude/skills"
   assert_eq "$(cat "$DCK_HOME/.claude/skills/herdr/SKILL.md")" "mine" "a skill directory the user put there is never replaced"
 }
+
+test_mesh_apply_mirrors_disabled_peers() {
+  export PATH="$TESTS_DIR/fakes/bin:$PATH"
+  local payload
+  payload="$(printf '%s\n' 'peer api 22024 dev-user API' 'peer webapp 22023 node Web' 'disabled webapp' 'disabled bad;alias')"
+  run_cmd bash -c '. "$1"; printf "%s\n" "$2" | dck_mesh_apply' _ "$LIB" "$payload"
+  assert_rc 0 "the mesh applies"
+  local m; m="$(cat "$DCK_FAKE_STATE/herdr_machines")"
+  assert_contains "$m" '"target": "api"' "an enabled peer is registered"
+  assert_eq "$(python3 -c 'import json,sys; print([x["enabled"] for x in json.load(open(sys.argv[1])) if x["target"]=="webapp"][0])' "$DCK_FAKE_STATE/herdr_machines")" "False" "a disabled peer is registered disabled"
+  assert_eq "$(python3 -c 'import json,sys; print([x["enabled"] for x in json.load(open(sys.argv[1])) if x["target"]=="api"][0])' "$DCK_FAKE_STATE/herdr_machines")" "True" "an enabled peer stays enabled"
+  payload="$(printf '%s\n' 'peer api 22024 dev-user API' 'peer webapp 22023 node Web')"
+  run_cmd bash -c '. "$1"; printf "%s\n" "$2" | dck_mesh_apply' _ "$LIB" "$payload"
+  assert_eq "$(python3 -c 'import json,sys; print([x["enabled"] for x in json.load(open(sys.argv[1])) if x["target"]=="webapp"][0])' "$DCK_FAKE_STATE/herdr_machines")" "True" "re-enabled on the host, re-enabled inside"
+}
