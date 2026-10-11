@@ -61,6 +61,17 @@ test_persist_files() {
   assert_file "$V/state/bash_history" "a missing file target gets an empty file"
 }
 
+test_persist_json_file_is_valid_json() {
+  ep dck_persist agents "$DCK_HOME/.claude.json" file
+  assert_eq "$(cat "$V/agents/claude.json")" "{}" "a missing JSON file starts as {} (an empty file is not valid JSON)"
+  : > "$V/agents/claude.json"
+  ep dck_persist agents "$DCK_HOME/.claude.json" file
+  assert_eq "$(cat "$V/agents/claude.json")" "{}" "an empty JSON file left by an earlier version is repaired"
+  echo '{"kept":1}' > "$V/agents/claude.json"
+  ep dck_persist agents "$DCK_HOME/.claude.json" file
+  assert_eq "$(cat "$V/agents/claude.json")" '{"kept":1}' "a JSON file with content is never touched"
+}
+
 test_persist_replaces_foreign_symlink() {
   mkdir -p "$SANDBOX/elsewhere"
   ln -s "$SANDBOX/elsewhere" "$DCK_HOME/.pi"
