@@ -391,3 +391,25 @@ test_mesh_apply_mirrors_disabled_peers() {
   run_cmd bash -c '. "$1"; printf "%s\n" "$2" | dck_mesh_apply' _ "$LIB" "$payload"
   assert_eq "$(python3 -c 'import json,sys; print([x["enabled"] for x in json.load(open(sys.argv[1])) if x["target"]=="webapp"][0])' "$DCK_FAKE_STATE/herdr_machines")" "True" "re-enabled on the host, re-enabled inside"
 }
+
+
+test_mesh_apply_honours_the_repository_opt_out() {
+  export PATH="$TESTS_DIR/fakes/bin:$PATH"
+  ep dck_mesh_optout set
+  assert_file "$V/state/.mesh-off" "mesh = false is recorded on the state volume"
+  run_cmd bash -c '. "$1"; printf "peer dck-other 22041 dev other\n" | dck_mesh_apply' _ "$LIB"
+  assert_rc 0 "a refresh is accepted"
+  assert_contains "$RUN_ERR" "mesh: off for this repository" "and ignored"
+  assert_not_file "$DCK_HOME/.ssh/config.d/dck-peers" "nothing is written"
+  run_cmd env DCK_MESH_FORCE=1 bash -c '. "$1"; printf "peer dck-other 22041 dev other\n" | dck_mesh_apply' _ "$LIB"
+  assert_contains "$(cat "$DCK_HOME/.ssh/config.d/dck-peers")" "Host dck-other" "an explicit dck herdr mesh in this repository still applies"
+  ep dck_mesh_optout clear
+  assert_not_file "$V/state/.mesh-off" "mesh = true clears the marker"
+}
+
+test_mesh_apply_refuses_dash_aliases() {
+  export PATH="$TESTS_DIR/fakes/bin:$PATH"
+  run_cmd bash -c '. "$1"; printf "%s\n" "peer -oProxyCommand=x 22041 dev x" "peer ok-peer 22042 dev --label-injection" | dck_mesh_apply' _ "$LIB"
+  assert_not_contains "$(cat "$DCK_HOME/.ssh/config.d/dck-peers")" "ProxyCommand" "an alias starting with '-' is refused"
+  assert_not_contains "$(cat "$DCK_FAKE_STATE/herdr_machines")" '"label": "-' "a label never starts with '-'"
+}

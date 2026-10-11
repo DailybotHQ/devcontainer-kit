@@ -532,6 +532,11 @@ dck_skills_link() {
 # read, written or required here, and the agent is never forwarded onward.
 dck_mesh_apply() {
   _dck_env
+  if [ -f "$DCK_PERSIST_ROOT/state/.mesh-off" ] && [ "${DCK_MESH_FORCE:-0}" != "1" ]; then
+    cat >/dev/null
+    dck_log "mesh: off for this repository ([herdr] mesh = false); nothing applied"
+    return 0
+  fi
   local ssh_dir="$DCK_HOME/.ssh" frag known cfg tmp_frag tmp_known kind a b c d rest n=0
   frag="$ssh_dir/config.d/dck-peers"
   known="$ssh_dir/known_hosts.dck-peers"
@@ -543,13 +548,13 @@ dck_mesh_apply() {
   while read -r kind a b c d rest; do
     case "$kind" in
       peer)
-        case "$a" in ''|*[![:alnum:]._-]*) dck_log "mesh: refusing alias"; continue ;; esac
+        case "$a" in ''|[![:alnum:]]*|*[![:alnum:]._-]*) dck_log "mesh: refusing alias"; continue ;; esac
         case "$b" in ''|*[!0-9]*) dck_log "mesh: refusing port for $a"; continue ;; esac
         [ "$b" -ge 1 ] && [ "$b" -le 65535 ] || { dck_log "mesh: refusing port for $a"; continue; }
         case "$c" in ''|[![:lower:]_]*|*[![:lower:][:digit:]_.-]*) dck_log "mesh: refusing user for $a"; continue ;; esac
         printf 'Host %s\n  HostName host.docker.internal\n  Port %s\n  User %s\n  ForwardAgent no\n  IdentitiesOnly no\n  UserKnownHostsFile %s\n  StrictHostKeyChecking yes\n\n' \
           "$a" "$b" "$c" "$known" >> "$tmp_frag"
-        labels="$labels$a $(printf '%s %s' "$d" "$rest" | tr -cd '[:alnum:] ._:@()/-' | sed 's/ *$//')
+        labels="$labels$a $(printf '%s %s' "$d" "$rest" | tr -cd '[:alnum:] ._:@()/-' | sed -e 's/ *$//' -e 's/^[- ]*//')
 "
         n=$((n + 1)) ;;
       hostkey)
@@ -562,7 +567,7 @@ dck_mesh_apply() {
           printf '[host.docker.internal]:%s %s %s\n' "$a" "$b" "$c" >> "$tmp_known"
         fi ;;
       disabled)
-        case "$a" in ''|*[![:alnum:]._-]*) continue ;; esac
+        case "$a" in ''|[![:alnum:]]*|*[![:alnum:]._-]*) continue ;; esac
         disabled="$disabled$a " ;;
       ''|'#'*) ;;
       *) dck_log "mesh: refusing an unknown line" ;;
@@ -618,6 +623,18 @@ for m in data:
   done <<EOF
 $labels
 EOF
+}
+
+# dck_mesh_optout set|clear — record [herdr] mesh = false for this repository in
+# its state volume; dck_mesh_apply then ignores refreshes pushed from elsewhere.
+dck_mesh_optout() {
+  _dck_env
+  local m="$DCK_PERSIST_ROOT/state/.mesh-off"
+  case "${1:-}" in
+    set) mkdir -p "$DCK_PERSIST_ROOT/state" && : > "$m" && dck_log "mesh: off for this repository" ;;
+    clear) rm -f "$m" ;;
+    *) return 2 ;;
+  esac
 }
 
 # dck_hostssh_apply — the developer's own SSH aliases, from the host (stdin, sent

@@ -537,7 +537,13 @@ export_authorized_keys() {
   [ -f "$DCK_SSH_IDENTITY.pub" ] || return 0
   local keys f line
   keys="$(cat "$DCK_SSH_IDENTITY.pub")"
-  for f in ${DCK_SSH_AUTHORIZED_EXTRA:-}; do
+  # Paths never glob (the validator also refuses glob characters).
+  local extra_list=()
+  set -f
+  # shellcheck disable=SC2206  # split on spaces on purpose: validated paths have none
+  extra_list=(${DCK_SSH_AUTHORIZED_EXTRA:-})
+  set +f
+  for f in ${extra_list[@]+"${extra_list[@]}"}; do
     case "$f" in *.pub) ;; *) warn "ssh: authorized_extra: skipping $f (not a .pub file)"; continue ;; esac
     if [ ! -f "$f" ] || [ -L "$f" ]; then warn "ssh: authorized_extra: $f is missing (or a symlink); skipped"; continue; fi
     while IFS= read -r line; do

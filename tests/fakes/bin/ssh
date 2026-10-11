@@ -6,12 +6,13 @@
 st="${DCK_FAKE_STATE:-/nonexistent}"
 printf 'ssh %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
 if [ "${1:-}" = "-G" ]; then
-  [ -f "$st/ssh_G_$2" ] || exit 255
-  cat "$st/ssh_G_$2"; exit 0
+  a="$2"; [ "$a" = "--" ] && a="$3"
+  [ -f "$st/ssh_G_$a" ] || exit 255
+  cat "$st/ssh_G_$a"; exit 0
 fi
 case " $* " in
   *dck_mesh_apply*)
-    host=""; for a in "$@"; do case "$a" in -*|*=*|BatchMode*|ConnectTimeout*) ;; *) [ -z "$host" ] && [ "$prev" != "-o" ] && host="$a" ;; esac; prev="$a"; done
+    host=""; prev=""; for a in "$@"; do case "$a" in -*|*=*|BatchMode*|ConnectTimeout*) ;; *) [ -z "$host" ] && [ "$prev" != "-o" ] && host="$a" ;; esac; prev="$a"; done
     cat > "$st/ssh_stdin_$host" ;;
 esac
 cat "$st/ssh_out" 2>/dev/null

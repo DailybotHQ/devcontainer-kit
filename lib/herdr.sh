@@ -141,7 +141,9 @@ herdr_mesh() {
   catalog="$(herdr machine list --json 2>/dev/null || true)"
   payload="$(herdr_mesh_payload "$DCK_ALIAS" "$DCK_SSH_PORT" "$catalog")" || exit $?
   n="$(printf '%s\n' "$payload" | grep -c '^peer ' || true)"
-  printf '%s\n' "$payload" | dc exec -T --user root "$DC_SERVICE" \
+  # Run in this repository, the mesh applies even with [herdr] mesh = false (an
+  # explicit request); a refresh from elsewhere does not (DCK_MESH_FORCE unset).
+  printf '%s\n' "$payload" | dc exec -T --user root -e DCK_MESH_FORCE=1 "$DC_SERVICE" \
     bash -c '. /usr/local/lib/dck/entrypoint.sh && dck_mesh_apply' >/dev/null 2>&1 \
     || die "could not apply the mesh inside $DC_SERVICE (rendered by devcontainer-kit v0.2+?)"
   note "mesh: $n peer(s) reachable from inside $DC_SERVICE"
@@ -149,15 +151,23 @@ herdr_mesh() {
   # mesh to every other running dck container, over its own alias.
   for alias in $(dckpy sshconf aliases --file "$HERDR_INCLUDE" 2>/dev/null || true); do
     [ "$alias" != "$DCK_ALIAS" ] || continue
-    ssh -o BatchMode=yes -o ConnectTimeout=3 -o ForwardAgent=no "$alias" true </dev/null >/dev/null 2>&1 || continue
+    case "$alias" in [A-Za-z0-9]*) ;; *) continue ;; esac
+    ssh -o BatchMode=yes -o ConnectTimeout=3 -o ForwardAgent=no -- "$alias" true </dev/null >/dev/null 2>&1 || continue
     payload="$(herdr_mesh_payload "$alias" "" "$catalog")" || continue
-    if printf '%s\n' "$payload" | ssh -o BatchMode=yes -o ConnectTimeout=5 -o ForwardAgent=no "$alias" \
+    if printf '%s\n' "$payload" | ssh -o BatchMode=yes -o ConnectTimeout=5 -o ForwardAgent=no -- "$alias" \
         "bash -c '. /usr/local/lib/dck/entrypoint.sh && dck_mesh_apply'" >/dev/null 2>&1; then
       note "mesh: refreshed $alias"
     else
       note "mesh: could not refresh $alias (rendered before devcontainer-kit v0.2?); run dck herdr mesh in its repository"
     fi
   done
+}
+
+# herdr_mesh_optout set|clear — the [herdr] mesh = false marker in the container.
+herdr_mesh_optout() {
+  container_running || return 0
+  dc exec -T --user root "$DC_SERVICE" bash -c ". /usr/local/lib/dck/entrypoint.sh && dck_mesh_optout $1" \
+    >/dev/null 2>&1 || true
 }
 
 # herdr_mesh_payload <alias> <its ssh port or ""> <host catalog json> — the
@@ -319,6 +329,9 @@ dck_herdr_after_up() {
     return 0
   fi
   ( herdr_add ) || return 0
+  # Record this repository's mesh choice in its state volume, so a refresh from
+  # another repository's `dck herdr mesh` honours it (dck_mesh_apply).
+  herdr_mesh_optout "$([ "${DCK_HERDR_MESH:-1}" = "1" ] && echo clear || echo set)"
   if [ "${DCK_HERDR_MESH:-1}" = "1" ]; then
     ( herdr_mesh ) || true
   fi
