@@ -210,11 +210,27 @@ def vendored_state(dck_dir):
     return "current"
 
 
+def host_peers_cli():
+    """herdr-peers for `dck agents`/`dck ask`: on PATH, else dck's verified host copy."""
+    p = which("herdr-peers")
+    if p:
+        return p
+    pins = read_env_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "images", "versions.env"))
+    tag = pins.get("HERDR_PEERS_TAG")
+    if not tag:
+        return None
+    base = os.environ.get("XDG_DATA_HOME") or os.path.join(os.environ.get("HOME", ""), ".local", "share")
+    p = os.path.join(base, "dck-host", "herdr-peers", tag, "skills", "herdr-peers", "scripts", "herdr-peers")
+    return p if os.path.isfile(p) and os.access(p, os.X_OK) else None
+
+
 def herdr_info(merged, problems):
     h = {"installed": bool(which("herdr")), "version": None, "machine": None, "alias": None,
          "include_present": None, "registered": None, "enabled": None, "server_answering": None}
     if h["installed"]:
         h["version"] = first_version(run(["herdr", "--version"])[1])
+    h["peers_cli"] = host_peers_cli()
+    h["host_ak"] = bool(which("ak"))
     if merged is None:
         return h
     h["machine"] = bool(merged["herdr.machine"])
@@ -379,6 +395,8 @@ def text(report):
         out.append("ssh              %s" % ("off" if not s["enabled"] else "%s:%s, key %s, answering %s" % (
             s["bind"], s["port"], "present" if s["identity_present"] else "missing", yes(s["answering"]))))
     h = report["herdr"]
+    out.append("herdr-peers      %s" % (h.get("peers_cli") or "not installed (dck host peers install)"))
+    out.append("ak (host)        %s" % ("installed" if h.get("host_ak") else "not installed (coding-agents-kit)"))
     out.append("herdr            %s%s" % (h["version"] or "not installed",
                                           "" if h["machine"] is None else ", machine %s, alias %s, registered %s, server %s" % (
                                               yes(h["machine"]), h["alias"], yes(h["registered"]), yes(h["server_answering"]))))

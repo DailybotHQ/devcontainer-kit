@@ -502,3 +502,54 @@ test_mesh_refreshes_the_other_running_containers() {
   assert_contains "$RUN_OUT" "mesh: refreshed dck-other" "the refresh is reported"
   assert_contains "$(grep dck_mesh_apply "$DCK_FAKE_LOG" | grep '^ssh')" "ForwardAgent=no" "the refresh never forwards the agent"
 }
+
+# A fake herdr-peers release: the archive, its SHA256SUMS and a pin file for it.
+peers_release() { # [tamper]
+  local r="$SANDBOX/rel" s
+  rm -rf "$r"; mkdir -p "$r/herdr-peers-0.1.0/skills/herdr-peers/scripts" "$DCK_FAKE_STATE/curl"
+  printf '#!/usr/bin/env bash\necho "fake herdr-peers $*"\n' > "$r/herdr-peers-0.1.0/skills/herdr-peers/scripts/herdr-peers"
+  chmod +x "$r/herdr-peers-0.1.0/skills/herdr-peers/scripts/herdr-peers"
+  printf -- '---\nname: herdr-peers\n---\n' > "$r/herdr-peers-0.1.0/skills/herdr-peers/SKILL.md"
+  (cd "$r/herdr-peers-0.1.0" && for f in skills/herdr-peers/SKILL.md skills/herdr-peers/scripts/herdr-peers; do
+     printf '%s  %s\n' "$(shasum -a 256 "$f" 2>/dev/null | awk '{print $1}' || sha256sum "$f" | awk '{print $1}')" "$f"; done) > "$DCK_FAKE_STATE/curl/SHA256SUMS"
+  [ "${1:-}" = tamper ] && printf '\necho tampered\n' >> "$r/herdr-peers-0.1.0/skills/herdr-peers/scripts/herdr-peers"
+  (cd "$r" && tar -czf "$DCK_FAKE_STATE/curl/v0.1.0" herdr-peers-0.1.0)
+  s="$(shasum -a 256 "$DCK_FAKE_STATE/curl/SHA256SUMS" 2>/dev/null | awk '{print $1}')"
+  [ -n "$s" ] || s="$(sha256sum "$DCK_FAKE_STATE/curl/SHA256SUMS" | awk '{print $1}')"
+  printf 'HERDR_PEERS_TAG=v0.1.0\nHERDR_PEERS_SUMS_SHA256=%s\n' "$s" > "$SANDBOX/versions.env"
+}
+hp() { run_cmd env DCK_VERSIONS_ENV="$SANDBOX/versions.env" "$DCK" "$@"; }
+
+test_host_peers_install_verified() {
+  peers_release
+  hp host peers install
+  assert_rc 0 "a verified release installs"
+  local b="$HOME/.local/share/dck-host/herdr-peers/v0.1.0/skills/herdr-peers/scripts/herdr-peers"
+  assert_file "$b" "the host copy lands outside dck's install directory"
+  assert_contains "$(cat "$DCK_FAKE_LOG")" "curl --proto =https" "downloads are https-only"
+  hp host peers install
+  assert_contains "$RUN_OUT" "already installed" "a second install is a no-op"
+  hp host peers status
+  assert_contains "$RUN_OUT" "dck host copy" "status names the host copy"
+  run_cmd env DCK_VERSIONS_ENV="$SANDBOX/versions.env" PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v '^$' | paste -sd: -)" "$DCK" agents
+  assert_contains "$RUN_OUT" "fake herdr-peers list" "dck agents falls back to the host copy"
+}
+
+test_host_peers_refuses_a_mismatch() {
+  peers_release tamper
+  hp host peers install
+  assert_rc 1 "a file that does not match SHA256SUMS is refused"
+  assert_contains "$RUN_ERR" "does not match its release SHA256SUMS" "and says why"
+  assert_not_file "$HOME/.local/share/dck-host/herdr-peers/v0.1.0/skills/herdr-peers/scripts/herdr-peers" "nothing is installed"
+  peers_release
+  printf 'HERDR_PEERS_TAG=v0.1.0\nHERDR_PEERS_SUMS_SHA256=%s\n' "$(printf '0%.0s' $(seq 1 64))" > "$SANDBOX/versions.env"
+  hp host peers install
+  assert_rc 1 "a SHA256SUMS that does not match its pin is refused"
+  assert_contains "$RUN_ERR" "SHA256SUMS checksum mismatch" "and says why"
+}
+
+test_doctor_reports_host_peers_and_ak() {
+  run_cmd "$DCK" doctor
+  assert_contains "$RUN_OUT" "herdr-peers" "doctor reports herdr-peers on the host"
+  assert_contains "$RUN_OUT" "ak (host)" "doctor reports coding-agents-kit on the host"
+}

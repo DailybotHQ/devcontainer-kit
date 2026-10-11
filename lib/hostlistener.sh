@@ -233,7 +233,13 @@ dck_host_listener_offer() {
 
 dck_cmd_host() {
   local sub="${1:-}" action="${2:-}"
-  [ "$sub" = listener ] || die "$DCK_EXIT_USAGE" "usage: dck host listener enable|disable|status"
+  if [ "$sub" = peers ] && [ $# -eq 2 ]; then
+    case "$action" in
+      install) dck_host_peers_install; return $? ;;
+      status) dck_host_peers_status; return 0 ;;
+    esac
+  fi
+  [ "$sub" = listener ] || die "$DCK_EXIT_USAGE" "usage: dck host listener enable|disable|status | dck host peers install|status"
   [ $# -eq 2 ] || die "$DCK_EXIT_USAGE" "usage: dck host listener enable|disable|status"
   hostl_load_profile
   hostl_paths

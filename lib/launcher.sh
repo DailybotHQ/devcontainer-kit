@@ -52,6 +52,7 @@ usage: dck [--repo DIR] [--profile NAME] [--project NAME] [--trust] <verb> [args
   herdr layout [--keep|--reset]   the standard sidebar inside: Home · Editor · Development · Agents
   host listener enable|disable|status   the host as a mesh peer: a loopback sshd (macOS,
                         launchd) that accepts only the dck key; see docs/herdr.md
+  host peers install|status   herdr-peers for the host (verified), used by agents and ask
   agents                the live agents on every Herdr machine (herdr-peers list)
   ask <machine>:<pane> "<prompt>"   ask one of them, with the reply grant (herdr-peers ask)
   doctor [--json] [--strict]   environment and repository health (interface 2)
@@ -624,6 +625,11 @@ EOF
   fi
   warn_missing_host_binds
   if declare -F dck_host_listener_offer >/dev/null 2>&1; then dck_host_listener_offer; fi
+  # dck agents / dck ask need herdr-peers on the host: install the verified copy.
+  if command -v herdr >/dev/null 2>&1 && ! command -v herdr-peers >/dev/null 2>&1 \
+     && declare -F dck_host_peers_install >/dev/null 2>&1 && ! dck_host_peers_bin >/dev/null 2>&1; then
+    dck_host_peers_install || warn "setup: herdr-peers was not installed (dck agents and dck ask need it; retry: dck host peers install)"
+  fi
   if [ "$changed" -eq 0 ]; then note "setup: everything was already in place"; else note "setup: done"; fi
 }
 

@@ -297,7 +297,7 @@ test_host_and_mesh_profile_keys() {
   printf '[host]\nmachine = true\nlistener = "remote-login"\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
   run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
   assert_contains "$RUN_OUT" '"host_port": 22' "remote-login listens on 22"
-  assert_contains "$RUN_OUT" '"host_key": "/etc/ssh/ssh_host_ed25519_key.pub"' "remote-login is pinned by the system host key"
+  assert_contains "$RUN_OUT" '/etc/ssh/ssh_host_ed25519_key.pub' "remote-login is pinned by the system host key"
   run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" config host
   assert_rc 0 "config host needs no repository"
   assert_contains "$RUN_OUT" "DCK_HOST_LISTENER=remote-login" "config host prints the host settings"

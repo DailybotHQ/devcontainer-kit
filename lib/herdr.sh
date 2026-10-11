@@ -188,17 +188,20 @@ herdr_layout() {
     || die "the Herdr layout could not be created inside $DC_SERVICE (is the host Herdr attached? run: dck herdr status)"
 }
 
+# Sets HERDR_PEERS_CLI: herdr-peers on PATH, else dck's verified host copy
+# (dck host peers install, run by dck setup).
 herdr_peers_cli() {
-  command -v herdr-peers >/dev/null 2>&1 && return 0
-  die "$DCK_EXIT_ENV" "herdr-peers is not installed on this host. Install the skill, pinned:
-  npx --yes skills add DailybotHQ/herdr-peers@${HERDR_PEERS_TAG:-v0.1.0} --skill herdr-peers -g
-then put its helper on PATH (see https://github.com/DailybotHQ/herdr-peers#install)"
+  if command -v herdr-peers >/dev/null 2>&1; then HERDR_PEERS_CLI="herdr-peers"; return 0; fi
+  if declare -F dck_host_peers_bin >/dev/null 2>&1 && HERDR_PEERS_CLI="$(dck_host_peers_bin)"; then return 0; fi
+  die "$DCK_EXIT_ENV" "herdr-peers is not installed on this host. Install dck's verified copy:
+  dck host peers install
+(or the skill, pinned: npx --yes skills add DailybotHQ/herdr-peers@${HERDR_PEERS_TAG:-v0.1.0} --skill herdr-peers -g)"
 }
 
 dck_cmd_agents() {
   [ $# -eq 0 ] || die "$DCK_EXIT_USAGE" "usage: dck agents"
   herdr_peers_cli
-  exec herdr-peers list
+  exec "$HERDR_PEERS_CLI" list
 }
 
 dck_cmd_ask() {
@@ -209,7 +212,7 @@ dck_cmd_ask() {
     *:*) ;;
     *) die "$DCK_EXIT_USAGE" "ask: the target is <machine>:<pane> (the MACHINE:PANE column of: dck agents)" ;;
   esac
-  exec herdr-peers ask "$target" "$*"
+  exec "$HERDR_PEERS_CLI" ask "$target" "$*"
 }
 
 herdr_add() {

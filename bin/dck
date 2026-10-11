@@ -28,6 +28,8 @@ export DCK_ROOT DCK_LIB
 . "$DCK_LIB/herdr.sh"
 # shellcheck source=lib/hostlistener.sh
 . "$DCK_LIB/hostlistener.sh"
+# shellcheck source=lib/peers_host.sh
+. "$DCK_LIB/peers_host.sh"
 # shellcheck source=lib/doctor.sh
 . "$DCK_LIB/doctor.sh"
 
