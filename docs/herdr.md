@@ -146,10 +146,28 @@ dck ask dck-other:w1:p2 "Which test covers the parser?"   # herdr-peers ask, wit
     `~/.ssh/known_hosts` already pins (no pinned key: skipped, with a note).
 
   Inside, `dck_mesh_apply` writes `~/.ssh/config.d/dck-peers`
-  (`HostName host.docker.internal`, `ForwardAgent no`, strict host keys),
-  the pinned `known_hosts.dck-peers` and a Herdr machine per peer, enabled or
-  disabled as on the host. Herdr's saved machines live on the `state` volume,
-  so they survive `rebuild`.
+  (`HostName host.docker.internal`, `ForwardAgent no`, strict host keys) —
+  including a block for the container itself, so herdr-peers can find its own
+  machine — and the pinned `known_hosts.dck-peers`.
+- **The host's Herdr catalog is mirrored, ids included.** A herdr-peers ask
+  carries its reply address as `<machine id>:<pane>`, where the id is the
+  asker's id **in its own Herdr catalog**. If each container minted its own ids
+  (`herdr machine add`), a reply from inside could never name the machine that
+  asked. So the mesh pushes the host's catalog entries (id, label, target,
+  session, enabled) for every machine the container can reach — every dck
+  container including itself, the host's other loopback machines with a pinned
+  key, and the host's own entry — and `dck_mesh_apply` writes them as Herdr's
+  saved machines (`~/.local/state/herdr/client/endpoints.json`, atomically, the
+  previous file kept once as `endpoints.json.dck-bak`). Every id then means the
+  same machine on the host and in every container. Herdr's saved machines live
+  on the `state` volume, so they survive `rebuild`.
+- **The host's own entry.** The host peer is the host's catalog entry whose
+  alias resolves (`ssh -G`) to the listener (`127.0.0.1:<[host] port>`). When
+  there is none, `dck host listener enable` and `dck herdr mesh` register one
+  once: `dck-host` in `~/.ssh/config.d/dck` (127.0.0.1, your user, the dck key,
+  the listener's pinned host key) and `herdr machine add --label <[host]
+  label> dck-host`, so asks from the host carry an id the containers know.
+  `dck doctor` reports the catalog and whether the host's own entry exists.
 - **Every running container learns about the others.** After updating its own
   container, `dck herdr mesh` re-applies the mesh to every other running dck
   container over its alias (`ForwardAgent no`), so a container started earlier

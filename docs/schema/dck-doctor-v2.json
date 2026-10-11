@@ -440,6 +440,27 @@
         "host_ak": {
           "type": "boolean",
           "description": "coding-agents-kit (ak) is on the host's PATH (since v0.2.3)"
+        },
+        "catalog": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "what dck herdr mesh mirrors into containers (since v0.2.6): the host's own catalog entry and how many dck machines it holds",
+          "properties": {
+            "host_self": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "mirrored_dck": {
+              "type": "integer"
+            },
+            "entries": {
+              "type": "integer"
+            }
+          }
         }
       }
     },

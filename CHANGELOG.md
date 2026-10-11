@@ -7,6 +7,31 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.2.6] — 2026-10-11
+
+Upgrade with `dck init` (re-renders the vendored entrypoint), `bash dev.sh rebuild`, then
+`dck herdr mesh` (or `dck up`).
+
+### Fixed
+
+- **herdr-peers replies across machines.** An ask carries its reply address as
+  `<machine id>:<pane>`, the id the asker has in its own Herdr catalog; containers minted new
+  ids with `herdr machine add`, so a reply could not name the machine that asked. The mesh
+  now pushes the host's catalog entries (id, label, target, session, enabled) for every
+  machine the container can reach — every dck container including itself, the host's other
+  loopback machines with a pinned key and the host's own entry — and the container's Herdr
+  catalog becomes that copy (atomically, the previous file kept as `.dck-bak`). The ssh side
+  gains a block for the container itself.
+- **The host's own entry.** The host peer is the host's catalog entry that resolves to the
+  listener; when none exists, `dck host listener enable` and `dck herdr mesh` register
+  `dck-host` once (Host block with the dck key and the listener's pinned host key, then
+  `herdr machine add`).
+
+### Added
+
+- `dck doctor` reports the host's Herdr catalog (entries, dck machines mirrored, the host's own
+  entry) and flags a missing host self entry when the host is a peer.
+
 ## [0.2.5] — 2026-10-11
 
 ### Fixed
@@ -344,7 +369,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.6
 [0.2.5]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.5
 [0.2.4]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.4
 [0.2.3]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.3
