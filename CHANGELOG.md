@@ -7,6 +7,14 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.2.11] — 2026-10-11
+
+### Fixed
+
+- The layout also closes the workspace Herdr's server opens before it when that workspace is
+  named after the app path ("app" for `/app`): once v0.2.9 pointed `new_cwd` there, Herdr
+  stopped naming it "~". Still only when it holds one pane and no agent.
+
 ## [0.2.10] — 2026-10-11
 
 ### Changed
@@ -418,6 +426,7 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
 [Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.2.6...HEAD
+[0.2.11]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.11
 [0.2.10]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.10
 [0.2.9]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.9
 [0.2.8]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.8

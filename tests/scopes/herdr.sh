@@ -421,6 +421,10 @@ test_layout_renames_home_and_drops_the_default_home_workspace() {
   assert_eq "$(lstate '[w["id"] for w in s["ws"] if w["label"]=="App"]')" "['wh']" "the earlier Home is kept, renamed App"
   assert_eq "$(lstate 'sorted(w["id"] for w in s["ws"] if w["label"]=="~")')" "['wbusy']" "the idle default ~ is closed; a ~ with an agent is kept"
   assert_contains "$RUN_OUT" "renamed Home to App" "the rename is reported"
+  # Once new_cwd is the app path, Herdr names that first workspace after it.
+  python3 -c 'import json,sys; p=sys.argv[1]; s=json.load(open(p)); s["ws"].append({"id":"wdef","label":"workspace","tabs":[{"id":"td","label":"1","panes":["pd"]}]}); json.dump(s,open(p,"w"))' "$SANDBOX/layout.json"
+  LAYOUT_ARGS=--keep layout
+  assert_eq "$(lstate '[w["id"] for w in s["ws"] if w["id"]=="wdef"]')" "[]" "the default workspace named after the app path is closed too"
   assert_contains "$RUN_OUT" "ready — App · Editor · Development · Agents" "the summary names the App layout"
 }
 
