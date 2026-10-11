@@ -80,6 +80,7 @@ suite. Checksum provenance:
 | --- | --- |
 | gh, Herdr | GitHub release asset digests published by the vendor |
 | Node (agents layer) | nodejs.org `SHASUMS256.txt` |
+| herdr-peers | the SHA-256 of that release's `SHA256SUMS` (`HERDR_PEERS_SUMS_SHA256`); every installed file is then verified against it |
 | Neovim | computed at pin time from the release tarballs (the v0.12.5 release publishes no checksum file) |
 
 To bump a tool: change its version and both checksums in `versions.env`, run

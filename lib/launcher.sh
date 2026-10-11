@@ -52,7 +52,7 @@ usage: dck [--repo DIR] [--profile NAME] [--project NAME] [--trust] <verb> [args
   herdr layout [--keep|--reset]   the standard sidebar inside: Home · Editor · Development · Agents
   agents                the live agents on every Herdr machine (herdr-peers list)
   ask <machine>:<pane> "<prompt>"   ask one of them, with the reply grant (herdr-peers ask)
-  doctor [--json] [--strict]   environment and repository health (interface 1)
+  doctor [--json] [--strict]   environment and repository health (interface 2)
   --skill               print the bundled agent skill
   help [verb]           this text, or one verb's details
   --version             print the version

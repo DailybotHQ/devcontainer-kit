@@ -32,8 +32,9 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
 | `config` | what dck resolved: files, project and where its name came from, backend, user, workspace, overlay, ssh, Herdr |
 | `ports` | the published loopback ports and whether the service runs |
 | `ssh [cmd…]` | SSH into the container with **agent forwarding** (see below) |
-| `doctor [--json]` | environment and repository health, interface 2 ([doctor.md](doctor.md)) |
-| `herdr add\|status\|repair\|remove` | the container as a Herdr machine ([herdr.md](herdr.md)) |
+| `doctor [--json] [--strict]` | environment and repository health, interface 2; `--strict` exits 1 while `problems` is not empty ([doctor.md](doctor.md)) |
+| `herdr add\|status\|repair\|remove\|mesh` | the container as a Herdr machine; `mesh` makes the other dck containers reachable from inside ([herdr.md](herdr.md)) |
+| `herdr layout [--keep\|--reset]` | the standard sidebar inside: Home · Editor · Development · Agents ([herdr.md](herdr.md)) |
 | `--skill`, `--version`, `help` | the bundled agent skill, the version, usage |
 
 ## Rules it follows

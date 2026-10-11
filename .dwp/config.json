@@ -1,4 +1,8 @@
 {
+  "benchmark": {
+    "enabled": true,
+    "learnings": true
+  },
   "addons": {
     "ai-diff-reviewer": {
       "enabled": true,

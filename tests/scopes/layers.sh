@@ -103,7 +103,7 @@ test_agents_installer_follows_the_kit_contract() {
   assert_rc 0 "the agents installer runs"
   local tag; tag="$(sed -n 's/^AGENTKIT_TAG=//p' "$DCK_REPO/images/versions.env")"
   assert_contains "$(fake_calls curl)" "https://github.com/DailybotHQ/coding-agents-kit/releases/download/$tag/coding-agents-kit-$tag.tar.gz" "coding-agents-kit comes from its pinned release tarball"
-  assert_eq "$(fake_calls git)" "" "nothing is cloned"
+  assert_eq "$(fake_calls git | grep "^git clone " || true)" "" "nothing is cloned"
   assert_contains "$(fake_calls install.sh)" "install.sh --no-rc" "the kit's own install.sh runs without touching rc files"
   assert_contains "$(fake_calls ak)" "ak alias preset classic --on" "the classic preset is on"
   assert_contains "$(fake_calls ak)" "ak alias preset providers --on" "the providers preset is on"

@@ -7,6 +7,14 @@ and the interface number).
 
 ## [Unreleased]
 
+### Fixed
+
+- Documentation audit: the host-profile docs name interface 2, `dck help` and the doctor
+  docstring say interface 2, the agents layer docs name coding-agents-kit v0.3.0 installed
+  from its verified tarball, and the launcher and image docs list `herdr mesh|layout`,
+  `doctor --strict` and the herdr-peers checksum pin.
+- The layers test counts `git clone` calls only, so an environment git shim no longer fails it.
+
 ## [0.2.2] — 2026-10-10
 
 ### Added
