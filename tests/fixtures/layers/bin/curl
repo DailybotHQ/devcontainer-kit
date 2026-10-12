@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 # Fake curl: writes content that can never match a pinned checksum, or the
-# file FAKE_CURL_FILE names (a fixture whose digest the test pinned).
+# file FAKE_CURL_FILE names (a fixture whose digest the test pinned), or the
+# file named like the URL's last segment in FAKE_CURL_DIR (several downloads).
 printf 'curl %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
-out=""
-while [ $# -gt 0 ]; do [ "$1" = -o ] && { out="$2"; shift; }; shift; done
-if [ -n "$out" ] && [ -n "${FAKE_CURL_FILE:-}" ] && [ -f "$FAKE_CURL_FILE" ]; then cp "$FAKE_CURL_FILE" "$out"
+out="" url=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out="$2"; shift ;;
+    http*://*) url="$1" ;;
+  esac
+  shift
+done
+if [ -n "$out" ] && [ -n "${FAKE_CURL_DIR:-}" ] && [ -f "$FAKE_CURL_DIR/${url##*/}" ]; then cp "$FAKE_CURL_DIR/${url##*/}" "$out"
+elif [ -n "$out" ] && [ -n "${FAKE_CURL_FILE:-}" ] && [ -f "$FAKE_CURL_FILE" ]; then cp "$FAKE_CURL_FILE" "$out"
 elif [ -n "$out" ]; then echo "tampered download" > "$out"; fi
 exit 0

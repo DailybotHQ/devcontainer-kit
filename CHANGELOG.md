@@ -41,6 +41,17 @@ and the interface number).
   file that does not reflect `dck.toml` or its user block (`dck up` and `dck rebuild`
   warn too), and what the user block overrides (`compose_render` in `--json`).
 
+### Fixed
+
+- **The agents layer no longer replaces the image's Node.** When the image's `node` was
+  missing or older than the pinned major, the pinned Node was extracted over
+  `/usr/local`, replacing a repository's production Node and mixing npm trees (an
+  `ak install codex` could fail silently). It now goes into its own prefix
+  (`/opt/dck/node`); `ak install` runs with it first on PATH and the npm-installed agent
+  CLIs are launched on it, while the repository's `node` stays the shell's.
+- `[compose] project` wins over `COMPOSE_PROJECT_NAME` in the environment or the compose
+  `.env` (passed with `-p`); `dck doctor` resolves the project the same way.
+
 ### Changed
 
 - **Markers are all-or-nothing.** A compose file or Dockerfile with some of dck's markers

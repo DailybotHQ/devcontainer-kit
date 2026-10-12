@@ -250,3 +250,51 @@ test_agents_installer_presets() {
   run_cmd "${run[@]}" DCK_AGENT_PRESETS="bogus" bash "$DCK_REPO/lib/layers/agents.sh" claude
   assert_rc 2 "an unknown preset fails the build"
 }
+
+# #16: an older Node in the image (a repository's production Node, or Debian's)
+# is never replaced: the pinned Node goes into the agents' own prefix, and the
+# npm-installed agent CLIs are launched on it.
+test_agents_get_their_own_node() {
+  local tag nv arch rel ak
+  tag="$(sed -n 's/^AGENTKIT_TAG=//p' "$DCK_REPO/images/versions.env")"
+  nv="$(sed -n 's/^NODE_VERSION=//p' "$DCK_REPO/images/versions.env")"
+  case "$(uname -m)" in arm64|aarch64) arch=arm64 ;; *) arch=x64 ;; esac
+  mkdir -p "$SANDBOX/dl" "$SANDBOX/noderel/node-v$nv-linux-$arch/bin"
+  printf '#!/usr/bin/env bash\necho v%s\n' "$nv" > "$SANDBOX/noderel/node-v$nv-linux-$arch/bin/node"
+  chmod +x "$SANDBOX/noderel/node-v$nv-linux-$arch/bin/node"
+  tar -cJf "$SANDBOX/dl/node-v$nv-linux-$arch.tar.xz" -C "$SANDBOX/noderel" "node-v$nv-linux-$arch"
+  # A kit whose ak installs one npm CLI (a node-script entry point behind a symlink).
+  rel="$SANDBOX/akrel/coding-agents-kit-$tag"
+  mkdir -p "$rel/skills/agentkit" "$rel/skills/agentkit-setup" "$rel/skills/agentkit-orchestrate"
+  for s in agentkit agentkit-setup agentkit-orchestrate; do printf -- '---\nname: %s\n---\n' "$s" > "$rel/skills/$s/SKILL.md"; done
+  cat > "$rel/install.sh" <<'SH'
+#!/usr/bin/env bash
+mkdir -p "$HOME/.local/share/agentkit/bin"
+cat > "$HOME/.local/share/agentkit/bin/ak" <<'AK'
+#!/usr/bin/env bash
+printf 'ak %s path=%s\n' "$*" "$PATH" >> "${DCK_FAKE_LOG:-/dev/null}"
+if [ "$1" = install ]; then
+  mkdir -p "$HOME/.local/lib/node_modules/fakecli/bin" "$HOME/.local/bin"
+  printf '#!/usr/bin/env node\nconsole.log("fake")\n' > "$HOME/.local/lib/node_modules/fakecli/bin/cli.js"
+  ln -sfn ../lib/node_modules/fakecli/bin/cli.js "$HOME/.local/bin/fakecli"
+fi
+AK
+chmod +x "$HOME/.local/share/agentkit/bin/ak"
+SH
+  tar -czf "$SANDBOX/dl/coding-agents-kit-$tag.tar.gz" -C "$SANDBOX/akrel" "coding-agents-kit-$tag"
+  sed -e "s/^AGENTKIT_SHA256=.*/AGENTKIT_SHA256=$(shasum -a 256 "$SANDBOX/dl/coding-agents-kit-$tag.tar.gz" | cut -d' ' -f1)/" \
+      -e "s/^NODE_SHA256_AMD64=.*/NODE_SHA256_AMD64=$(shasum -a 256 "$SANDBOX/dl/node-v$nv-linux-$arch.tar.xz" | cut -d' ' -f1)/" \
+      -e "s/^NODE_SHA256_ARM64=.*/NODE_SHA256_ARM64=$(shasum -a 256 "$SANDBOX/dl/node-v$nv-linux-$arch.tar.xz" | cut -d' ' -f1)/" \
+      "$DCK_REPO/images/versions.env" > "$SANDBOX/versions.env"
+  local old_node; old_node="$(cat "$LFIX/nodebin-old/node")"
+  run_cmd env DCK_VERSIONS="$SANDBOX/versions.env" DCK_USER="$(id -un)" FAKE_CURL_DIR="$SANDBOX/dl" \
+    DCK_SKILLS_DIR="$SANDBOX/skills" DCK_LAYER_PREFIX="$SANDBOX/opt" DCK_AGENT_PRESETS="" \
+    PATH="$LFIX/bin:$LFIX/nodebin-old:$PATH" bash "$DCK_REPO/lib/layers/agents.sh" claude
+  assert_rc 0 "the agents layer runs over an older Node"
+  assert_file "$SANDBOX/opt/node/bin/node" "the pinned Node goes into the agents' own prefix"
+  assert_eq "$(cat "$LFIX/nodebin-old/node")" "$old_node" "the image's node is left as it is"
+  assert_contains "$RUN_ERR" "for the agents in $SANDBOX/opt/node (the image's node v20 is left as it is)" "and the log says so"
+  assert_contains "$(fake_calls ak | grep '^ak install')" "path=$SANDBOX/opt/node/bin:" "ak install runs with the agents' Node first on PATH"
+  assert_contains "$(head -3 "$HOME/.local/bin/fakecli")" "exec $SANDBOX/opt/node/bin/node $HOME/.local/lib/node_modules/fakecli/bin/cli.js" "an npm CLI is launched on the agents' Node"
+  assert_contains "$RUN_ERR" "1 agent CLI(s) run on the agents' own Node" "counted in the log"
+}

@@ -561,3 +561,24 @@ test_host_listener_plist_and_config_escape_paths() {
   assert_contains "$pl" "odd&amp;&lt;dir&gt;" "the plist escapes the path"
   assert_not_contains "$pl" "odd&<dir>" "no raw XML characters in the plist"
 }
+
+# #17: [compose] project wins over COMPOSE_PROJECT_NAME (environment or the
+# compose .env), because dck always passes -p.
+test_compose_project_beats_compose_project_name() {
+  local r="$SANDBOX/cp"
+  mkdir -p "$r" && git -C "$r" init -q
+  "$DCK" init --repo "$r" --flavour debian --ssh-port 0 --no-herdr --yes >/dev/null 2>&1 || { fail "fixture: init"; return; }
+  python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read(); s = s.replace("[compose]\n", "[compose]\nproject = \"local\"\n", 1); open(p, "w").write(s)' "$r/.devcontainer/dck.toml"
+  "$DCK" init --repo "$r" --yes >/dev/null 2>&1
+  printf 'COMPOSE_PROJECT_NAME=dailybotplatformlocal\n' > "$r/docker/local/.env"
+  : > "$DCK_FAKE_LOG"
+  run_cmd bash -c 'cd "$1" && COMPOSE_PROJECT_NAME=fromenv DCK_BACKEND=compose DCK_NONINTERACTIVE=1 "$2" up' _ "$r" "$DCK"
+  assert_rc 0 "dck up succeeds"
+  assert_contains "$(fake_calls docker)" "compose -p local " "dck.toml's project is passed with -p"
+  assert_not_contains "$(fake_calls docker)" "-p fromenv" "over COMPOSE_PROJECT_NAME in the environment"
+  assert_not_contains "$(fake_calls docker)" "-p dailybotplatformlocal" "and in the compose .env"
+  run_cmd bash -c 'cd "$1" && "$2" config' _ "$r" "$DCK"
+  assert_contains "$RUN_OUT$RUN_ERR" "local (from [compose] project in .devcontainer/dck.toml)" "dck config says where it came from"
+  run_cmd bash -c 'cd "$1" && "$2" doctor --json' _ "$r" "$DCK"
+  assert_contains "$RUN_OUT" '"project": "local"' "the doctor resolves the same project"
+}

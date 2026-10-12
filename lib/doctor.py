@@ -129,7 +129,7 @@ def repo_info(repo, dck_tag, profile, rt, problems):
         info["devcontainer"] = os.path.relpath(d["file"], repo)
         info["service"] = d["service"]
         compose_dir = os.path.dirname(d["compose_files"][0])
-        info["project"] = compose_project(compose_dir, d["compose_name"])
+        info["project"] = compose_project(compose_dir, d["compose_name"], toml_project(repo))
         svc_dir = os.path.join(compose_dir, d["service"] or "")
         dockerfile = os.path.join(svc_dir, "Dockerfile")
         if os.path.isfile(dockerfile) and not os.path.islink(dockerfile):
@@ -372,10 +372,23 @@ def _version_tuple(v):
     return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
 
 
-def compose_project(compose_dir, compose_name):
+def toml_project(repo):
+    """[compose] project from dck.toml, or None (an invalid file says nothing here)."""
+    try:
+        raw = config.parse_file(config.repo_config_path(repo))
+    except config.ConfigError:
+        return None
+    v = (raw.get("compose") or {}).get("project") if isinstance(raw.get("compose"), dict) else None
+    return v if isinstance(v, str) and re.match(config.RE_COMPOSE_PROJECT, v) else None
+
+
+def compose_project(compose_dir, compose_name, toml_name=None):
     """The compose project as the launcher resolves it (resolve_project):
-    COMPOSE_PROJECT_NAME in the environment, then in the compose directory's
-    .env (never through a symlink), then the compose file's top-level name."""
+    [compose] project in dck.toml, then COMPOSE_PROJECT_NAME in the environment,
+    then in the compose directory's .env (never through a symlink), then the
+    compose file's top-level name."""
+    if toml_name:
+        return toml_name
     if os.environ.get("COMPOSE_PROJECT_NAME"):
         return os.environ["COMPOSE_PROJECT_NAME"]
     env = os.path.join(compose_dir, ".env")

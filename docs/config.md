@@ -83,7 +83,7 @@ other services' volumes and networks, port strings and satellites:
 | `herdr.machine` | boolean | `false` | requires a non-zero `ssh_port` |
 | `herdr.label` | string | `{repo}` | 1–64 chars; placeholders `{repo}` `{service}` `{project}` `{user}` |
 | `herdr.layout` | string | `standard` | `standard` (App · Editor · Development · Agents, created by `dck up`) or `none` ([herdr.md](herdr.md)) |
-| `compose.project` | string | unset | `^[a-z0-9][a-z0-9_-]{0,62}$`: the rendered compose project name (`name:`) instead of `<compose_project_prefix><repo-slug>`; `COMPOSE_PROJECT_NAME` still wins, as in compose |
+| `compose.project` | string | unset | `^[a-z0-9][a-z0-9_-]{0,62}$`: the rendered compose project name (`name:`) instead of `<compose_project_prefix><repo-slug>`; it wins over `COMPOSE_PROJECT_NAME` in the environment or `docker/local/.env` (dck passes `-p`); only `dck --project` overrides it |
 | `compose.networks` | array of strings | `[]` | existing external networks; with the host profile's `network` and the networks `x-dck-merge` names, declared once in the single top-level `networks:` (`external: true`) and joined by the service |
 | `compose.volumes` | array of strings | `[]` | extra compose-managed volumes declared with their exact names (the data volumes of the file's other services: `<project>_<name>` keeps reattaching); or the `user:volumes` sub-block ([shared-stack.md](shared-stack.md#the-other-services-volumes-and-networks)) |
 | `build.context` | string | unset (`./<service>`) | the build context, relative to the compose file's directory (`"../.."` = the repository root); the `dockerfile` and dck's `COPY` paths follow it |

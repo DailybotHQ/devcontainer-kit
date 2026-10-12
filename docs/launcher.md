@@ -57,8 +57,8 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
 - **Never `--remove-orphans`.** A compose project may be shared or declare
   on-demand services; the flag would delete containers someone else uses.
 - **Never the directory-name default project.** The project name comes from
-  `--project`, `COMPOSE_PROJECT_NAME` (environment, then
-  `docker/local/.env`) or the compose file's top-level `name:` (which
+  `--project`, `[compose] project` in dck.toml, `COMPOSE_PROJECT_NAME` (environment,
+  then `docker/local/.env`) or the compose file's top-level `name:` (which
   `dck init` writes). Otherwise dck refuses (exit 5): compose would otherwise
   build a second, parallel stack next to the editor's.
 - **The repository's container configuration is reviewed before it runs.**

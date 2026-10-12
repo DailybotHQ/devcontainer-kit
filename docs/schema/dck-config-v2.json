@@ -157,7 +157,7 @@
         "project": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
-          "description": "the rendered top-level compose project name (default <compose_project_prefix><repo-slug>); COMPOSE_PROJECT_NAME still wins, as in compose"
+          "description": "the rendered top-level compose project name (default <compose_project_prefix><repo-slug>); wins over COMPOSE_PROJECT_NAME in the environment or the compose .env (dck passes -p)"
         },
         "networks": {
           "type": "array",

@@ -21,6 +21,10 @@ A single repository with a single service needs none of this.
 
 ## Naming the project: `[compose] project`
 
+`[compose] project` wins over `COMPOSE_PROJECT_NAME` in the environment or in
+`docker/local/.env` (dck passes it with `-p` on every compose call); only
+`dck --project NAME` overrides it. `dck config` says where the project came from.
+
 ```toml
 [compose]
 project = "acme-platform"     # the rendered top-level `name:`
@@ -28,10 +32,9 @@ project = "acme-platform"     # the rendered top-level `name:`
 
 By default `dck init` writes `name: <compose_project_prefix><repo-slug>`, which gives
 every repository its own project. Set `project` to the same value in every repository
-of the stack so they render the same `name:`. The launcher resolves the project as
-before — `COMPOSE_PROJECT_NAME` in the environment, then in `docker/local/.env`, then
-the compose file's `name:` ([launcher.md](launcher.md)) — so an existing
-`COMPOSE_PROJECT_NAME` still wins.
+of the stack so they render the same `name:`. The launcher then uses it ahead of
+`COMPOSE_PROJECT_NAME` (environment, then `docker/local/.env`) and the file's `name:`
+([launcher.md](launcher.md)).
 
 ## One state volume per service: `[compose] state_volume`
 
