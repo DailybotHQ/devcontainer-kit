@@ -609,10 +609,66 @@ test_workspace_under_the_renamed_home() {
   d down
 }
 
+# v0.3.5: a workspace satellite through dck — a second instance of the dev
+# service in its own compose project, with every host step and a seeded login.
+test_workspace_satellite() {
+  require_docker "a workspace satellite gets every host step and a seeded login" || return 0
+  export DCK_BACKEND=compose DCK_NONINTERACTIVE=1 DCK_SSH_CONFIG=/dev/null DCK_HERDR_WAIT=20 DCK_HOST_OS=Darwin
+  new_fixture dcksat
+  SAT_PROJECT="${IT_PROJECT}sat"
+  trap 'it_cleanup; docker ps -aq --filter "label=com.docker.compose.project=$SAT_PROJECT" | xargs -r docker rm -f >/dev/null 2>&1; docker volume ls -q --filter "label=com.docker.compose.project=$SAT_PROJECT" | xargs -r docker volume rm >/dev/null 2>&1; docker image rm "${SAT_PROJECT}-appsatellite" >/dev/null 2>&1; docker network rm "${SAT_PROJECT}_default" >/dev/null 2>&1' EXIT
+  local bin="$SANDBOX/itbin" real_ssh port sport
+  real_ssh="$(command -v ssh)"
+  mkdir -p "$bin" "$HOME/.ssh"
+  ln -s "$TESTS_DIR/fakes/bin/herdr" "$bin/herdr"
+  cat > "$bin/ssh" <<SH
+#!/usr/bin/env bash
+for a in "\$@"; do [ "\$a" = -F ] && exec "$real_ssh" "\$@"; done
+printf 'Include %s/.ssh/config.d/dck\n' "\$HOME" > "\$HOME/.ssh/it-config"
+exec "$real_ssh" -F "\$HOME/.ssh/it-config" "\$@"
+SH
+  chmod +x "$bin/ssh"
+  export PATH="$bin:$PATH"
+  port="$(free_port)"; sport="$(free_port)"
+  git config --global user.name "Fixture Host"
+  git config --global user.email "fixture-host@example.invalid"
+  run_cmd "$DCK" init --repo "$IT_REPO" --flavour debian --ssh-port "$port" --herdr --no-agents --no-editor --yes
+  assert_rc 0 "dck init renders the fixture"
+  with_lock d up
+  assert_rc 0 "the main service is up"
+  # A login on the main service's state volume, to seed the satellite from.
+  d shell -c 'mkdir -p ~/.config/gh && echo "github.com: {user: fixture}" > ~/.config/gh/hosts.yml'
+  # In an overlay file, extends names the file of the service it extends.
+  printf 'services:\n  appsatellite:\n    extends:\n      file: docker-compose.yaml\n      service: app\n    profiles: [satellite]\n    ports: !override\n      - "127.0.0.1:%s:22"\n' "$sport" \
+    > "$IT_REPO/docker/local/docker-compose.satellite.yaml"
+  local sat=(--project "$SAT_PROJECT" --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.satellite.yaml --service appsatellite)
+  with_lock d "${sat[@]}" up --seed-state-from "${IT_PROJECT}_state" --label "Workspace satellite"
+  assert_rc 0 "dck up starts the satellite in its own project"
+  assert_contains "$RUN_OUT" "seeded the gh / Dailybot login from ${IT_PROJECT}_state" "its state volume is seeded with the login"
+  d "${sat[@]}" ssh 'echo sat-ssh-ok; cat ~/.config/gh/hosts.yml; git config --global user.name; echo "self=$HERDR_PEERS_SELF"'
+  assert_rc 0 "sshd in the satellite accepts the dck key"
+  assert_contains "$RUN_OUT" "sat-ssh-ok" "dck ssh reaches the satellite"
+  assert_contains "$RUN_OUT" "github.com: {user: fixture}" "the seeded gh login is there"
+  assert_contains "$RUN_OUT" "Fixture Host" "the host's git identity is set"
+  assert_match "$RUN_OUT" '^self=[0-9a-f]{32}$' "HERDR_PEERS_SELF is the satellite's own machine id"
+  assert_contains "$(herdr machine list --json)" "dck-${SAT_PROJECT}-appsatellite" "the satellite is a Herdr machine of its own"
+  run_cmd docker port "${SAT_PROJECT}-appsatellite-1" 22
+  assert_eq "$RUN_OUT" "127.0.0.1:$sport" "on its own port"
+  d "${sat[@]}" down
+  assert_rc 0 "dck down removes the satellite"
+  run_cmd docker ps -a --filter "label=com.docker.compose.project=$SAT_PROJECT" --format '{{.Names}}'
+  assert_eq "$RUN_OUT" "" "its container is gone"
+  assert_not_contains "$(herdr machine list --json)" "dck-${SAT_PROJECT}-appsatellite" "and its machine"
+  run_cmd docker ps --filter "label=com.docker.compose.project=$IT_PROJECT" --format '{{.Names}}'
+  assert_eq "$RUN_OUT" "${IT_PROJECT}-app-1" "the main service keeps running"
+  assert_contains "$(herdr machine list --json)" "dck-${IT_PROJECT}" "and stays registered"
+  d down
+}
+
 test_zz_nothing_left_behind() {
   # Runs last in the scope: every container, volume and network a test created is gone.
   require_docker "the docker scope leaves no container, volume or network behind" || return 0
   local left
-  left="$( { docker ps -a --format '{{.Names}}'; docker volume ls --format '{{.Name}}'; docker network ls --format '{{.Name}}'; } | grep -E '^(dckit|dckpy|dckdc|dckfr|dckas|dckdv|dckwh)[0-9a-f]{8}' || true)"
+  left="$( { docker ps -a --format '{{.Names}}'; docker volume ls --format '{{.Name}}'; docker network ls --format '{{.Name}}'; } | grep -E '^(dckit|dckpy|dckdc|dckfr|dckas|dckdv|dckwh|dcksat)[0-9a-f]{8}' || true)"
   assert_eq "$left" "" "the docker scope leaves no container, volume or network behind"
 }

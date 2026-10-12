@@ -25,15 +25,23 @@ dck_usage() {
 dck — devcontainer-kit: a repository's dev container from a plain terminal
 
 usage: dck [--repo DIR] [--profile NAME] [--project NAME] [--trust] <verb> [args]
+       dck --project P --compose-file F... --service S <verb> [args]   (a satellite)
 
   --trust               start a repository whose own config reaches the host
                         (initializeCommand, privileged, Docker socket, host mounts)
+  --service S           a workspace satellite: one service of another compose project
+  --compose-file F      (repeatable) that project's compose files; needs --project
+                        and --service. up/down/ps/logs/shell/exec/ssh/stop/start/
+                        restart/config/herdr act on S only, with every host step
 
   init [flags]          render the Dev Container template into this repository
   setup                 .env files from their examples (0600), external networks,
                         the dedicated dck SSH key
   up [--recreate] [svc...]   start runServices (detached); registers the Herdr
                         machine when dck.toml asks for it
+                        satellites: [--seed-state-from VOLUME] copies only the gh /
+                        Dailybot login into an empty state volume; [--label TEXT]
+                        names its Herdr machine (default "<project> · <service>")
   down [svc...]         stop and remove this repository's services (volumes kept)
   stop [svc...]         stop the containers (kept)
   start [svc...]        start stopped containers
@@ -156,7 +164,50 @@ $out
 EOF
   DC_COMPOSE="${DC_COMPOSE_FILES[0]}"
   COMPOSE_DIR="$(cd -P "$(dirname "$DC_COMPOSE")" && pwd)"
+  DCK_SATELLITE=0
+  [ -n "${DCK_SERVICE_OVERRIDE:-}" ] && satellite_context
   resolve_project
+  # A running satellite's sshd port (dck ssh, herdr add/status/remove).
+  if [ "$DCK_SATELLITE" = "1" ] && command -v docker >/dev/null 2>&1; then satellite_ssh_port; fi
+  return 0
+}
+
+# satellite_context — a second instance of a dev service (a workspace
+# satellite: `<svc>satellite`, its own compose project, files and ports) with
+# every dck host step. Its Herdr alias and label come from project and service;
+# its sshd port is read from compose once it runs.
+satellite_context() {
+  local f abs files=()
+  DCK_SATELLITE=1
+  if [ "${#DCK_COMPOSE_OVERRIDE[@]}" -gt 0 ]; then
+    for f in "${DCK_COMPOSE_OVERRIDE[@]}"; do
+      [ -f "$f" ] && [ ! -L "$f" ] || die "$DCK_EXIT_CONFIG" "compose file not found (or a symlink): $f"
+      abs="$(cd -P "$(dirname "$f")" && pwd)/$(basename "$f")"
+      files+=("$abs")
+    done
+    DC_COMPOSE_FILES=("${files[@]}")
+    DC_COMPOSE="${DC_COMPOSE_FILES[0]}"
+    COMPOSE_DIR="$(cd -P "$(dirname "$DC_COMPOSE")" && pwd)"
+  fi
+  DC_SERVICE="$DCK_SERVICE_OVERRIDE"
+  DC_RUNSERVICES="$DCK_SERVICE_OVERRIDE"
+  local slug
+  slug="$(printf '%s-%s' "$DCK_PROJECT_OVERRIDE" "$DCK_SERVICE_OVERRIDE" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9_.\n-' '-' | cut -c1-48)"
+  DCK_ALIAS="${DCK_ALIAS%%-*}-$slug"
+  case "$DCK_ALIAS" in -*) DCK_ALIAS="dck$DCK_ALIAS" ;; esac
+  DCK_HERDR_LABEL="${DCK_SATELLITE_LABEL:-$DCK_PROJECT_OVERRIDE · $DCK_SERVICE_OVERRIDE}"
+  DCK_SSH_PORT=0
+}
+
+# satellite_ssh_port — the host port the running satellite publishes for its sshd.
+satellite_ssh_port() {
+  [ "${DCK_SATELLITE:-0}" = "1" ] || return 0
+  local out port
+  # Not running yet (or no sshd published): no port; never fatal under set -e.
+  out="$(dc port "$DC_SERVICE" 22 2>/dev/null | head -n 1)" || out=""
+  port="${out##*:}"
+  case "$port" in ''|*[!0-9]*) DCK_SSH_PORT=0 ;; *) DCK_SSH_PORT="$port" ;; esac
+  export DCK_SSH_PORT
 }
 
 # The compose project name. Never the directory-name default: compose would
@@ -211,6 +262,7 @@ resolve_backend() {
       BACKEND=devcontainer ;;
     auto)
       if [ -z "$DCK_PROJECT_OVERRIDE" ] && [ "${DCK_HOST_PROFILES:-0}" != "1" ] && [ "${DCK_SSH_COPY_KEYS:-0}" != "1" ] \
+        && [ "${DCK_SATELLITE:-0}" != "1" ] \
         && command -v devcontainer >/dev/null 2>&1; then
         BACKEND=devcontainer
       else
@@ -259,7 +311,7 @@ write_overlay() {
   write_sshkeys_overlay
   if [ "$DC_MOUNTS" = "0" ] && [ "$DC_ENVS" = "0" ]; then return 0; fi
   ensure_overlay_dir
-  dckpy devc overlay --repo "$DC_REPO" --project "$PROJECT" --out "$(overlay_path)" >/dev/null
+  dckpy devc overlay --repo "$DC_REPO" --project "$PROJECT" --out "$(overlay_path)" --service "$DC_SERVICE" >/dev/null
 }
 
 # [agents] host_profiles: the host's ak profiles, Codex home and allow-listed
@@ -276,7 +328,7 @@ write_agents_overlay() {
   # Off and never written: nothing to clean up.
   if [ "${DCK_HOST_PROFILES:-0}" != "1" ] && [ ! -f "$f" ]; then return 0; fi
   ensure_overlay_dir
-  args=(agents overlay --repo "$DC_REPO" --project "$PROJECT" --out "$f")
+  args=(agents overlay --repo "$DC_REPO" --project "$PROJECT" --out "$f" --service "$DC_SERVICE")
   [ -n "${DCK_PROFILE_NAME:-}" ] && args+=(--profile "$DCK_PROFILE_NAME")
   out="$(dckpy "${args[@]}")" || die "$DCK_EXIT_REFUSED" "host profiles: the overlay could not be written"
   [ "${DCK_HOST_PROFILES:-0}" = "1" ] || return 0
@@ -307,7 +359,7 @@ write_sshkeys_overlay() {
   f="$(sshkeys_overlay_path)"
   if [ "${DCK_SSH_COPY_KEYS:-0}" != "1" ] && [ ! -f "$f" ]; then return 0; fi
   ensure_overlay_dir
-  args=(sshkeys overlay --repo "$DC_REPO" --out "$f")
+  args=(sshkeys overlay --repo "$DC_REPO" --out "$f" --service "$DC_SERVICE")
   [ -n "${DCK_PROFILE_NAME:-}" ] && args+=(--profile "$DCK_PROFILE_NAME")
   out="$(dckpy "${args[@]}")" || die "$DCK_EXIT_REFUSED" "ssh keys: the overlay could not be written"
   [ "${DCK_SSH_COPY_KEYS:-0}" = "1" ] || return 0
@@ -819,10 +871,17 @@ ssh_copy_keys_offer() {
 }
 
 cmd_up() {
-  local recreate=0 args=()
+  local recreate=0 args=() seed=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --recreate) recreate=1 ;;
+      --seed-state-from)
+        [ $# -ge 2 ] || die "$DCK_EXIT_USAGE" "--seed-state-from needs a volume name"
+        seed="$2"; shift ;;
+      --label)
+        [ $# -ge 2 ] || die "$DCK_EXIT_USAGE" "--label needs a text"
+        [ "${DCK_SATELLITE:-0}" = "1" ] || die "$DCK_EXIT_USAGE" "--label is for a satellite (--service); the main label is [herdr] label"
+        DCK_HERDR_LABEL="$2"; shift ;;
       -*) die "$DCK_EXIT_USAGE" "up: unknown flag '$1'" ;;
       *) args+=("$1") ;;
     esac
@@ -843,6 +902,7 @@ cmd_up() {
     fi
   else
     write_overlay
+    [ -n "$seed" ] && seed_state "$seed"
     note "starting ${SERVICES[*]} (project $PROJECT)"
     if [ "$recreate" -eq 1 ]; then
       dc up -d --force-recreate "${SERVICES[@]}"
@@ -855,6 +915,34 @@ cmd_up() {
     fi
   fi
   after_start
+}
+
+# seed_state <volume> — a satellite starts logged in: copy the login state only
+# (config_gh, config_dailybot; never history, keys or Herdr state) from another
+# state volume into this one, once, while this one is still empty.
+seed_state() {
+  local src="$1"
+  case "$src" in [A-Za-z0-9]*) ;; *) die "$DCK_EXIT_USAGE" "invalid --seed-state-from '$src'" ;; esac
+  case "$src" in *[!A-Za-z0-9_.-]*) die "$DCK_EXIT_USAGE" "invalid --seed-state-from '$src'" ;; esac
+  docker volume inspect "$src" >/dev/null 2>&1 || die "$DCK_EXIT_CONFIG" "--seed-state-from: no volume named $src"
+  local user="${DC_USER:-dev}" out
+  out="$(dc run --rm --no-deps -T --entrypoint sh -v "$src:/dck-seed-from:ro" "$DC_SERVICE" -c '
+    dst="$1/.dck/volumes/state"
+    mkdir -p "$dst"
+    if [ -n "$(ls -A "$dst" 2>/dev/null)" ]; then echo kept; exit 0; fi
+    n=0
+    for d in config_gh config_dailybot; do
+      [ -d "/dck-seed-from/$d" ] || continue
+      cp -a "/dck-seed-from/$d" "$dst/$d" && n=$((n + 1))
+    done
+    chown -R 1000:1000 "$dst" 2>/dev/null || true
+    echo "seeded $n"' _ "/home/$user" </dev/null 2>/dev/null | tail -n 1)" \
+    || die "seeding the state volume from $src failed"
+  case "$out" in
+    kept) note "state: the state volume already has data; not seeded from $src" ;;
+    "seeded 0") note "state: $src has no gh or Dailybot login to copy" ;;
+    seeded*) note "state: seeded the gh / Dailybot login from $src (${out#seeded } director$( [ "${out#seeded }" = 1 ] && echo y || echo ies))" ;;
+  esac
 }
 
 # A compose file that no longer reflects dck.toml or its user block (edited
@@ -881,6 +969,7 @@ STATUS
 # and the layout. A container built from scratch must reach the host and its
 # peers without a manual `dck herdr mesh`.
 after_start() {
+  satellite_ssh_port
   host_ssh_identities
   push_git_identity
   if [ "${DCK_HERDR_MACHINE:-0}" = "1" ] && declare -F dck_herdr_after_up >/dev/null 2>&1; then
@@ -894,6 +983,10 @@ cmd_down() {
   # whole project and would take out anything else sharing it.
   note "stopping and removing ${SERVICES[*]} (project $PROJECT)"
   dc rm -sf "${SERVICES[@]}"
+  if [ "${DCK_SATELLITE:-0}" = "1" ] && declare -F herdr_remove >/dev/null 2>&1; then
+    # A satellite is a temporary instance: its Herdr machine and SSH alias go too.
+    ( herdr_remove ) || warn "the satellite is down, but its Herdr machine was not removed (dck herdr status)"
+  fi
   note "named volumes were kept; list them with: docker volume ls --filter name=${PROJECT}_"
 }
 
@@ -1175,6 +1268,8 @@ dck_main() {
   DCK_PROFILE_NAME="${DCK_PROFILE:-}"
   DCK_PROJECT_OVERRIDE=""
   DCK_REPO_ARG=""
+  DCK_COMPOSE_OVERRIDE=()
+  DCK_SERVICE_OVERRIDE=""
   local verb=""
   while [ $# -gt 0 ] && [ -z "$verb" ]; do
     case "$1" in
@@ -1189,6 +1284,8 @@ dck_main() {
       --trust) DCK_TRUST=1; export DCK_TRUST; shift ;;
       --project) [ $# -ge 2 ] || die "$DCK_EXIT_USAGE" "--project needs a name"; DCK_PROJECT_OVERRIDE="$2"; shift 2 ;;
       --repo) [ $# -ge 2 ] || die "$DCK_EXIT_USAGE" "--repo needs a directory"; DCK_REPO_ARG="$2"; shift 2 ;;
+      --compose-file) [ $# -ge 2 ] || die "$DCK_EXIT_USAGE" "--compose-file needs a file"; DCK_COMPOSE_OVERRIDE+=("$2"); shift 2 ;;
+      --service) [ $# -ge 2 ] || die "$DCK_EXIT_USAGE" "--service needs a name"; DCK_SERVICE_OVERRIDE="$2"; shift 2 ;;
       -h|--help) verb="help"; shift ;;
       -*) die "$DCK_EXIT_USAGE" "unknown flag '$1' — run: dck help" ;;
       *)
@@ -1200,6 +1297,18 @@ dck_main() {
     esac
   done
   [ -n "$verb" ] || verb="help"
+  # A satellite: one service of another compose project (its own project, files
+  # and ports). It must name its project, so the main service is never touched.
+  if [ -n "$DCK_SERVICE_OVERRIDE" ] || [ "${#DCK_COMPOSE_OVERRIDE[@]}" -gt 0 ]; then
+    [ -n "$DCK_PROJECT_OVERRIDE" ] || die "$DCK_EXIT_USAGE" "--service and --compose-file need --project (a satellite runs in its own compose project)"
+    [ -n "$DCK_SERVICE_OVERRIDE" ] || die "$DCK_EXIT_USAGE" "--compose-file needs --service (the one service to act on)"
+    case "$DCK_SERVICE_OVERRIDE" in [A-Za-z0-9]*) ;; *) die "$DCK_EXIT_USAGE" "invalid --service '$DCK_SERVICE_OVERRIDE'" ;; esac
+    case "$DCK_SERVICE_OVERRIDE" in *[!A-Za-z0-9_.-]*) die "$DCK_EXIT_USAGE" "invalid --service '$DCK_SERVICE_OVERRIDE'" ;; esac
+    case "$verb" in
+      up|down|ps|logs|shell|exec|ssh|stop|start|restart|config|herdr) ;;
+      *) die "$DCK_EXIT_USAGE" "$verb does not take --service (a satellite supports up, down, ps, logs, shell, exec, ssh, stop, start, restart, config, herdr)" ;;
+    esac
+  fi
   case "$verb" in
     help) dck_help_verb "${1:-}"; return 0 ;;
     init)

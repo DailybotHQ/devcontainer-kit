@@ -288,6 +288,51 @@ Place satellites after `# <<< dck:service <<<`, still inside `services:`. `exten
 with `!reset` needs **Docker Compose 2.24** or newer; `dck doctor` checks the version
 and names the minimum.
 
+## Workspace satellites
+
+A workspace starts a **second instance** of a dev service — `<svc>satellite` — in its own
+compose project, with its own ports. Started with plain `docker compose`, it gets none
+of dck's host steps: no authorized key (Herdr cannot attach), no copied keys, no git
+identity, no host-profile accounts, and an empty state volume (gh and Dailybot logged
+out). Start it through dck instead ([launcher.md](launcher.md#workspace-satellites)).
+
+**Define the satellite** in the main compose file, after `# <<< dck:service <<<` (so
+`extends: <svc>` finds the service in the same file), or in an overlay file, where
+`extends` names the file:
+
+```yaml
+  apisatellite:
+    extends: api                      # in an overlay: extends: {file: docker-compose.yaml, service: api}
+    profiles: [satellite]             # never started by a plain `dck up`
+    ports: !override
+      - "127.0.0.1:${API_WS_SSH_PORT:-22541}:22"
+      - "127.0.0.1:${API_WS_PORT:-8100}:8000"
+    volumes: !override                # its own mounts: never the main state volume
+      - ../..:/app:cached
+      - state:/home/dev/.dck/volumes/state
+```
+
+The satellite runs in its own compose project, so `state` there is
+`<satellite project>_state`, not the main one's.
+
+**What the repository's script calls** — instead of
+`docker compose -p <ws> -f … up -d apisatellite`:
+
+```bash
+# docker.sh satellite.up <ws>
+dck --project "acme-$ws" --compose-file docker/local/docker-compose.yaml \
+    --compose-file "docker/local/docker-compose.$ws.yaml" --service apisatellite \
+    up --seed-state-from acme-platform_state-api --label "API · $ws"
+# docker.sh satellite.down <ws>
+dck --project "acme-$ws" --compose-file docker/local/docker-compose.yaml \
+    --compose-file "docker/local/docker-compose.$ws.yaml" --service apisatellite down
+```
+
+**The user block** of the main service reaches the satellite through `extends` (it is
+merged into the main service's keys at `dck init`); the satellite's own block, when it
+needs one, is plain compose under its own service. The satellite's `.env` files are the
+main service's (`extends` copies `env_file`).
+
 ## When `dck up` refuses (exit 5)
 
 A user block, a satellite or any hand-written part of the file that reaches the host —

@@ -40,6 +40,36 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
 | `herdr layout [--keep\|--reset]` | the standard sidebar inside: App · Editor · Development · Agents ([herdr.md](herdr.md)) |
 | `--skill`, `--version`, `help` | the bundled agent skill, the version, usage |
 
+## Workspace satellites
+
+A satellite is a second instance of a dev service — `<svc>satellite`, in its own compose
+project, with its own files and ports — that gets every host step `dck up` gives the main
+service: the authorized dck key (Herdr can attach), `[ssh] copy_keys`, the host-profile
+overlays and `default_profile`, the host's git identity, `HERDR_PEERS_SELF`, its own Herdr
+machine (alias `dck-<project>-<service>`, label `<project> · <service>` or `--label`) with
+the mesh, and the Codex/Claude container config.
+
+```bash
+dck --project acme-ws1 --compose-file docker/local/docker-compose.yaml \
+    --compose-file docker/local/docker-compose.ws1.yaml --service apisatellite \
+    up --seed-state-from acme-platform_state-api --label "API · workspace 1"
+dck --project acme-ws1 --compose-file ... --service apisatellite ssh
+dck --project acme-ws1 --compose-file ... --service apisatellite down   # it and its Herdr machine
+```
+
+- `--project` is required: a satellite never runs in the main service's project, and
+  nothing of the main service is touched.
+- `--compose-file` (repeatable) replaces the compose file set; without it, the
+  repository's files are used.
+- Its sshd port is read from compose (`docker compose port <svc> 22`) once it runs.
+- `--seed-state-from VOLUME` copies only the login state (`config_gh`,
+  `config_dailybot`; never history, keys or Herdr state) into the satellite's state
+  volume, once, while it is empty.
+- `down` removes only that service, its Herdr machine and its SSH alias.
+
+The recipe for repositories that start satellites from their own scripts:
+[shared-stack.md](shared-stack.md#workspace-satellites).
+
 ## Rules it follows
 
 - **`devcontainer.json` is the source of truth.** `runServices` decides what

@@ -11,6 +11,23 @@ and the interface number).
 
 Interface stays **2**.
 
+### Added
+
+- **Workspace satellites through dck.** `dck --project P --compose-file F… --service S
+  up|down|ps|logs|shell|exec|ssh|…` acts on one service of another compose project — a
+  second instance of a dev service (`<svc>satellite`) with its own project, files and
+  ports — with every host step the main service gets: the authorized dck key, `[ssh]
+  copy_keys`, host-profile overlays and `default_profile`, the git identity,
+  `HERDR_PEERS_SELF`, its own Herdr machine (alias `dck-<project>-<service>`, label
+  `<project> · <service>` or `--label`) with the mesh, and the Codex/Claude container
+  config. Its sshd port is read from compose. `down` removes only that service, its Herdr
+  machine and its SSH alias; the main service is never touched.
+- `up --seed-state-from VOLUME` (satellites) copies only the login state (`config_gh`,
+  `config_dailybot`; never history, keys or Herdr state) from another state volume into
+  the satellite's, once, while it is empty.
+- A recipe for repositories that start satellites from their own scripts
+  ([docs/shared-stack.md](docs/shared-stack.md#workspace-satellites)).
+
 ### Fixed
 
 - **A workspace under the renamed user's home builds.** With `user` other than `dev`
