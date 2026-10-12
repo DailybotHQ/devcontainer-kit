@@ -99,7 +99,9 @@ sessions keep running) and the include block.
 
 - edit Herdr's own files (`~/.config/herdr`, `~/.local/state/herdr`, its
   endpoint catalogs) — it only calls the `herdr` CLI;
-- copy a private key into a container, or authorize "every `~/.ssh/*.pub`";
+- copy a private key into a container unless you opt in with `[ssh] copy_keys`
+  (host profile; [SECURITY.md](SECURITY.md#host-ssh-keys-ssh-copy_keys)), or authorize
+  "every `~/.ssh/*.pub`";
 - add a listener or an `authorized_keys` entry on your host **unless you ask
   for it**: the dck host listener (below) is opt-in — `dck setup` asks once,
   `dck host listener enable|disable` turns it on and off.
@@ -123,7 +125,9 @@ start the entrypoint links both skills into each agent's skill directory
 (`~/.agents/skills`, `~/.claude/skills`, and the others that exist).
 
 `dck up` runs `dck herdr mesh` after `dck herdr add` (unless `[herdr] mesh =
-false`), and you can run it again at any time. The mesh works with Docker
+false`) — and so do `dck rebuild`, `dck start` and `dck restart`, so a container built
+from scratch (its volumes removed) knows the host and its peers without a manual
+`dck herdr mesh` — and you can run it again at any time. The mesh works with Docker
 Desktop: on a Linux host the peers' sshd ports are published on 127.0.0.1,
 which a container cannot reach through `host-gateway`, so `dck herdr mesh`
 says so and skips. It widens trust between your containers — read
@@ -204,7 +208,7 @@ dck ask dck-other:w1:p2 "Which test covers the parser?"   # herdr-peers ask, wit
   link, which dangles when the client that attached forwarded no agent. Since v0.2.8 the login
   profile falls back to the host agent dck mounts and the entrypoint repoints a dangling link, so
   mesh hops and `herdr-peers reply` keep working.
-- **Credentials.** No private key enters the container. Hops out of it
+- **Credentials.** No private key enters the container (unless `[ssh] copy_keys`). Hops out of it
   authenticate with keys held by the host's ssh-agent, reached through
   agent forwarding (Herdr and `dck ssh` sessions) or the mounted agent
   socket (exec sessions). `dck herdr mesh` loads the dck key into that
@@ -236,7 +240,8 @@ dck herdr layout --reset   # close App, Editor, Development, Agents (and the leg
 bash dev.sh herdr-layout   # the same, from the repository
 ```
 
-- **`dck up` runs it with `--keep`** right after `dck herdr add`.
+- **`dck up` runs it with `--keep`** right after `dck herdr add` (as do `dck rebuild`,
+  `dck start` and `dck restart`).
   `[herdr] layout = "none"` in dck.toml turns that off.
 - **`--keep` never rearranges your work:**
   - Development is split only when it has exactly one pane, so a layout

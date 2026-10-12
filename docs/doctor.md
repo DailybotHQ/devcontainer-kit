@@ -30,6 +30,8 @@ retyped. Interface 2 (v0.2.0) replaced the base-image keys of interface 1 (`imag
 | `ssh` | `enabled`, `port`, `bind`, `identity`, `identity_present`, `answering` (true only when sshd sends its `SSH-` banner on the published port — a bare TCP accept can be Docker's userland proxy; probed only when the container runs), `banner` |
 | `herdr` | `installed`, `version`, `machine` (dck.toml), `alias`, `include_present`, `registered`, `enabled`, `server_answering` |
 | `drift` | [{`name`, `pinned`, `installed`, `status` (`ok`/`drift`/`unknown`), `note`}]: the kit the repository was rendered with (`kit`) vs the installed dck; the host's Herdr client vs the image pin (informative: they need not match); inside a running container built from a dck image, gh/herdr/nvim/deepworkplan-vim vs `images/versions.env` |
+| `ssh_keys` | null outside a configured repository; else `enabled` (`[ssh] copy_keys` on and the host has `~/.ssh`), `reason` (why it is off), `host_keys` (the `id_*` file names of the host's `~/.ssh` the entrypoint copies), `copied` (the names the running container copied, from its `~/.ssh/.dck-copied-keys`; null without a running container). Names only, never a key's contents; the text report prints `ssh keys copied: <names>` |
+| `compose` | null outside a configured repository or without a Docker daemon; else `project` (resolved like the launcher: `COMPOSE_PROJECT_NAME` in the environment, then in the compose directory's `.env`, then the compose file's `name:`), `state_volume` (`<project>_<[compose] state_volume>`), `services` (the project's other services), `shared_with` (other services mounting this service's state volume). A problem when `shared_with` is not empty, or when the project has other services and `state_volume` is the default `state` |
 | `host_profiles` | null outside a configured repository; else `enabled`, `reason` (why it is off), `shared` (CLIs whose host ak profiles `dck up` binds), `profiles` (the shared profiles as `cli@name`; the Codex home is `codex@default`), `mounts` [{`profile`, `mode` (`ro`/`rw`), `reason`}] (every shared directory and the env file), `codex` (the host's Codex home is shared), `skipped` [{`cli`, `reason`}], `env_names` (names in the container's env file — never values), `notes` (the text report's lines) |
 | `os`, `python`, `profile` | host system/arch; python version and whether it is ≥ 3.11; the host profile in use and whether it is valid |
 | `problems`, `ok` | human-readable findings; `ok` is true when there are none |
@@ -56,6 +58,12 @@ by other accounts is a problem (`dck setup` narrows it to 0600).
   `CLAUDE_CODE_OAUTH_TOKEN` for `@default`), and a listed variable whose value
   could not be copied. Logins are read from the host's `ak profiles --json`
   (schema `profiles-v1`, coding-agents-kit v0.5.0+); without it the doctor says so.
+
+The text report also says, as a note, when Claude's default account will not be logged
+in inside: Claude's own home (`~/.claude`) is never shared — on macOS its login lives in
+the keychain — so `@default` gets in only through `CLAUDE_CODE_OAUTH_TOKEN` in ak's env
+file (`claude setup-token`), or through a login made once inside (`ak claude`), which the
+container's `claude` volume keeps across recreates and rebuilds.
 
 ## Not in v0.1
 

@@ -118,6 +118,10 @@ test_node_fixture_end_to_end() {
   assert_contains "$RUN_OUT" "peers-ok" "herdr-peers runs inside"
   assert_contains "$RUN_OUT" "/usr/local/bin/dck-herdr-layout" "the layout script is installed"
   assert_contains "$RUN_OUT" "herdr-peers" "the herdr-peers skill is linked for the agents"
+  local skill
+  for skill in agentkit agentkit-setup agentkit-orchestrate; do
+    assert_contains "$RUN_OUT" "$skill" "coding-agents-kit's $skill skill is linked for the agents"
+  done
   assert_contains "$RUN_OUT" "owner:dev" "~/.agents belongs to the container user"
 
   # 5. Git over SSH through the host agent in exec sessions (Linux: the sandbox
@@ -219,14 +223,84 @@ Fixture Dev" "gh, a CLI home, agentkit and the git identity survive a rebuild"
   dev down
 }
 
+# A container built from scratch — its volumes removed, then `dck rebuild` —
+# reaches the host and its peers without a manual `dck herdr mesh`, and with
+# [ssh] copy_keys carries the host's keys. The host's Herdr is the fake one (its
+# catalog is a file); ssh reads the sandbox config through a -F wrapper, since
+# OpenSSH resolves ~/.ssh from the passwd entry, not $HOME.
+test_fresh_rebuild_joins_the_mesh_and_copies_keys() {
+  require_docker "a fresh rebuild registers, meshes and copies the host's SSH keys" || return 0
+  export DCK_BACKEND=compose DCK_NONINTERACTIVE=1 DCK_SSH_CONFIG=/dev/null DCK_HERDR_WAIT=20 DCK_HOST_OS=Darwin
+  new_fixture dckfr
+  trap it_cleanup EXIT
+  local bin="$SANDBOX/itbin" real_ssh port
+  real_ssh="$(command -v ssh)"
+  mkdir -p "$bin" "$HOME/.ssh"
+  ln -s "$TESTS_DIR/fakes/bin/herdr" "$bin/herdr"
+  cat > "$bin/ssh" <<SH
+#!/usr/bin/env bash
+for a in "\$@"; do [ "\$a" = -F ] && exec "$real_ssh" "\$@"; done
+printf 'Include %s/.ssh/config.d/dck\n' "\$HOME" > "\$HOME/.ssh/it-config"
+exec "$real_ssh" -F "\$HOME/.ssh/it-config" "\$@"
+SH
+  chmod +x "$bin/ssh"
+  export PATH="$bin:$PATH"
+  port="$(free_port)"
+  run_cmd "$DCK" init --repo "$IT_REPO" --flavour debian --ssh-port "$port" --herdr --yes
+  assert_rc 0 "dck init renders a Herdr machine"
+
+  # The host's keys (throwaway), the host as a mesh peer, and one more peer.
+  ssh-keygen -q -t ed25519 -N '' -C dck-it-copy -f "$HOME/.ssh/id_ed25519"
+  ssh-keygen -q -t ed25519 -N '' -C dck-it-listener -f "$SANDBOX/listener"
+  mkdir -p "$HOME/.config/dck/ssh"
+  printf 'interface = 2\n[ssh]\ncopy_keys = true\n[host]\nmachine = true\nlistener = "external"\nport = 22032\nhost_key = "%s"\nlabel = "Mac"\n[mesh]\nexternal = false\n' \
+    "$SANDBOX/listener.pub" > "$HOME/.config/dck/profile.toml"
+  python3 -I "$DCK_REPO/lib/dckpy.py" sshconf upsert --file "$HOME/.ssh/config.d/dck" --alias dck-itpeer \
+    --host 127.0.0.1 --port 22777 --user dev --identity "$HOME/.config/dck/ssh/id_ed25519" \
+    --known-hosts "$HOME/.config/dck/ssh/known_hosts" >/dev/null
+  printf 'dck-itpeer %s\n' "$(cut -d' ' -f1-2 "$SANDBOX/listener.pub")" >> "$HOME/.config/dck/ssh/known_hosts"
+  herdr machine add --label "Peer" dck-itpeer >/dev/null
+
+  with_lock d up
+  assert_rc 0 "the first dck up"
+  d down
+  docker volume ls -q --filter "label=com.docker.compose.project=$IT_PROJECT" | xargs -r docker volume rm >/dev/null 2>&1
+  run_cmd docker volume ls -q --filter "label=com.docker.compose.project=$IT_PROJECT"
+  assert_eq "$RUN_OUT" "" "every volume of the project is removed"
+  python3 -I -c 'import json, sys; p = sys.argv[1]; m = json.load(open(p)); json.dump([x for x in m if x["target"] != sys.argv[2]], open(p, "w"))' \
+    "$DCK_FAKE_STATE/herdr_machines" "dck-$IT_PROJECT"
+  with_lock d rebuild
+  assert_rc 0 "dck rebuild from scratch"
+  assert_contains "$RUN_OUT$RUN_ERR" "herdr: registered dck-$IT_PROJECT" "rebuild re-adds the removed Herdr machine"
+  assert_contains "$RUN_OUT$RUN_ERR" "mesh: 2 peer(s) reachable" "rebuild pushes the mesh"
+
+  d shell -c 'herdr machine list 2>&1; echo ---; grep -h "^Host " ~/.ssh/config.d/dck-peers'
+  assert_contains "$RUN_OUT" "Mac" "herdr machine list inside shows the host"
+  assert_contains "$RUN_OUT" "Peer" "and the peer"
+  assert_contains "$RUN_OUT" "Host dck-itpeer" "the peer is in the ssh config inside"
+  assert_contains "$RUN_OUT" "Host dck-host" "and the host"
+
+  # [ssh] copy_keys: the key files, their modes, and the key loads without an agent.
+  d shell -c 'ls ~/.ssh; stat -c "%a %n" ~/.ssh/id_ed25519 ~/.ssh/id_ed25519.pub; env -u SSH_AUTH_SOCK ssh-keygen -y -f ~/.ssh/id_ed25519; test -w ~/.ssh_host || echo host-ro'
+  assert_contains "$RUN_OUT" "id_ed25519.pub" "the .pub files are listed in ~/.ssh"
+  assert_contains "$RUN_OUT" "600 /home/dev/.ssh/id_ed25519" "the private key is 0600"
+  assert_contains "$RUN_OUT" "644 /home/dev/.ssh/id_ed25519.pub" "the public key is 0644"
+  assert_contains "$RUN_OUT" "$(cut -d' ' -f1-2 "$HOME/.ssh/id_ed25519.pub")" "the copied private key loads without the agent"
+  assert_contains "$RUN_OUT" "host-ro" "the host's ~/.ssh is read-only inside"
+  assert_not_contains "$RUN_OUT$RUN_ERR" "$(sed -n 2p "$HOME/.ssh/id_ed25519")" "no key content is printed"
+  d doctor
+  assert_contains "$RUN_OUT" "ssh keys copied: id_ed25519, id_ed25519.pub" "the doctor names the copied keys"
+  d down
+}
+
 test_python_fixture() {
   require_docker "a rendered python repository builds with its runtime, editor and herdr-peers" || return 0
   export DCK_BACKEND=compose DCK_NONINTERACTIVE=1 DCK_SSH_CONFIG=/dev/null
   new_fixture dckpy
   trap it_cleanup EXIT
   printf '[project]\nname = "fixture"\nversion = "0.0.0"\n' > "$IT_REPO/pyproject.toml"
-  run_cmd "$DCK" init --repo "$IT_REPO" --ssh-port 0 --no-herdr --yes
-  assert_rc 0 "dck init renders the python fixture"
+  run_cmd "$DCK" init --repo "$IT_REPO" --ssh-port 0 --no-herdr --state-volume state-py --yes
+  assert_rc 0 "dck init renders the python fixture (its own state volume)"
   assert_contains "$(cat "$IT_REPO/.devcontainer/dck.toml")" 'flavour = "python-3.13"' "the runtime is detected from pyproject.toml"
   with_lock dev up
   assert_rc 0 "dev.sh up builds and starts the python fixture"
@@ -237,6 +311,11 @@ test_python_fixture() {
   assert_contains "$RUN_OUT" "$dtag" "nvim is DeepWorkPlan Vim $dtag"
   assert_contains "$RUN_OUT" "peers-ok" "herdr-peers runs inside"
   assert_contains "$RUN_OUT" "no-ak" "without the agents layer, no coding-agent kit is installed"
+  run_cmd docker volume ls -q --filter "label=com.docker.compose.project=$IT_PROJECT"
+  assert_contains "$RUN_OUT" "${IT_PROJECT}_state-py" "[compose] state_volume names the state volume"
+  assert_no_match "$RUN_OUT" "^${IT_PROJECT}_state\$" "the shared default name is not created"
+  dev shell -c 'test -L ~/.ssh && readlink ~/.ssh'
+  assert_contains "$RUN_OUT" "/.dck/volumes/state/ssh" "~/.ssh still lives at the same mount point"
   dev down
   assert_rc 0 "dev.sh down succeeds"
 }
@@ -264,6 +343,6 @@ test_zz_nothing_left_behind() {
   # Runs last in the scope: every container, volume and network a test created is gone.
   require_docker "the docker scope leaves no container, volume or network behind" || return 0
   local left
-  left="$( { docker ps -a --format '{{.Names}}'; docker volume ls --format '{{.Name}}'; docker network ls --format '{{.Name}}'; } | grep -E '^(dckit|dckpy|dckdc)[0-9a-f]{8}' || true)"
+  left="$( { docker ps -a --format '{{.Names}}'; docker volume ls --format '{{.Name}}'; docker network ls --format '{{.Name}}'; } | grep -E '^(dckit|dckpy|dckdc|dckfr)[0-9a-f]{8}' || true)"
   assert_eq "$left" "" "the docker scope leaves no container, volume or network behind"
 }

@@ -22,13 +22,13 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
 | `setup` | create each `docker/local/**/.env` from its `.env.example` at **0600** (an existing readable one is narrowed to 0600, loudly), create missing external networks, create the dedicated dck SSH key; with Herdr on the host, install a verified herdr-peers for it and, once on a terminal (macOS), offer the host listener ([herdr.md](herdr.md)) |
 | `up [--recreate] [svc…]` | start `runServices`, detached. A second `up` leaves running containers alone; `--recreate` applies compose changes. Registers the Herdr machine afterwards when `dck.toml` says so ([herdr.md](herdr.md)) |
 | `down [svc…]` | stop and remove this repository's services — never `compose down`; named volumes and the project network are kept (the next `up` reuses them). To retire a repository completely: `docker volume rm <project>_state …` and `docker network rm <project>_default` |
-| `stop` / `start` / `restart` `[svc…]` | as compose; `stop` skips the environment checks so a stack can always be stopped |
+| `stop` / `start` / `restart` `[svc…]` | as compose; `stop` skips the environment checks so a stack can always be stopped; `start` and `restart` then run the same post-start steps as `up` (below) |
 | `ps [svc…]` | the repository's containers |
 | `logs [--no-follow] [svc…]` | the last 200 lines, following by default |
 | `shell [svc] [-c CMD]` | a **login** shell as `remoteUser` in `workspaceFolder` (or one command) — login, so `/etc/profile.d` gives the same PATH and environment as an SSH/Herdr session |
 | `exec <svc> <cmd…>` | run a command; everything after the service is passed verbatim |
 | `build [--no-cache] [svc…]` | build images (`--no-cache` also pulls) |
-| `rebuild [--no-cache] [svc…]` | build, then recreate — the terminal "Rebuild Container"; volumes are kept |
+| `rebuild [--no-cache] [svc…]` | build, then recreate — the terminal "Rebuild Container"; volumes are kept. Then the same post-start steps as `up`: with `[herdr] machine`, the Herdr machine is registered (re-added if it was removed, its host key re-pinned), the mesh and the host-catalog mirror are pushed, and the layout is created — so a container rebuilt from scratch reaches the host and its peers at once |
 | `config` | what dck resolved: files, project and where its name came from, backend, user, workspace, overlay, ssh, Herdr |
 | `ports` | the published loopback ports and whether the service runs |
 | `ssh [cmd…]` | SSH into the container with **agent forwarding** (see below) |
@@ -121,7 +121,7 @@ entrypoint). `dck ssh` connects to `127.0.0.1:<ssh_port>` with:
 ## Install
 
 ```bash
-git clone --branch v0.3.1 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.3.2 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh            # or --no-rc for scripted installs
 ```
 

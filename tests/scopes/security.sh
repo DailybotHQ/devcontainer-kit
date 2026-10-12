@@ -84,7 +84,18 @@ test_no_baked_host_keys_and_hardened_sshd() {
 test_no_private_key_leaves_the_host() {
   # The only key material dck sends anywhere is the dedicated key's .pub.
   assert_no_match "$(grep -nE 'id_ed25519|IDENTITY' "$DCK_REPO"/lib/*.sh | grep -E 'cat |< |cp |docker|exec' | grep -v '\.pub')" '.' "only the .pub of the dck key is ever read for sending"
-  assert_not_contains "$(cat "$DCK_REPO"/lib/entrypoint.sh)" ".ssh_host" "the entrypoint never reads a host ~/.ssh mount"
+  # The host's ~/.ssh reaches a container only through [ssh] copy_keys: the
+  # entrypoint's one reader of ~/.ssh_host, gated on DCK_SSH_COPY_KEYS, which only
+  # the runtime overlay of a host profile sets.
+  local f
+  for f in "$DCK_REPO"/lib/*.sh "$DCK_REPO"/lib/*.py "$DCK_REPO"/images/common/*; do
+    case "$f" in */entrypoint.sh|*/sshkeys.py) continue ;; esac
+    assert_not_contains "$(cat "$f")" ".ssh_host" "${f#"$DCK_REPO"/} never names a host ~/.ssh mount"
+  done
+  assert_eq "$(grep -c 'ssh_host}' "$DCK_REPO/lib/entrypoint.sh")" "1" "the entrypoint reads ~/.ssh_host in one place"
+  assert_contains "$(sed -n '/^dck_ssh_copy_keys() {/,/^}/p' "$DCK_REPO/lib/entrypoint.sh")" 'if [ "${DCK_SSH_COPY_KEYS:-0}" != "1" ]; then' "that read is gated on copy_keys"
+  assert_contains "$(cat "$DCK_REPO/lib/sshkeys.py")" 'if not merged.get("ssh_copy_keys"):' "the overlay is written only with copy_keys on"
+  assert_contains "$(cat "$DCK_REPO/lib/config.py")" '"ssh.copy_keys")' "copy_keys is a host-only key"
   assert_contains "$(cat "$DCK_REPO/lib/sshconf.py")" '"  ForwardAgent yes"' "keys reach the container by agent forwarding"
 }
 

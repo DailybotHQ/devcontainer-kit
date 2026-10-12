@@ -371,6 +371,16 @@ def report(merged, env=None, profiles=None):
     out.append(("info", "host profiles: env file (%s) names: %s"
                 % (MOUNT_MODES["env"][0], ", ".join(p["env_names"]) or "none")))
     for name, why in p["env_skipped"]:
+        if name == "CLAUDE_CODE_OAUTH_TOKEN" and why == "not set on the host":
+            # Claude's own home is never shared: on macOS its login lives in the
+            # keychain, so this token is the only way the default account gets in.
+            out.append(("info", "host profiles: claude @default will not be logged in inside — its host "
+                        "login (~/.claude, the macOS keychain) is never shared and CLAUDE_CODE_OAUTH_TOKEN "
+                        "is not set on the host. Run `claude setup-token` for that account and store it in "
+                        "ak's env file (~/.config/agentkit/env, or `ak env import <file>`) as "
+                        "CLAUDE_CODE_OAUTH_TOKEN, then dck up; or log in once inside (`ak claude`), which "
+                        "the container's claude volume keeps across recreates"))
+            continue
         out.append(("warn" if why != "not set on the host" else "info",
                     "host profiles: %s not copied — %s" % (name, why)))
     if profiles is None:

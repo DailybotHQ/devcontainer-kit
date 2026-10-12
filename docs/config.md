@@ -48,6 +48,8 @@ machine = true                 # register as a Herdr machine on `dck up`
 label = "{repo}"
 layout = "standard"            # the sidebar dck up creates inside: standard | none
 mesh = true                    # dck up runs `dck herdr mesh` (Docker Desktop only; docs/SECURITY.md)
+[compose]
+state_volume = "state"         # this service's state volume; one per repository in a shared project
 ```
 
 | Key | Type | Default | Rule |
@@ -71,6 +73,7 @@ mesh = true                    # dck up runs `dck herdr mesh` (Docker Desktop on
 | `herdr.machine` | boolean | `false` | requires a non-zero `ssh_port` |
 | `herdr.label` | string | `{repo}` | 1–64 chars; placeholders `{repo}` `{service}` `{project}` `{user}` |
 | `herdr.layout` | string | `standard` | `standard` (App · Editor · Development · Agents, created by `dck up`) or `none` ([herdr.md](herdr.md)) |
+| `compose.state_volume` | string | `state` | `^[a-z0-9][a-z0-9_.-]{0,62}$`, not an agents-layer volume name (`agentkit`, `claude`, `codex`, …). The named volume of this service's state — sshd host key, `~/.ssh` (`authorized_keys`, `known_hosts`, copied keys), gh auth, Herdr client state and config, shell history — mounted at `~/.dck/volumes/state` (only the compose volume's name changes). Compose prefixes it with the project name, so repositories that share one compose project (one `COMPOSE_PROJECT_NAME`) and keep the default would share **one** state volume: give each its own, e.g. `state-<service>` (`dck init --state-volume NAME`). The default keeps the volume existing installs already have; changing it starts the service with a fresh state volume (re-pinned host key, new gh login) and leaves the old one in place. `dck doctor` flags a shared project whose state volume is not per service |
 | `herdr.mesh` | boolean | `true` | `dck up` runs `dck herdr mesh`: agents inside reach the other dck containers (and the host, with `host_machine`). Docker Desktop only; widens trust between containers ([SECURITY.md](SECURITY.md)) |
 
 ## Host profile
@@ -94,6 +97,7 @@ machine = "{project} · {repo}"     # Herdr label when the repo sets none
 identity = "~/.config/dck/ssh/id_ed25519"   # dedicated key dck authorizes in containers
 host_extra = []                    # aliases or host names beyond git services to copy inside (opt-in)
 authorized_extra = []              # extra PUBLIC key files authorized in every container (opt-in)
+copy_keys = false                  # true → bind the whole ~/.ssh read-only and copy its id_* (private keys too) inside (opt-in)
 [host]
 machine = true                     # the host as a mesh peer (dck-host); see docs/herdr.md
 listener = "dck"                   # dck | external | remote-login
@@ -125,6 +129,7 @@ host_env_keys = []                 # exact names copied besides the shared profi
 | `labels.machine` | string | `{repo}` | same placeholders as `herdr.label` |
 | `ssh.identity` | string | `~/.config/dck/ssh/id_ed25519` | `~` expands to `$HOME` |
 | `ssh.host_extra` | array of strings | `[]` | aliases or host names beyond the git hosting services whose `~/.ssh/config` blocks `ssh_host_config` also copies into containers. Host-side only — a repository's `dck.toml` cannot set it. Every container with the agent socket can then reach those hosts as you |
+| `ssh.copy_keys` | boolean | `false` | `dck up` binds the host's **whole** `~/.ssh` read-only at `~/.ssh_host` — while it is on, every file there (not only `id_*`: `config`, `known_hosts`, other keys) is readable by processes in the container (a runtime compose overlay, never written into the repository; uses the compose backend) and every container start copies its `id_*` keys into the container's `~/.ssh` on the state volume: private keys 0600, `.pub` 0644, refreshed when they change on the host, removed when they are removed there. For tools that only offer key files, such as `gh auth login`. Never touches dck's `config`, `config.d/`, `authorized_keys` or `known_hosts.dck-host`. **Your private keys then rest in the volume, readable by code in the container** ([SECURITY.md](SECURITY.md#host-ssh-keys-ssh-copy_keys)). `dck setup` asks once and records the answer. Off: `copy_keys = false`, then `dck up --recreate` (the copies are removed at the next start); full wipe: `dck down` and remove the `<project>_state` volume. Host-side only — a repository's `dck.toml` cannot set it |
 | `agents.host_profiles` | boolean | `false` | `dck up` shares the host's agent accounts with containers whose repository turns `layers.agents` on: each host ak profile (`$AGENTKIT_PROFILES_DIR/<cli>/<name>`, default root `~/.local/share/agentkit/profiles`) of the CLIs in that repository's `agents.clis` — claude, codex, pi, cline, grok, opencode; never cursor, whose profiles hold absolute host symlinks — the host's Codex home (`$CODEX_HOME` or `~/.codex`) when `codex@default` is shared, and an env file read-only. Read-write only where the CLI writes (each reason in SECURITY.md). Through a runtime compose overlay, never written into the repository; uses the compose backend. Host-side only — a repository's `dck.toml` cannot set it. See [layers.md](layers.md#host-accounts) and [SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles) |
 | `agents.host_profile_names` | array of strings | `[]` | only these host profiles are shared and get their Claude token: `"<cli>@<name>"` (`cli` one of claude codex pi cline grok opencode; `@default` is the CLI's own home, for Codex `~/.codex`, for Claude the default token); at most 64. Empty: every profile of the repository's CLIs, and their own homes |
 | `agents.host_env_keys` | array of strings | `[]` | exact variable names (`^[A-Z_][A-Z0-9_]*$`, no prefix or wildcard; at most 64) copied from the host's ak env file into the container's, besides the Claude token of each shared Claude profile. `[]` copies nothing else; with `host_profiles` off nothing is copied. Values never appear in compose files, logs or `dck doctor` |
@@ -135,8 +140,8 @@ host_env_keys = []                 # exact names copied besides the shared profi
 - The repo file decides everything about the container; the profile decides
   host-side naming (project prefix, network, SSH alias, label format, key).
 - `herdr.label` in the repo wins over `labels.machine` in the profile.
-- Credentials are the host's decision: `agents.host_profiles` and `agents.host_env_keys`
-  are read from the profile only; in a repository's `dck.toml` they are ignored with a
+- Credentials are the host's decision: `agents.host_profiles`, `agents.host_env_keys`
+  and `ssh.copy_keys` are read from the profile only; in a repository's `dck.toml` they are ignored with a
   warning. The repository still decides *which* CLIs exist (`agents.clis`), so only
   their accounts are shared.
 - The repo **slug** is the directory name lower-cased with every character

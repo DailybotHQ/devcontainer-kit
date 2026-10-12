@@ -357,10 +357,12 @@ def release_sums_sha256(dck_tag):
 
 def context(values, repo_name, project, network, base_image, dck_tag, pins=None):
     user = values["user"]
-    vols = ["state"]
+    # (compose volume key, directory under ~/.dck/volumes): the state volume's
+    # name is configurable, its mount point is not (the entrypoint reads "state").
+    vols = [(values["compose.state_volume"], "state")]
     if values["layers.agents"]:
-        vols.append("agentkit")
-        vols += [k for k in AGENT_VOLUMES if k in values["agents.clis"]]
+        vols.append(("agentkit", "agentkit"))
+        vols += [(k, k) for k in AGENT_VOLUMES if k in values["agents.clis"]]
     bind = values["bind"]
     port_lines = []
     if values["ssh_port"]:
@@ -390,8 +392,9 @@ def context(values, repo_name, project, network, base_image, dck_tag, pins=None)
         "ports_inline": ", ".join("%s = %d" % kv for kv in sorted(values["ports"].items())),
         "has_ports": bool(port_lines),
         "port_lines": "\n".join(port_lines),
-        "volume_mounts": "\n".join("      - %s:/home/%s/.dck/volumes/%s" % (v, user, v) for v in vols),
-        "volume_decls": "\n".join("  %s: {}" % v for v in vols),
+        "volume_mounts": "\n".join("      - %s:/home/%s/.dck/volumes/%s" % (v, user, d) for v, d in vols),
+        "volume_decls": "\n".join("  %s: {}" % v for v, _ in vols),
+        "state_volume": values["compose.state_volume"],
         "has_network": bool(network),
         "network": network,
         "layers_agents": toml_value(values["layers.agents"]),
@@ -694,7 +697,8 @@ def init(opts, dck_tag, env=None, out=sys.stdout, err=sys.stderr):
     flag_map = (("flavour", "flavour"), ("service", "service"), ("user", "user"),
                 ("workspace", "workspace"), ("ssh_port", "ssh_port"),
                 ("agents", "layers.agents"), ("clis", "agents.clis"), ("editor", "layers.editor"),
-                ("herdr_machine", "herdr.machine"), ("ports", "ports"))
+                ("herdr_machine", "herdr.machine"), ("ports", "ports"),
+                ("state_volume", "compose.state_volume"))
     if opts.get("ports") is not None:
         merged_ports = dict(raw.get("ports") or {}) if isinstance(raw.get("ports"), dict) else {}
         merged_ports.update(opts["ports"])

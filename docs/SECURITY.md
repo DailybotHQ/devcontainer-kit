@@ -24,6 +24,7 @@ in your images, and your Herdr machines.
 | a dck container → your host's shell | **only with the host listener (opt-in)** | `dck host listener enable` (or a yes to the one question `dck setup` asks) runs a user-level sshd on **127.0.0.1** only (default port 22033, its own ed25519 host key, `AllowUsers` you, no passwords, no PAM, no root, no TCP forwarding (`PermitOpen none`), no agent forwarding, no `~/.ssh/rc`, only the local stream forward Herdr's client uses) that authorizes **only the dck key** (`no-agent-forwarding,no-X11-forwarding,no-user-rc`), kept alive by a launchd agent. While it runs, any process that can use the dck key through your agent — code in any running dck container with the agent socket — can open a shell on your host as you. That is what lets agents inside answer agents on the host. Turn it off with `dck host listener disable` (removes the launchd agent and its files), `[host] machine = false`, `ssh_agent = false` per repository, or `ssh-add -d ~/.config/dck/ssh/id_ed25519`. With `listener = "external"` dck reuses a listener you already run and writes nothing on the host; with `"remote-login"` it relies on the system sshd and your own `authorized_keys` |
 | one dck container → another dck container | **only through the mesh** | `[herdr] mesh = true` (the default; Docker Desktop only) loads the dck key into your agent so agents inside can ask agents in the other containers. Every container with the agent socket can then log in to every other dck container (they all authorize the dck key) and read what it holds (`.env`, logins). Only run untrusted repositories with `mesh = false` and `ssh_agent = false`, and remove the key from the agent (`ssh-add -d ~/.config/dck/ssh/id_ed25519`). The mesh never forwards the agent further (`ForwardAgent no`) |
 | a dck container → your agent accounts | **only with `[agents] host_profiles` (opt-in, host profile)** | off by default, and only your host profile can turn it on — a repository's `dck.toml` cannot. When on, `dck up` binds into the container the host's ak profiles of the CLIs the repository installs (optionally only those `host_profile_names` lists), the host's Codex home, and an env file read-only with only the Claude tokens of the shared profiles and the names you list; read-write only where the CLI writes. Code in the container can then act as you on those accounts and read those credentials while it runs. See [Host accounts](#host-accounts-agents-host_profiles) |
+| a dck container → your SSH private keys | **only with `[ssh] copy_keys` (opt-in, host profile)** | off by default, and only your host profile can turn it on — a repository's `dck.toml` cannot. When on, `dck up` binds your **whole** `~/.ssh` read-only into the container, so while it is on every file there — not only the `id_*` keys: `config`, `known_hosts`, any other key or file you keep there — is readable by processes inside. Every start also copies the `id_*` keys, **private ones included**, into the container's `~/.ssh` on its state volume. Code in the container can then read those keys and use them anywhere, after the container stops too, for as long as the copies exist. See [Host SSH keys](#host-ssh-keys-ssh-copy_keys) |
 | other machines on your network → the container | **no** | nothing listens beyond 127.0.0.1 unless `bind` says so |
 | the network → the image build | **no** | every base-image download is pinned and checksum-verified; the opt-in layers install coding-agents-kit from its sha256-verified release tarball and resolve the Dailybot CLI's dependencies with uv (see Supply chain) |
 
@@ -54,12 +55,13 @@ The template never adds `cap_add`, `privileged`, the Docker socket,
 `~/.gitconfig`. If a repository needs one of these, that is the repository's
 own edit, outside dck's managed blocks, and its own decision.
 
-### SSH: agent forwarding, never key copies
+### SSH: agent forwarding, never key copies (unless you opt in)
 
 - dck creates a **dedicated** key, `~/.config/dck/ssh/id_ed25519` (0600, in a
   0700 directory). Only its public half is sent to containers (the
   `DCK_AUTHORIZED_KEYS` variable, or stdin of `dck_authorize_keys --add`).
-- Your own keys never enter a container: `dck ssh` and the Herdr include use
+- Your own keys never enter a container by default (the one opt-in exception is
+  [`[ssh] copy_keys`](#host-ssh-keys-ssh-copy_keys)): `dck ssh` and the Herdr include use
   **agent forwarding** for the session you open (`ForwardAgent yes`,
   `IdentitiesOnly yes`). Verified in a real container: the forwarded key is
   usable inside and no file inside contains it. While a session is open, code
@@ -197,6 +199,49 @@ container — `dck doctor` names such profiles and the variable to store the tok
 container user. On a native Linux engine they keep the host's uid: the option works
 when your uid is 1000 (the container user's), like the SSH agent socket.
 
+### Host SSH keys (`[ssh] copy_keys`)
+
+Some tools only offer key **files** in `~/.ssh` and never ask the forwarded agent:
+`gh auth login` with SSH proposes to generate a new key, although the host's agent holds
+yours. `[ssh] copy_keys = true` in `~/.config/dck/profile.toml` makes a container work
+like the host there, at the cost of your private keys resting inside it.
+
+- **How.** `dck up` (and `start`/`restart`/`build`/`rebuild`) adds a third runtime
+  compose overlay (`$TMPDIR/dck-<uid>/<project>-sshkeys.yml`, 0600 in a 0700 directory
+  you own — never written into the repository) that binds your `~/.ssh` **read-only** at
+  `~/.ssh_host` (`create_host_path: false`) and sets `DCK_SSH_COPY_KEYS=1`. At every
+  start the entrypoint copies each regular file `id_*` from there into the container's
+  `~/.ssh` (the per-project `state` volume): private keys 0600, `.pub` files 0644, the
+  directory 0700. A key changed on the host is refreshed at the next start; a key removed
+  from the host is removed from the container.
+- **What is never touched.** Only `id_*` names are written: dck's own `config`,
+  `config.d/`, `authorized_keys`, `known_hosts.dck-host` and the host's `config` and
+  `known_hosts` are never copied or overwritten. A key the container made itself under
+  the same name is kept. Symlinks are not followed, on either side. The forwarded agent
+  and the agent socket are unchanged.
+- **Names only.** `dck up`, the entrypoint's log and `dck doctor`
+  (`ssh keys copied: <names>`) print file names, never a key's contents. The copied names
+  are listed in `~/.ssh/.dck-copied-keys` inside the container.
+- **The whole `~/.ssh` is exposed while it is on.** The bind is your entire `~/.ssh`
+  directory, read-only, at `~/.ssh_host` — not a filtered copy. Only `id_*` files are
+  copied, but every file in that directory (your `config` with its hosts and users,
+  `known_hosts`, other keys, anything else kept there) is readable by every process in the
+  container for as long as the container runs with the option on. This is the same
+  exposure as mounting `~/.ssh` into a container by hand. Keep anything you do not want
+  a container to read out of `~/.ssh`, or leave the option off.
+- **The trade-off.** Your private keys are at rest in the container's state volume and
+  readable by any code running in the container — the repository's code, its
+  dependencies, an agent in autonomy. A key with a passphrase stays encrypted at rest;
+  one without is usable by whoever reads it. That is why it is opt-in and host-only:
+  turn it on for repositories you trust, and prefer keys with a passphrase or a
+  dedicated key you can revoke. `dck setup` asks once (default no) and records your
+  answer in the profile.
+- **Turning it off.** Set `[ssh] copy_keys = false` and run `dck up --recreate` (or
+  `dck rebuild`): the overlay is removed and the next start deletes exactly the files
+  dck copied. To wipe everything the container ever held, remove the container and its
+  state volume: `dck down`, then `docker volume rm <project>_state` (`dck doctor` names
+  the project; `docker volume ls --filter name=<project>_` lists its volumes).
+
 ### Unattended agent launches
 
 A new agent must not stall at a first-run screen nobody is watching. With autonomy on
@@ -311,6 +356,7 @@ Variables that swap a binary or answer a prompt in tests (`DCK_HOST_SSHD`,
 | `--remove-orphans` is never passed | protecting shared projects outweighs orphan cleanup |
 | `--trust` is per invocation | an explicit, reviewable decision each time a host-reaching configuration is started |
 | The host listener is opt-in, asked once | a shell on your host from any dck container is a real widening; the question says so, the answer is recorded in your profile, and `dck host listener disable` undoes it |
+| `[ssh] copy_keys` is off by default and host-only | private keys at rest in a container's volume are readable by everything that runs there; you choose it once in your host profile (`dck setup` asks), a repository can never ask for it, and turning it off removes the copies |
 | `[agents] host_profiles` is off by default and host-only | sharing your agent accounts with a container is a real widening; you turn it on once in your host profile, a repository can never ask for it, and only the CLIs that repository installs are shared |
 | The mesh is on by default | agents inside a container asking agents in the other containers is the point of the Herdr integration; with it, every dck container can log in to the others (see the trust boundaries). Untrusted repositories: `[herdr] mesh = false`, `ssh_agent = false` |
 
@@ -323,8 +369,8 @@ through `ak` runs with its CLI's own autonomy flag, so it can run any command
 the container's user can, without asking. Autonomy is meant for disposable or
 sandboxed environments, and the development container is exactly that: its
 only writable host path is the repository (plus, with `[agents] host_profiles`,
-the shared agent profiles and Codex home), it holds no host private key (SSH
-goes through the host agent) and its ports bind to loopback. Agents start
+the shared agent profiles and Codex home), it holds no host private key unless
+you opt in with `[ssh] copy_keys` (SSH goes through the host agent) and its ports bind to loopback. Agents start
 unattended: the workspace is pre-trusted (see
 [Unattended agent launches](#unattended-agent-launches)). dck, the template
 and the layers never spell an autonomy flag; they live only in
