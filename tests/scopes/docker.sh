@@ -165,15 +165,16 @@ test_node_fixture_end_to_end() {
   mkdir -p "$HOME/.config/dck"
   printf 'interface = 2\n[agents]\nhost_profiles = true\nhost_env_keys = ["DCK_IT_HOSTENV"]\n' > "$HOME/.config/dck/profile.toml"
   export DCK_IT_HOSTENV=dck-fake-value-first
-  with_lock d up
-  assert_rc 0 "dck up with host accounts on"
+  # dck up never recreates a running container on its own: --recreate applies the overlay.
+  with_lock d up --recreate
+  assert_rc 0 "dck up --recreate with host accounts on"
   local cid1 cid2
   cid1="$(docker inspect -f '{{.Id}}' "${IT_PROJECT}-app-1")"
   run_cmd docker exec -u root "${IT_PROJECT}-app-1" sh -c 'cat "$AGENTKIT_ENV"'
   assert_contains "$RUN_OUT" "DCK_IT_HOSTENV='dck-fake-value-first'" "the env file is visible inside"
   export DCK_IT_HOSTENV=dck-fake-value-second
   with_lock d up
-  assert_rc 0 "a second dck up succeeds"
+  assert_rc 0 "a second, plain dck up succeeds"
   cid2="$(docker inspect -f '{{.Id}}' "${IT_PROJECT}-app-1")"
   assert_eq "$cid2" "$cid1" "the second up keeps the running container"
   run_cmd docker exec -u root "${IT_PROJECT}-app-1" sh -c 'cat "$AGENTKIT_ENV"'
