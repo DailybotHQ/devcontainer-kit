@@ -272,6 +272,9 @@ test_doctor_warns_about_a_shared_state_volume() {
   assert_contains "$RUN_OUT" "the state volume ${proj}_state is shared with cli" "another service mounting the same volume is named"
   sed -i.orig 's/^state_volume = "state"$/state_volume = "state-app"/' "$repo/.devcontainer/dck.toml" && rm -f "$repo/.devcontainer/dck.toml.orig"
   run_cmd bash -c 'cd "$1" && "$2" doctor' _ "$repo" "$DCK"
+  assert_contains "$RUN_OUT" "does not reflect dck.toml or its user block; run dck init" "a dck.toml change not yet rendered is flagged"
+  "$DCK" init --repo "$repo" --yes >/dev/null 2>&1
+  run_cmd bash -c 'cd "$1" && "$2" doctor' _ "$repo" "$DCK"
   assert_not_contains "$RUN_OUT" "compose: " "a per-service state volume is not a problem"
   assert_contains "$RUN_OUT" "state volume ${proj}_state-app; other services: cli, postgres" "the report names it and the other services"
 }
@@ -299,4 +302,18 @@ test_doctor_checks_herdr_peers_self() {
   assert_contains "$(j 'd["problems"]')" "HERDR_PEERS_SELF inside is unset" "an unset id inside is a problem"
   assert_eq "$(j 'd["herdr"]["id"]')" "\"$id\"" "doctor --json has the registered id"
   valid "doctor --json with the herdr id matches its schema"
+}
+
+test_doctor_reports_user_block_overrides_and_compose_version() {
+  mk_repo || return 0
+  python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read(); s = s.replace("  # <<< dck:service <<<\n", "    # >>> user:app >>>\n    x-dck-merge:\n      command: [\"run\"]\n      environment:\n        DCK_SSH: \"0\"\n    # <<< user:app <<<\n  # <<< dck:service <<<\n", 1); open(p, "w").write(s)' "$REPO/docker/local/docker-compose.yaml"
+  doc
+  assert_contains "$(j 'd["problems"]')" "does not reflect dck.toml or its user block" "an edited user block not yet rendered is flagged"
+  "$DCK" init --repo "$REPO" --yes >/dev/null 2>&1
+  run_cmd bash -c 'cd "$1" && "$2" doctor' _ "$REPO" "$DCK"
+  assert_contains "$RUN_OUT" "user block       overrides dck's command, environment.DCK_SSH (x-dck-merge)" "the doctor reports what the user block overrides"
+  assert_not_contains "$RUN_OUT" "does not reflect" "once rendered, nothing is stale"
+  doc
+  valid "doctor --json with compose_render matches its schema"
+  assert_eq "$(j 'd["compose_render"]["overrides"]')" '["command", "environment.DCK_SSH"]' "doctor --json lists them"
 }

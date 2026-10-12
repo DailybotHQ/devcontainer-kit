@@ -750,3 +750,99 @@ test_agent_presets() {
   init_repo "$r" --yes
   assert_rc 3 "an unknown preset is refused"
 }
+
+test_up_warns_about_a_stale_compose_file() {
+  local r
+  r="$(new_repo st)"
+  init_repo "$r" --flavour debian --ssh-port 0 --yes
+  add_user_block "$r" '    x-dck-merge:
+      environment:
+        STALE_MARK: "1"
+'
+  run_cmd bash -c 'cd "$1" && DCK_BACKEND=compose "$2" up' _ "$r" "$DCK"
+  assert_contains "$RUN_ERR" "does not reflect dck.toml or its user block — run: dck init" "dck up warns when the user block is not rendered yet"
+  init_repo "$r" --yes
+  run_cmd bash -c 'cd "$1" && DCK_BACKEND=compose "$2" up' _ "$r" "$DCK"
+  assert_not_contains "$RUN_ERR" "does not reflect" "and is quiet once it is"
+}
+
+test_port_string_container_expression() {
+  local r
+  r="$(new_repo pe)"
+  init_repo "$r" --flavour debian --ssh-port 0 --yes
+  set_toml "$r" 's = s.replace("ports = {  }", "ports = { web = \"${WEB_HOST:-8000}:${WEB_PORT:-8000}\" }")'
+  init_repo "$r" --yes
+  assert_rc 0 "an expression on the container side is accepted"
+  assert_contains "$(cat "$r/docker/local/docker-compose.yaml")" '      - "127.0.0.1:${WEB_HOST:-8000}:${WEB_PORT:-8000}"' "and rendered verbatim"
+}
+
+# #13: the file's other services declare their own volumes and networks.
+test_top_level_user_blocks_and_compose_volumes() {
+  local r c
+  r="$(new_repo tv)"
+  init_repo "$r" --flavour python-3.13 --ssh-port 0 --yes
+  python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read()
+s = s.replace("  # <<< dck:service <<<\n", "  # <<< dck:service <<<\n  postgres:\n    image: postgres:16-alpine\n    volumes:\n      - local_postgres14_data:/var/lib/postgresql/data\n      - local_postgres14_data_backups:/backups\n    networks:\n      - backend\n", 1)
+s = s.replace("# <<< dck:volumes <<<\n", "  # >>> user:volumes >>>\n  local_postgres14_data: {}\n  local_postgres14_data_backups: {}\n  # <<< user:volumes <<<\n# <<< dck:volumes <<<\n", 1)
+s = s.rstrip("\n") + "\n\n# >>> dck:networks >>>\nnetworks:\n  # >>> user:networks >>>\n  backend: {}\n  # <<< user:networks <<<\n# <<< dck:networks <<<\n"
+open(p, "w").write(s)' "$r/docker/local/docker-compose.yaml"
+  set_toml "$r" 's = s.replace("[compose]\n", "[compose]\nvolumes = [\"dynamodb_data\"]\n", 1)'
+  local before; before="$(sed -n '/# >>> user:volumes >>>/,/# <<< user:volumes <<</p' "$r/docker/local/docker-compose.yaml")"
+  init_repo "$r" --yes
+  assert_rc 0 "dck init keeps the top-level user blocks"
+  c="$(cat "$r/docker/local/docker-compose.yaml")"
+  assert_eq "$(sed -n '/# >>> user:volumes >>>/,/# <<< user:volumes <<</p' "$r/docker/local/docker-compose.yaml")" "$before" "the user:volumes block is verbatim"
+  assert_contains "$c" "  # >>> user:networks >>>
+  backend: {}" "the user:networks block is kept, with no external network of dck's"
+  assert_contains "$c" "  dynamodb_data: {}" "[compose] volumes declares a volume with its exact name"
+  assert_contains "$c" "  state: {}" "dck's volumes are still declared"
+  assert_eq "$(grep -c '^volumes:' "$r/docker/local/docker-compose.yaml")" "1" "one top-level volumes:"
+  assert_eq "$(grep -c '^networks:' "$r/docker/local/docker-compose.yaml")" "1" "one top-level networks:"
+  init_repo "$r" --dry-run
+  assert_contains "$RUN_OUT" "unchanged docker/local/docker-compose.yaml" "idempotent"
+  local real; real="$(real_compose)"
+  if [ -n "$real" ]; then
+    run_cmd env DOCKER_HOST=unix:///nonexistent "$real" compose -f "$r/docker/local/docker-compose.yaml" config -q
+    assert_rc 0 "docker compose config accepts the other services' volumes and networks"
+  fi
+  # A name declared twice is refused.
+  python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read(); s = s.replace("  local_postgres14_data: {}\n", "  local_postgres14_data: {}\n  state: {}\n", 1); open(p, "w").write(s)' "$r/docker/local/docker-compose.yaml"
+  init_repo "$r" --yes
+  assert_rc 3 "a volume declared in user:volumes and by dck is refused"
+  assert_contains "$RUN_ERR" "volume 'state' is declared in the user:volumes block and by dck" "naming it"
+}
+
+# #15: command (and entrypoint) replace dck's in every YAML form, never append.
+test_user_command_replaces_in_every_form() {
+  local r c form
+  for form in flow block string; do
+    r="$(new_repo "cmd$form")"
+    init_repo "$r" --flavour debian --ssh-port 0 --yes
+    case "$form" in
+      flow) add_user_block "$r" '    x-dck-merge:
+      command: ["python", "manage.py", "runserver"]
+' ;;
+      block) add_user_block "$r" '    x-dck-merge:
+      command:
+        - python
+        - manage.py
+        - runserver
+' ;;
+      string) add_user_block "$r" '    x-dck-merge:
+      command: python manage.py runserver
+' ;;
+    esac
+    init_repo "$r" --yes
+    assert_rc 0 "dck init accepts command as a $form"
+    c="$(sed -n '/^  app:/,/# >>> user:app >>>/p' "$r/docker/local/docker-compose.yaml")"
+    assert_not_contains "$c" "sleep" "command as a $form replaces dck's [sleep, infinity]"
+    assert_contains "$c" "runserver" "the user's command ($form) is the service's"
+    assert_eq "$(printf '%s\n' "$c" | grep -c '^    command:')" "1" "one command key ($form)"
+    local real; real="$(real_compose)"
+    if [ -n "$real" ]; then
+      run_cmd env DOCKER_HOST=unix:///nonexistent "$real" compose -f "$r/docker/local/docker-compose.yaml" config --format json
+      assert_contains "$RUN_OUT" '"runserver"' "compose sees the user's command ($form)"
+      assert_not_contains "$RUN_OUT" '"infinity"' "and not dck's ($form)"
+    fi
+  done
+}

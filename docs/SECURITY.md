@@ -121,6 +121,18 @@ own edit, outside dck's managed blocks, and its own decision.
   keyboard-interactive, `PermitUserEnvironment no`, `AllowUsers <dev user>`,
   local forwarding only, `GatewayPorts no`, no X11, no tunnels.
 
+### The user block
+
+Keys a repository adds between `# >>> user:<service> >>>` and `# <<< user:<service> <<<`
+(plain keys and `x-dck-merge`), and in the top-level `user:volumes` / `user:networks`
+sub-blocks, are the repository's own compose content: `dck init` merges them into the
+rendered file, and `up`, `start`, `build` and `rebuild` review the result like any other
+repository compose content — a bind mount outside the repository, `privileged`,
+`cap_add`, host namespaces, devices or the Docker socket added there are refused until
+`--trust`. Variables from its `env_file` entries reach the container and its SSH sessions
+(`~/.dck/env.sh`, 0600); prefer read-only mounts for shared sources. See
+[shared-stack.md](shared-stack.md#security-notes).
+
 ### Secrets
 
 - `.env` files are created from their examples at **0600** (never overwritten,

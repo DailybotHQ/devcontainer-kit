@@ -773,6 +773,7 @@ cmd_up() {
   done
   require_docker
   fast_check
+  warn_stale_compose
   export_host_ssh_agent
   resolve_backend
   selected_services ${args[@]+"${args[@]}"}
@@ -797,6 +798,23 @@ cmd_up() {
     fi
   fi
   after_start
+}
+
+# A compose file that no longer reflects dck.toml or its user block (edited
+# since the last `dck init`) starts what was rendered, not what was asked for.
+warn_stale_compose() {
+  [ "${DCK_HAS_TOML:-0}" = "1" ] || return 0
+  local args=(compose status --repo "$DC_REPO") out line
+  [ -n "${DCK_PROFILE_NAME:-}" ] && args+=(--profile "$DCK_PROFILE_NAME")
+  out="$(dckpy "${args[@]}" 2>/dev/null)" || return 0
+  while IFS= read -r line; do
+    case "$line" in
+      stale=1) warn "docker/local/docker-compose.yaml does not reflect dck.toml or its user block — run: dck init" ;;
+      error=?*) warn "compose: ${line#error=}" ;;
+    esac
+  done <<STATUS
+$out
+STATUS
 }
 
 # The steps after any start that may have created the container — `up`,
@@ -939,6 +957,7 @@ cmd_build() {
 cmd_rebuild() {
   parse_build_flags "$@"
   fast_check
+  warn_stale_compose
   export_host_ssh_agent
   resolve_backend
   selected_services ${BUILD_SERVICES[@]+"${BUILD_SERVICES[@]}"}

@@ -42,7 +42,7 @@ RE_ALIAS_PREFIX = r"^[a-z0-9][a-z0-9._-]{0,31}$"
 # A compose port string (v0.3.3): a host part and an optional container part,
 # each a number or a ${VAR} / ${VAR:-default} expression, optionally after a host IP.
 _PORT_ATOM = r"(\d{1,5}|\$\{[A-Za-z_][A-Za-z0-9_]*(:?-\d{1,5})?\})"
-RE_PORT_SPEC = r"^((\d{1,3}(\.\d{1,3}){3}|\[[0-9A-Fa-f:]+\]):)?%s(:\d{1,5})?(/(tcp|udp))?$" % _PORT_ATOM
+RE_PORT_SPEC = r"^((\d{1,3}(\.\d{1,3}){3}|\[[0-9A-Fa-f:]+\]):)?%s(:%s)?(/(tcp|udp))?$" % (_PORT_ATOM, _PORT_ATOM)
 RE_COMPOSE_PROJECT = r"^[a-z0-9][a-z0-9_-]{0,62}$"
 RE_BUILD_CONTEXT = r"^(\.|\.\.|\./[A-Za-z0-9._/-]*|\.\./[A-Za-z0-9._/-]*|[A-Za-z0-9._-][A-Za-z0-9._/-]*)$"
 RE_NETWORK_NAME = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$"
@@ -76,6 +76,9 @@ REPO_RULES = {
     "build.dockerfile": ("str", None, ("pattern", r"^(?!.*(^|/)\.\.(/|$))[A-Za-z0-9._-][A-Za-z0-9._/-]*Dockerfile[A-Za-z0-9._-]*$")),
     "compose.project": ("str", None, ("pattern", RE_COMPOSE_PROJECT)),
     "compose.networks": ("host_list", [], ("pattern", RE_NETWORK_NAME)),
+    # Extra compose-managed volumes declared with their exact names (other
+    # services' data volumes keep reattaching: <project>_<name>).
+    "compose.volumes": ("volume_list", [], ("pattern", RE_VOLUME)),
     "agents.presets": ("preset_list", None, ("enum", AK_PRESETS)),
     "layers.agents": ("bool", False, None),
     "layers.dailybot": ("bool", False, None),
@@ -202,6 +205,16 @@ def _check(key, value, rule, problems):
             return bad("expected an integer or a compose port expression, got %s" % _type_name(value))
         if not (value == 0 or 1024 <= value <= 65535):
             return bad("expected 0 (no sshd) or a port in 1024-65535, got %s" % value)
+    elif kind == "volume_list":
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            return bad("expected an array of volume names, got %s" % _type_name(value))
+        for item in value:
+            if not re.match(carg, item):
+                bad("invalid volume name %r (must match %s)" % (item, carg))
+        if len(set(value)) != len(value):
+            bad("duplicate entries")
+        if len(value) > 64:
+            bad("at most 64 volumes")
     elif kind == "preset_list":
         if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
             return bad("expected an array of preset names, got %s" % _type_name(value))
@@ -221,7 +234,7 @@ def _check(key, value, rule, problems):
                 if not re.match(RE_PORT_SPEC, port):
                     bad("%s: invalid port string %r (\"HOST:CONTAINER\", each a number or ${VAR:-default}, "
                         "optionally after a host IP: \"${WEB_PORT:-8000}:8000\", \"5001:3000\")" % (name, port))
-                elif not re.search(r":\d{1,5}(/(tcp|udp))?$", port) and not re.match(r"^\d{1,5}$", port):
+                elif not re.search(r":%s(/(tcp|udp))?$" % _PORT_ATOM, port) and not re.match(r"^\d{1,5}$", port):
                     bad("%s: a port string needs its container port (\"HOST:CONTAINER\"), got %r" % (name, port))
                 elif port in seen:
                     bad("%s: port %s is already used by %s" % (name, port, seen[port]))

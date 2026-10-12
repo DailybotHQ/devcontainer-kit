@@ -50,7 +50,17 @@ layout = "standard"            # the sidebar dck up creates inside: standard | n
 mesh = true                    # dck up runs `dck herdr mesh` (Docker Desktop only; docs/SECURITY.md)
 [compose]
 state_volume = "state"         # this service's state volume; one per repository in a shared project
+# project = "acme-platform"    # the compose project name (default <prefix><repo-slug>)
+# networks = ["acme-net"]      # existing external networks
+# volumes = ["local_pgvector"] # other services' compose-managed volumes, exact names
+# [build]
+# context = "../.."            # build from the repository root
+# dockerfile = "docker/local/vue/Dockerfile"   # a Dockerfile shared by several services
 ```
+
+The user block (keys dck does not render, and `x-dck-merge` for keys it does), the
+other services' volumes and networks, port strings and satellites:
+[shared-stack.md](shared-stack.md).
 
 | Key | Type | Default | Rule |
 | --- | --- | --- | --- |
@@ -63,9 +73,9 @@ state_volume = "state"         # this service's state volume; one per repository
 | `image_tag` | string | — | interface 1 only; ignored since v0.2.0 (warning), removed by `dck init` |
 | `ssh_host_config` | boolean | `true` | with `ssh_agent`: `dck up` and `dck rebuild` copy the concrete `Host` aliases of your `~/.ssh/config` (and its `Include` files) **for git hosting services** (GitHub, GitLab, Bitbucket, Azure DevOps, Codeberg, sourcehut) into the container — `HostName`, `Port`, `User`, the **public** half of each `IdentityFile` and the host keys you already trust. Only aliases whose key your agent holds are copied; on a terminal, dck offers to `ssh-add` a missing one (`--apple-use-keychain` on macOS). Skipped: wildcard patterns, `Match` blocks, `ProxyCommand`/`ProxyJump` hosts, loopback hosts, dck's own aliases. Inside, these aliases are included first, so they win over the container's own `~/.ssh/config` entries of the same name. Other hosts: `[ssh] host_extra` in your host profile |
 | `ssh_agent` | boolean | `true` | mount the host's SSH agent socket (Docker Desktop's, or `$SSH_AUTH_SOCK` on Linux) as `SSH_AUTH_SOCK` for exec sessions (`dev.sh shell`, editor terminals). On a Linux host OpenSSH's agent serves only its own uid, so this works when your uid is 1000 (the container user's); otherwise use `dck ssh` / Herdr sessions, which forward the agent. `dck up` and `dck rebuild` choose the socket by Docker provider: Docker Desktop and OrbStack share the host agent; a native Linux engine mounts `$SSH_AUTH_SOCK`; colima, podman and others get none (exec sessions have no agent; `dck ssh` and Herdr sessions forward it). When an editor opens the container itself, set `DCK_HOST_SSH_AUTH_SOCK` in its environment on those hosts (a missing path fails the start rather than being created) or set `ssh_agent = false` |
-| `ssh_port` | integer | `0` | `0` (no sshd) or 1024–65535; published on `bind` only |
+| `ssh_port` | integer or string | `0` | `0` (no sshd) or 1024–65535; published on `bind` only. Also a string: the host port as a compose expression (`"${API_SSH_PORT:-22540}"`, rendered `"127.0.0.1:${API_SSH_PORT:-22540}:22"`); dck resolves it for `dck ssh`, Herdr and the doctor from the environment, then `docker/local/.env`, then the default |
 | `bind` | string | `127.0.0.1` | IPv4 address every published port binds to. Changing it exposes the container's ports beyond this machine — see [SECURITY.md](SECURITY.md). `dck ssh` and Herdr still connect only to 127.0.0.1 and refuse a `bind` that is neither loopback nor `0.0.0.0` |
-| `ports` | table | `{}` | `name = port`; names `^[a-z][a-z0-9_-]{0,31}$`; ports unique and different from `ssh_port` |
+| `ports` | table | `{}` | `name = port` (integer or string); names `^[a-z][a-z0-9_-]{0,31}$`; ports unique and different from `ssh_port`. A value may also be a compose port string, `"HOST:CONTAINER"` with either side a number or `${VAR:-default}` (`"${DJANGO_RUNSERVER_HOST_PORT:-8000}:8000"`, `"5001:3000"`), rendered verbatim after `<bind>:` unless it names a host IP ([shared-stack.md](shared-stack.md#port-strings)) |
 | `layers.agents` | boolean | `false` | see [layers.md](layers.md) |
 | `layers.dailybot` | boolean | `false` | see [layers.md](layers.md) |
 | `layers.editor` | boolean | `true` | see [layers.md](layers.md) |
@@ -73,6 +83,12 @@ state_volume = "state"         # this service's state volume; one per repository
 | `herdr.machine` | boolean | `false` | requires a non-zero `ssh_port` |
 | `herdr.label` | string | `{repo}` | 1–64 chars; placeholders `{repo}` `{service}` `{project}` `{user}` |
 | `herdr.layout` | string | `standard` | `standard` (App · Editor · Development · Agents, created by `dck up`) or `none` ([herdr.md](herdr.md)) |
+| `compose.project` | string | unset | `^[a-z0-9][a-z0-9_-]{0,62}$`: the rendered compose project name (`name:`) instead of `<compose_project_prefix><repo-slug>`; `COMPOSE_PROJECT_NAME` still wins, as in compose |
+| `compose.networks` | array of strings | `[]` | existing external networks; with the host profile's `network` and the networks `x-dck-merge` names, declared once in the single top-level `networks:` (`external: true`) and joined by the service |
+| `compose.volumes` | array of strings | `[]` | extra compose-managed volumes declared with their exact names (the data volumes of the file's other services: `<project>_<name>` keeps reattaching); or the `user:volumes` sub-block ([shared-stack.md](shared-stack.md#the-other-services-volumes-and-networks)) |
+| `build.context` | string | unset (`./<service>`) | the build context, relative to the compose file's directory (`"../.."` = the repository root); the `dockerfile` and dck's `COPY` paths follow it |
+| `build.dockerfile` | string | unset | a Dockerfile shared by several services, relative to the repository (`docker/local/vue/Dockerfile`); dck's blocks and its `dck/` directory go next to it |
+| `agents.presets` | array | unset (both) | ak alias presets: subset of `classic` (`claudex`, `codexx`, …) and `providers` (`claude-glm`, …). Unset keeps both (the behaviour before v0.3.3); `[]` turns them off; new renders write `presets = []` |
 | `compose.state_volume` | string | `state` | `^[a-z0-9][a-z0-9_.-]{0,62}$`, not an agents-layer volume name (`agentkit`, `claude`, `codex`, …). The named volume of this service's state — sshd host key, `~/.ssh` (`authorized_keys`, `known_hosts`, copied keys), gh auth, Herdr client state and config, shell history — mounted at `~/.dck/volumes/state` (only the compose volume's name changes). Compose prefixes it with the project name, so repositories that share one compose project (one `COMPOSE_PROJECT_NAME`) and keep the default would share **one** state volume: give each its own, e.g. `state-<service>` (`dck init --state-volume NAME`). The default keeps the volume existing installs already have; changing it starts the service with a fresh state volume (re-pinned host key, new gh login) and leaves the old one in place. `dck doctor` flags a shared project whose state volume is not per service |
 | `herdr.mesh` | boolean | `true` | `dck up` runs `dck herdr mesh`: agents inside reach the other dck containers (and the host, with `host_machine`). Docker Desktop only; widens trust between containers ([SECURITY.md](SECURITY.md)) |
 

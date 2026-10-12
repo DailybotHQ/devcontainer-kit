@@ -223,6 +223,7 @@ agent-pilotable codebase. These projects ship together; every addon is optional.
 | Opt-in layers (agents, dailybot, editor) | [docs/layers.md](docs/layers.md) |
 | Entrypoint library | [docs/entrypoint.md](docs/entrypoint.md) |
 | Herdr machines | [docs/herdr.md](docs/herdr.md) |
+| Several repositories in one compose project | [docs/shared-stack.md](docs/shared-stack.md) |
 | `dck doctor --json` | [docs/doctor.md](docs/doctor.md) |
 | Threat model and defaults | [docs/SECURITY.md](docs/SECURITY.md) |
 | Tests | [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md) |

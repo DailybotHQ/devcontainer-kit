@@ -95,8 +95,11 @@ public = "0.0.0.0:9000:9000"
 | `django = "${DJANGO_RUNSERVER_HOST_PORT:-8000}:8000"` | `"127.0.0.1:${DJANGO_RUNSERVER_HOST_PORT:-8000}:8000"` |
 | `node = "5001:3000"` | `"127.0.0.1:5001:3000"` |
 | `public = "0.0.0.0:9000:9000"` | `"0.0.0.0:9000:9000"` (verbatim) |
+| `web = "${WEB_HOST:-8000}:${WEB_PORT:-8000}"` | `"127.0.0.1:${WEB_HOST:-8000}:${WEB_PORT:-8000}"` |
 
-A string is rendered verbatim and prefixed with `<bind>:` (`127.0.0.1` by default)
+Either side of a string may be a number or a `${VAR}` / `${VAR:-default}` expression;
+a string needs its container side (`"HOST:CONTAINER"`), except a plain number, which
+maps to itself. A string is rendered verbatim and prefixed with `<bind>:` (`127.0.0.1` by default)
 unless it already starts with a host IP (`1.2.3.4:` or `[...]:`). Naming a host IP
 other than loopback exposes that port beyond this machine — the same decision as a
 non-loopback `bind` ([SECURITY.md](SECURITY.md#network-exposure-loopback-only)).
@@ -106,17 +109,26 @@ Compose substitutes `${VAR:-default}` itself. For the host port `dck ssh`, Herdr
 variable from the environment, then from the compose directory's `.env`
 (`docker/local/.env`), then the default.
 
-## Build context: `[build] context`
+## Build context and a shared Dockerfile: `[build]`
 
 ```toml
 [build]
-context = "../.."     # relative to the compose file's directory (docker/local/)
+context = "../.."                          # relative to the compose file's directory (docker/local/)
+dockerfile = "docker/local/vue/Dockerfile" # relative to the repository; optional
 ```
 
 The default context is `./<service>` (`docker/local/<service>/`). With
 `context = "../.."` the context is the repository root, and the `dockerfile` path is
 computed relative to it, so the project layer of the Dockerfile can
-`COPY requirements/ ...` from the root.
+`COPY requirements/ ...` from the root. The `COPY` lines of dck's own block follow the
+context (`COPY docker/local/<service>/dck/...`); keep a `.dockerignore` at the root
+when the context is the whole repository, or every build sends it all.
+
+`dockerfile` names a Dockerfile several services share (a web app's dev server,
+storybook and a satellite built from `docker/local/vue/Dockerfile`). dck's managed
+blocks go into **that** file and its vendored `dck/` directory goes next to it
+(`docker/local/vue/dck/`); the service's `.env` stays in `docker/local/<service>/`.
+Without `context`, the context is the Dockerfile's directory.
 
 ## The user block
 
@@ -177,7 +189,8 @@ x-dck-merge".
 | --- | --- | --- |
 | list | your items are appended after dck's | `volumes`, `env_file`, `ports`, `networks`, `extra_hosts`, `depends_on`, `cap_add` |
 | map | merged; your entry wins on the same key | `environment`, `labels` |
-| scalar | yours replaces dck's; `dck doctor` reports the override | `command`, `working_dir`, `init`, `user` |
+| scalar | yours replaces dck's; `dck doctor` reports the override | `working_dir`, `init`, `user` |
+| replace-only keys | yours replaces dck's in **any** form (string, flow list `[...]` or block list), never appended; reported like a scalar | `command`, `entrypoint`, `healthcheck`, `build`, `image`, `restart` |
 
 Named volumes in `x-dck-merge.volumes` that are not dck's own (`logins`,
 `sqlite_volume` above) are declared once in the single top-level `volumes:`
@@ -185,7 +198,55 @@ Named volumes in `x-dck-merge.volumes` that are not dck's own (`logins`,
 (`external: true`).
 
 **After editing the block, run `dck init`.** The merge happens at render time;
-`dck doctor` and `dck up` warn when the rendered file does not reflect the block.
+`dck up` and `dck rebuild` warn (`does not reflect dck.toml or its user block — run:
+dck init`) and `dck doctor` reports it as a problem while the rendered file does not
+reflect the block or `dck.toml`. The doctor also lists what the block overrides
+(`user block       overrides dck's command, environment.DCK_SSH`).
+
+## The other services' volumes and networks
+
+dck owns the single top-level `volumes:` and `networks:` (one key each). The file's
+other services — a database, a cache, workers — declare their own data volumes and
+networks in **top-level user sub-blocks** inside dck's blocks, which dck keeps
+verbatim, or through `dck.toml`:
+
+```yaml
+# >>> dck:volumes >>>
+volumes:
+  state-api: {}
+  # >>> user:volumes >>>
+  local_postgres14_data: {}
+  local_postgres14_data_backups: {}
+  dynamodb_data:
+    external: true
+  # <<< user:volumes <<<
+# <<< dck:volumes <<<
+
+# >>> dck:networks >>>
+networks:
+  acme-net:
+    external: true
+    name: acme-net
+  # >>> user:networks >>>
+  backend: {}
+  # <<< user:networks <<<
+# <<< dck:networks <<<
+```
+
+```toml
+[compose]
+volumes = ["local_pgvector", "cursor_data"]   # declared compose-managed ({}), exact names
+```
+
+Names are kept exactly, so compose keeps mounting the volumes the stack already has
+(`<project>_local_postgres14_data`): they are never renamed or recreated. The markers
+sit at two-space indentation, right before dck's closing marker; add the
+`dck:networks` block yourself when the file has none (dck adds it only when it
+declares an external network). A name declared twice — in a sub-block and by dck
+(its state volume, the agents layer's volumes, `[compose] volumes`, `[compose]
+networks`, the host profile's network) — is refused with the fix. A volume or network
+that `x-dck-merge` names and a sub-block declares is the sub-block's to declare (an
+external volume, a network with options); dck does not declare it again.
 
 **Markers are all-or-nothing.** A compose file with some dck markers but not all, or a
 user block without its end marker, is an error naming the missing marker and the fix.
@@ -210,7 +271,15 @@ services:
     command: ["celery", "worker"]
     ports: !reset []
     depends_on: !reset []
+    volumes: !override
+      - ../..:/app:cached
 ```
+
+`extends` also copies dck's volumes, including the **state volume**: without
+`volumes: !override`, the worker would share the service's sshd host key, `~/.ssh`,
+gh login and Herdr state, and `dck doctor` reports the state volume as shared with it.
+List the mounts the worker needs (the repository, a data volume; add the SSH agent
+socket bind if it needs git over SSH).
 
 Place satellites after `# <<< dck:service <<<`, still inside `services:`. `extends`
 with `!reset` needs **Docker Compose 2.24** or newer; `dck doctor` checks the version

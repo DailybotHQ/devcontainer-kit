@@ -15,6 +15,38 @@ and the interface number).
   record that id on the state volume (new entrypoint function `dck_herdr_self`) and the
   login profile exports it; `dck herdr remove` clears it. `dck doctor` shows both ids
   (`herdr self`; `herdr.id` / `herdr.self_inside` in `--json`) and flags a mismatch.
+- **Shared compose stacks** ([docs/shared-stack.md](docs/shared-stack.md)), all additive:
+  a repository that sets none of these renders byte-identically to v0.3.2.
+  - **The user block**: `# >>> user:<svc> >>>` … `# <<< user:<svc> <<<` inside the dck
+    service, kept verbatim. Plain keys for what dck does not render (`depends_on`,
+    `healthcheck`, …); `x-dck-merge:` for keys it does, merged at `dck init` (lists
+    appended, maps merged with the user's entry winning, scalars and replace-only keys
+    such as `command` and `entrypoint` replaced in any YAML form). A plain key dck also
+    renders is refused with the fix.
+  - **Top-level `user:volumes` / `user:networks` sub-blocks** and `[compose] volumes`, so
+    the file's other services (a database, workers) declare their data volumes and
+    networks with their exact names and existing volumes keep reattaching; a name
+    declared twice is refused.
+  - **Port strings**: `ssh_port` and `ports` accept compose expressions
+    (`"${DJANGO_RUNSERVER_HOST_PORT:-8000}:8000"`, `"5001:3000"`), loopback-prefixed
+    unless they name a host IP; the launcher resolves `${VAR:-default}` (environment,
+    then `docker/local/.env`) for `dck ssh`, Herdr and the doctor.
+  - `[build] context` (build from the repository root; dck's `COPY` paths follow it) and
+    `[build] dockerfile` (a Dockerfile shared by several services, where dck's blocks and
+    its `dck/` directory go).
+  - `[compose] project` and `[compose] networks` (one top-level `networks:`, external).
+  - `[agents] presets`: the ak alias presets (`classic`, `providers`). Unset keeps both,
+    as before; new renders write `presets = []` (off).
+- `dck doctor`: Docker Compose >= 2.24 (satellites with `extends` + `!reset`), a compose
+  file that does not reflect `dck.toml` or its user block (`dck up` and `dck rebuild`
+  warn too), and what the user block overrides (`compose_render` in `--json`).
+
+### Changed
+
+- **Markers are all-or-nothing.** A compose file or Dockerfile with some of dck's markers
+  but not all, or with unbalanced markers, is refused with the fix instead of being
+  replaced or appended to (a block appended at the end could land inside another
+  mapping). A file without any dck marker is still proposed as a whole-file replacement.
 
 ## [0.3.2] — 2026-10-11
 

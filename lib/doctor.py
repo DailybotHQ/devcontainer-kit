@@ -367,6 +367,11 @@ def ssh_keys_info(merged, container_name):
             "host_keys": p["host_keys"], "copied": copied}
 
 
+def _version_tuple(v):
+    m = re.match(r"^v?(\d+)\.(\d+)", str(v))
+    return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+
+
 def compose_project(compose_dir, compose_name):
     """The compose project as the launcher resolves it (resolve_project):
     COMPOSE_PROJECT_NAME in the environment, then in the compose directory's
@@ -419,6 +424,10 @@ def collect(start, profile=None):
     version = config_version()
     py_ok = sys.version_info >= (3, 11)
     rt = runtime_info()
+    cv = rt["compose"]["version"]
+    if cv and _version_tuple(cv) < (2, 24):
+        problems.append("Docker Compose %s is older than 2.24, which dck needs for satellites "
+                        "(extends with !reset/!override) and port strings; update Docker" % cv)
     if not rt["docker"]["cli"]:
         problems.append("docker is not installed")
     elif not rt["docker"]["daemon"]:
@@ -465,6 +474,14 @@ def collect(start, profile=None):
                     problems.append("sshd does not answer on %s:%s" % (host, merged["ssh_port"]))
             report["ssh"] = ssh
             report["host_profiles"] = host_profiles_info(merged, problems)
+            import render
+            st = render.compose_status(repo, "v" + version, profile)
+            report["compose_render"] = st
+            if st["error"]:
+                problems.append("compose: %s" % st["error"])
+            elif st["stale"]:
+                problems.append("compose: docker/local/docker-compose.yaml does not reflect dck.toml or its user "
+                                "block; run dck init")
             if rt["docker"]["daemon"] and info["project"]:
                 report["compose"] = compose_info(info["project"], merged["service"],
                                                  merged["compose.state_volume"], problems)
@@ -529,6 +546,9 @@ def text(report):
     if s:
         out.append("ssh              %s" % ("off" if not s["enabled"] else "%s:%s, key %s, answering %s" % (
             s["bind"], s["port"], "present" if s["identity_present"] else "missing", yes(s["answering"]))))
+    cr = report.get("compose_render")
+    if cr and cr["overrides"]:
+        out.append("user block       overrides dck's %s (x-dck-merge)" % ", ".join(cr["overrides"]))
     c = report.get("compose")
     if c:
         out.append("compose          project %s, state volume %s%s" % (

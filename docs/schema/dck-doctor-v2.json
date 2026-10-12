@@ -551,6 +551,34 @@
         }
       }
     },
+    "compose_render": {
+      "type": "object",
+      "description": "what dck init would change in docker/local/docker-compose.yaml (the user block, dck.toml)",
+      "required": [
+        "stale",
+        "overrides",
+        "error"
+      ],
+      "properties": {
+        "stale": {
+          "type": "boolean",
+          "description": "dck init would change the compose file"
+        },
+        "overrides": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "dck keys the user block's x-dck-merge replaces (scalars) or whose map entries it overrides (key.entry)"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
     "ssh_keys": {
       "type": [
         "object",

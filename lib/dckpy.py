@@ -420,12 +420,28 @@ def cmd_sshkeys(args):
     return EXIT_OK
 
 
+def cmd_compose(args):
+    """`compose status --repo DIR [--profile NAME]`: whether `dck init` would
+    change docker/local/docker-compose.yaml (stale=1), and why it cannot."""
+    import render
+    if not args or args[0] != "status":
+        return usage("compose status --repo DIR [--profile NAME]")
+    args = args[1:]
+    repo, profile = opt(args, "--repo"), opt(args, "--profile")
+    if not repo:
+        return usage("compose status --repo DIR")
+    st = render.compose_status(repo, default_tag(), profile)
+    print("stale=%s" % ("1" if st["stale"] else "0"))
+    print("error=%s" % (st["error"] or "").replace("\n", " "))
+    return EXIT_OK
+
+
 def cmd_doctor(args):
     import doctor
     return doctor.main(args)
 
 
-GROUPS = {"agents": cmd_agents, "sshkeys": cmd_sshkeys, "doctor": cmd_doctor, "config": cmd_config, "init": cmd_init, "devc": cmd_devc, "sshconf": cmd_sshconf, "herdr": cmd_herdr}
+GROUPS = {"agents": cmd_agents, "sshkeys": cmd_sshkeys, "compose": cmd_compose, "doctor": cmd_doctor, "config": cmd_config, "init": cmd_init, "devc": cmd_devc, "sshconf": cmd_sshconf, "herdr": cmd_herdr}
 
 
 def main(argv):

@@ -198,6 +198,15 @@ def reconcile_blocks(existing, rendered):
 # appended, maps merged (the user's entry wins), scalars replaced.
 # --------------------------------------------------------------------------
 
+# Keys that compose writes as lists but that REPLACE, never append: the user's
+# value wins as written (reported as an override when dck renders the key).
+REPLACE_KEYS = ("command", "entrypoint", "healthcheck", "working_dir", "user", "image", "init",
+                "platform", "stop_signal", "restart", "build")
+
+# Top-level user sub-blocks: declarations for the file's other services
+# (`# >>> user:volumes >>>` inside dck's volumes block, same for networks).
+TOP_USER_BLOCKS = ("volumes", "networks")
+
 USER_RE = re.compile(r"^[ \t]*# (>>>|<<<) user:([A-Za-z0-9_.-]+) (>>>|<<<)[ \t]*$")
 MERGE_KEY = "x-dck-merge"
 
@@ -224,7 +233,7 @@ def extract_user_block(text, service):
     found, start = [], None
     for i, line in enumerate(lines):
         m = USER_RE.match(line)
-        if not m:
+        if not m or m.group(2) in TOP_USER_BLOCKS:
             continue
         if m.group(2) != service:
             raise UserBlockError("user block for %r found, but the dck service is %r; rename its markers to "
@@ -359,7 +368,7 @@ def parse_user_block(block):
             if rest.strip():
                 raise UserBlockError("x-dck-merge must be a block mapping (keys on the lines below it)")
             for k, r, b in _keys(body):
-                merge[k] = _value(r, b)
+                merge[k] = ("raw", (r, b)) if k in REPLACE_KEYS else _value(r, b)
         else:
             plain[key] = True
     volumes, networks = [], []
@@ -393,6 +402,8 @@ def apply_user_block(rendered, service, user):
     block and kept verbatim before its closing marker. Returns (text, overrides)."""
     if not user:
         return rendered, []
+    if not user.get("lines"):
+        return apply_top_user_blocks(rendered, user.get("top")), []
     lines = rendered.splitlines()
     blocks = parse_blocks(rendered)
     s, e = blocks["service"]
@@ -424,6 +435,11 @@ def apply_user_block(rendered, service, user):
         if key not in dck:
             out.extend(_emit(key, ukind, upay))
             continue
+        if ukind == "raw":
+            if (rest, child) != upay:
+                overrides.append(key)
+            out.extend(_emit(key, ukind, upay))
+            continue
         dkind, dpay = _value(rest, child)
         if ukind == "list" and dkind == "list":
             have = ["\n".join(c) for c in dpay]
@@ -451,7 +467,63 @@ def apply_user_block(rendered, service, user):
             out.extend(_emit(key, ukind, upay))
     new = lines[:head + 1] + out + user["lines"] + lines[e:]
     text = "\n".join(new)
-    return (text + "\n" if rendered.endswith("\n") else text), overrides
+    text = text + "\n" if rendered.endswith("\n") else text
+    return apply_top_user_blocks(text, user.get("top")), overrides
+
+
+def extract_top_user_blocks(text):
+    """{"volumes": lines, "networks": lines} (markers included) of the top-level
+    user sub-blocks, each inside dck's block of the same name; {} for none."""
+    lines = text.splitlines()
+    blocks = parse_blocks(text) or {}
+    out, open_at = {}, {}
+    for i, line in enumerate(lines):
+        m = USER_RE.match(line)
+        if not m or m.group(2) not in TOP_USER_BLOCKS:
+            continue
+        name = m.group(2)
+        if m.group(1) == ">>>":
+            if name in open_at or name in out:
+                raise UserBlockError("a second user:%s block (line %d); keep exactly one" % (name, i + 1))
+            open_at[name] = i
+        else:
+            if name not in open_at:
+                raise UserBlockError("'# <<< user:%s <<<' at line %d has no opening marker" % (name, i + 1))
+            start = open_at.pop(name)
+            dck = blocks.get(name)
+            if not dck or not (dck[0] < start and i < dck[1]):
+                raise UserBlockError("the user:%s block must sit inside dck's top-level %s block, right before "
+                                     "'# <<< dck:%s <<<'" % (name, name, name))
+            out[name] = lines[start:i + 1]
+    for name, at in open_at.items():
+        raise UserBlockError("'# >>> user:%s >>>' at line %d has no closing marker; add '  # <<< user:%s <<<' "
+                             "after the block" % (name, at + 1, name))
+    return out
+
+
+def top_declared(block):
+    """The names a top-level user sub-block declares (keys at its first indent)."""
+    names = []
+    for k, _r, _b in _keys(block[1:-1]):
+        names.append(k)
+    return names
+
+
+def apply_top_user_blocks(rendered, top):
+    """Insert each top-level user sub-block verbatim before dck's closing marker."""
+    if not top:
+        return rendered
+    lines = rendered.splitlines()
+    for name in TOP_USER_BLOCKS:
+        if name not in top:
+            continue
+        blocks = parse_blocks("\n".join(lines))
+        if name not in blocks:
+            raise UserBlockError("the user:%s block has no dck %s block to live in" % (name, name))
+        end = blocks[name][1]
+        lines = lines[:end] + top[name] + lines[end:]
+    text = "\n".join(lines)
+    return text + "\n" if rendered.endswith("\n") else text
 
 
 def load_user_block(repo, service):
@@ -459,11 +531,23 @@ def load_user_block(repo, service):
     path = os.path.join(repo, "docker", "local", "docker-compose.yaml")
     if not os.path.isfile(path) or os.path.islink(path):
         return None
-    block = extract_user_block(open(path).read(), service)
-    return parse_user_block(block) if block else None
+    text = open(path).read()
+    block = extract_user_block(text, service)
+    top = extract_top_user_blocks(text)
+    if not block and not top:
+        return None
+    user = parse_user_block(block) if block else {"lines": None, "plain": {}, "merge": {}, "volumes": [],
+                                                    "networks": []}
+    user["top"] = top
+    user["top_volumes"] = top_declared(top["volumes"]) if "volumes" in top else []
+    user["top_networks"] = top_declared(top["networks"]) if "networks" in top else []
+    return user
 
 
 def _emit(key, kind, payload):
+    if kind == "raw":
+        rest, body = payload
+        return ["    %s:%s" % (key, rest)] + list(body)
     if kind == "scalar":
         return ["    %s: %s" % (key, payload)]
     if kind == "block":
@@ -699,9 +783,29 @@ def network_names(values, network, extra=()):
 
 def context(values, repo_name, project, network, base_image, dck_tag, pins=None, user=None):
     merge = (user or {}).get("merge") or {}
-    user_volumes = (user or {}).get("volumes") or []
-    user_networks = (user or {}).get("networks") or []
+    top_vols = (user or {}).get("top_volumes") or []
+    top_nets = (user or {}).get("top_networks") or []
+    # x-dck-merge volumes/networks the user declares in a top-level sub-block
+    # are theirs to declare (an external volume, a network with options).
+    user_volumes = [v for v in list(values.get("compose.volumes") or []) + ((user or {}).get("volumes") or [])
+                    if v not in top_vols]
+    user_networks = [n for n in (user or {}).get("networks") or [] if n not in top_nets]
     nets = network_names(values, network, user_networks)
+    dck_vols = [values["compose.state_volume"]] + (["agentkit"] + [k for k in AGENT_VOLUMES if k in values["agents.clis"]]
+                                                   if values["layers.agents"] else [])
+    for name in top_vols:
+        if name in dck_vols or name in (values.get("compose.volumes") or []):
+            raise UserBlockError("volume %r is declared in the user:volumes block and by dck (%s); declare it once: "
+                                 "remove it from the block%s" % (name, "dck.toml [compose] volumes"
+                                                                 if name in (values.get("compose.volumes") or [])
+                                                                 else "its own volume",
+                                                                 " or from [compose] volumes"
+                                                                 if name in (values.get("compose.volumes") or []) else ""))
+    for name in top_nets:
+        if name in network_names(values, network):
+            raise UserBlockError("network %r is declared in the user:networks block and by dck ([compose] networks "
+                                 "or the host profile's network); declare it once" % name)
+    has_net_decls = bool(nets) or "networks" in ((user or {}).get("top") or {})
     bctx, bdockerfile, dck_dir = build_paths(values)
     user = values["user"]
     # (compose volume key, directory under ~/.dck/volumes): the state volume's
@@ -747,6 +851,7 @@ def context(values, repo_name, project, network, base_image, dck_tag, pins=None,
                                    [v for v, _ in vols] + [u for u in user_volumes if u not in [v for v, _ in vols]]),
         "state_volume": values["compose.state_volume"],
         "has_network": bool(nets),
+        "has_network_decls": has_net_decls,
         "network": network,
         "network_lines": "\n".join("      - %s" % n for n in nets),
         "network_decls": "\n".join("  %s:\n    external: true\n    name: %s" % (n, n) for n in nets),
@@ -1064,6 +1169,38 @@ def find_repo_root(start):
     return os.path.abspath(start)
 
 
+def compose_status(repo, dck_tag, profile=None, env=None):
+    """What `dck init` would do to docker/local/docker-compose.yaml, without
+    writing: {"stale": bool, "overrides": [keys the user block overrides],
+    "error": str or None}. Read by `dck doctor` and `dck up`."""
+    env = os.environ if env is None else env
+    out = {"stale": False, "overrides": [], "error": None}
+    rel = "docker/local/docker-compose.yaml"
+    path = os.path.join(repo, rel)
+    if not os.path.isfile(path) or os.path.islink(path):
+        return out
+    try:
+        toml_path = config.repo_config_path(repo)
+        values, _ = config.validate(config.parse_file(toml_path), "repo", toml_path)
+        values["_label_fmt"] = values["herdr.label"]
+        prof, _ = config.load_profile(profile, env)
+        project = values.get("compose.project") or prof["compose_project_prefix"] + config.slug(os.path.basename(repo))
+        pins = kit_pins()
+        user = load_user_block(repo, values["service"])
+        ctx = context(values, os.path.basename(repo), project, prof["network"], base_image_for(values, pins),
+                      dck_tag, pins, user)
+        rendered = render_text(read_template("docker/docker-compose.yaml.tmpl"), ctx, "compose")
+        rendered, out["overrides"] = apply_user_block(rendered, values["service"], user)
+        old = open(path).read()
+        if not parse_blocks(old):
+            return out
+        check_markers(rel, old, rendered)
+        out["stale"] = reconcile_blocks(old, rendered) != old
+    except (config.ConfigError, UserBlockError, RefusedError, RenderError, OSError) as exc:
+        out["error"] = str(exc)
+    return out
+
+
 def init(opts, dck_tag, env=None, out=sys.stdout, err=sys.stderr):
     """opts: dict from the CLI. Returns an exit code."""
     env = os.environ if env is None else env
@@ -1134,7 +1271,11 @@ def init(opts, dck_tag, env=None, out=sys.stdout, err=sys.stderr):
     except UserBlockError as exc:
         err.write("dck: docker/local/docker-compose.yaml: %s\n" % exc)
         return EXIT_CONFIG
-    ctx = context(values, repo_name, project, prof["network"], base_image, dck_tag, pins, user)
+    try:
+        ctx = context(values, repo_name, project, prof["network"], base_image, dck_tag, pins, user)
+    except UserBlockError as exc:
+        err.write("dck: docker/local/docker-compose.yaml: %s\n" % exc)
+        return EXIT_CONFIG
     ctx["_user"] = user
     try:
         changes = plan(repo, values, ctx, (overrides if toml_exists else []) +

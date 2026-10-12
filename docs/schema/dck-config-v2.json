@@ -168,6 +168,17 @@
           "maxItems": 64,
           "default": [],
           "description": "existing external networks; merged with the host profile's network and x-dck-merge.networks into one top-level networks: (external: true)"
+        },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,62}$"
+          },
+          "maxItems": 64,
+          "uniqueItems": true,
+          "default": [],
+          "description": "extra compose-managed volumes declared with their exact names (<project>_<name>, so the data volumes of the file's other services keep reattaching); or declare them in the user:volumes sub-block"
         }
       }
     },
