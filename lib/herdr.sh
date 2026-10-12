@@ -145,6 +145,43 @@ herdr_agent_key() {
   note "ssh-agent: loaded the dck key for the mesh (every dck container with the agent socket can now log in to the others; ssh-add -d removes it — see docs/SECURITY.md)"
 }
 
+# herdr_repin_peers — a peer container rebuilt outside its own `dck up` (the
+# editor's "Rebuild Container", a recreated state volume) has a new sshd host
+# key that the host's dck known_hosts does not have yet: the payloads pushed to
+# the other containers would carry the old one, and the host's own refresh hop
+# would be refused. Read each running peer's key from the container itself
+# (docker exec, the container publishing that alias's port) and re-pin it.
+herdr_repin_peers() {
+  local line alias port name pub ktype kval rest cur tmp
+  (umask 077 && mkdir -p "$(dirname "$HERDR_KNOWN_HOSTS")")
+  while IFS= read -r line; do
+    alias="${line%% *}"; port="${line##* }"
+    [ "$alias" != "$DCK_ALIAS" ] || continue
+    case "$alias" in [A-Za-z0-9]*) ;; *) continue ;; esac
+    case "$port" in ''|*[!0-9]*) continue ;; esac
+    name="$(docker ps --filter "publish=$port" --format '{{.Names}}' 2>/dev/null | head -n 1)"
+    case "$name" in ''|*[!A-Za-z0-9_.-]*) continue ;; esac
+    pub="$(docker exec -u root "$name" bash -c '. /usr/local/lib/dck/entrypoint.sh && type dck_host_key_pub >/dev/null 2>&1 && dck_host_key_pub' 2>/dev/null </dev/null | head -n 1)"
+    read -r ktype kval rest <<KEY
+$pub
+KEY
+    case "$ktype" in ssh-ed25519|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521|ssh-rsa) ;; *) continue ;; esac
+    case "$kval" in ''|*[!A-Za-z0-9+/=]*) continue ;; esac
+    cur="$(awk -v a="$alias" '$1 == a { print $2 " " $3 }' "$HERDR_KNOWN_HOSTS" 2>/dev/null)"
+    [ "$cur" = "$ktype $kval" ] && continue
+    tmp="$HERDR_KNOWN_HOSTS.tmp-$$"
+    { awk -v a="$alias" '$1 != a' "$HERDR_KNOWN_HOSTS" 2>/dev/null; printf '%s %s %s\n' "$alias" "$ktype" "$kval"; } > "$tmp" \
+      && chmod 600 "$tmp" && mv -f "$tmp" "$HERDR_KNOWN_HOSTS" || { rm -f "$tmp"; continue; }
+    if [ -n "$cur" ]; then
+      note "mesh: $alias has a new host key (rebuilt); re-pinned it from the container for the host and every peer"
+    else
+      note "mesh: pinned the host key of $alias from the container"
+    fi
+  done <<ALIASES
+$(dckpy sshconf aliases --file "$HERDR_INCLUDE" --ports 2>/dev/null || true)
+ALIASES
+}
+
 # herdr_mesh — push the peer list (public data only) into this container, where
 # dck_mesh_apply writes the ssh config, the pinned host keys and the Herdr machines.
 herdr_mesh() {
@@ -159,6 +196,7 @@ herdr_mesh() {
     return 0
   fi
   herdr_agent_key
+  herdr_repin_peers
   local catalog payload n alias
   # The host must have its own entry in its Herdr catalog: asks from the host
   # carry that entry's id as their reply address.

@@ -260,10 +260,19 @@ def cmd_sshconf(args):
             return EXIT_OK
         if sub == "aliases":
             path = opt(args, "--file")
+            ports = flag(args, "--ports")
             if os.path.exists(path):
-                for alias, _s, _e in sshconf._blocks(sshconf._read_owned(path)):
-                    if alias != sshconf.HOST_SELF_ALIAS:  # the host, not a container
+                lines = sshconf._read_owned(path)
+                for alias, s, e in sshconf._blocks(lines):
+                    if alias == sshconf.HOST_SELF_ALIAS:  # the host, not a container
+                        continue
+                    if not ports:
                         print(alias)
+                        continue
+                    port = next((ln.split()[1] for ln in lines[s:e] if len(ln.split()) == 2
+                                 and ln.split()[0].lower() == "port" and ln.split()[1].isdigit()), "")
+                    if port:
+                        print("%s %s" % (alias, port))
             return EXIT_OK
         if sub == "peers":
             labels = {}
