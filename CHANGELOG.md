@@ -7,24 +7,6 @@ and the interface number).
 
 ## [Unreleased]
 
-### Added
-
-- **`antigravity` as a coding-agent CLI kind** (`[agents] clis`, `supported`, the host
-  profile's `clis` / `clis_extra`, `DCK_AGENT_CLIS`, `INSTALL_ANTIGRAVITY_CLI`): the agents
-  layer installs the Antigravity CLI (`agy`) through `ak install antigravity`, and the
-  entrypoint persists `~/.gemini` on an `antigravity` volume. Inside a container `agy`
-  reaches no OS keyring, so it keeps each Google login in a file under that home —
-  one login per ak profile (`ak antigravity @name`), several accounts side by side,
-  which the macOS Keychain's single slot never allowed. Its profiles stay unshareable
-  from the host (`[agents] host_profiles` skips them, as before).
-
-### Changed
-
-- Agent tooling: the vendored `deepworkplan` skill moves to v7.6.3 and the AI Diff Reviewer
-  skill to v3.3.11, the pack's pin (`skills-lock.json`, AGENTS.md provenance), through the
-  pack's own upgrade flow and addon planner; `.dwp/config.json` now also records the dev
-  container addon (the repository's own dck container, v0.3.5).
-
 ## [0.3.6] — 2026-10-12
 
 Interface stays **2**.
@@ -63,6 +45,14 @@ Interface stays **2**.
   `up` and every host step (always the compose backend). For `up`, `rebuild`, `down`,
   `ps`, `logs`, `shell`, `exec`, `ssh`, `stop`, `start`, `restart`, `config`, `herdr`,
   `doctor` (which lists the files in use: `repo.compose_files`, `compose_override`).
+- **`antigravity` as a coding-agent CLI kind** (`[agents] clis`, `supported`, the host
+  profile's `clis` / `clis_extra`, `DCK_AGENT_CLIS`, `INSTALL_ANTIGRAVITY_CLI`): the agents
+  layer installs the Antigravity CLI (`agy`) through `ak install antigravity`, and the
+  entrypoint persists `~/.gemini` on an `antigravity` volume. Inside a container `agy`
+  reaches no OS keyring, so it keeps each Google login in a file under that home —
+  one login per ak profile (`ak antigravity @name`), several accounts side by side,
+  which the macOS Keychain's single slot never allowed. Its profiles stay unshareable
+  from the host (`[agents] host_profiles` skips them, as before).
 
 ### Changed
 
@@ -74,9 +64,25 @@ Interface stays **2**.
   for the requested CLIs only.
 - `--service` needs `--project`; `--compose-file` without `--service` is PRIMARY mode
   (it was a usage error).
+- Agent tooling: the vendored `deepworkplan` skill moves to v7.6.3 and the AI Diff Reviewer
+  skill to v3.3.11, the pack's pin (`skills-lock.json`, AGENTS.md provenance), through the
+  pack's own upgrade flow and addon planner; `.dwp/config.json` now also records the dev
+  container addon (the repository's own dck container, v0.3.5).
+- **Pins:** coding-agents-kit **v0.7.0** (`AGENTKIT_TAG`; tag commit `d2b5b59`, tarball
+  sha256 `8bd2746b…`, `SHA256SUMS` sha256 `c30da1be…`): the `antigravity` kind, `ak usage`
+  for Antigravity, and ak's capacity and lease commands.
 
 ### Fixed
 
+- With `[agents] host_profiles` on, an ak profile created inside for a CLI the host does not
+  share (antigravity, cursor, or a CLI with no host profile) was written to
+  `~/.dck/host/agentkit/profiles/<cli>/` in the container layer, so `dck rebuild` (or any
+  recreate) lost it and its login. The entrypoint now links that directory to the CLI's
+  directory on the `agentkit` volume (0700) — the one ak uses with the option off — and
+  migrates an older container's profiles without overwriting the volume's copy (the rest is
+  kept as `.<cli>.dck-pre-volume-<UTC>`, logged by path). Shared CLIs' directories (the
+  host's mounts) are never touched; a link pointing outside the volume is refused. See
+  [docs/layers.md](docs/layers.md#host-accounts).
 - `dck up` reused an image dck did not build when one already had the service's tag (a
   pre-dck image left by a repository's old tooling, with its own entrypoint), so no host
   step ran until `dck rebuild`. `dck up` now inspects the image first: one without dck's
