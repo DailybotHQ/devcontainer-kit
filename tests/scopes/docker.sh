@@ -160,6 +160,27 @@ test_node_fixture_end_to_end() {
   assert_contains "$RUN_OUT" "$dtag" "nvim is DeepWorkPlan Vim $dtag"
   assert_contains "$RUN_OUT" "nvim-ok" "nvim starts headless with the baked-in plugins"
 
+  # Host accounts: the env file is rewritten on every `dck up`; a running
+  # container must see the new file without a recreate (the directory is bound).
+  mkdir -p "$HOME/.config/dck"
+  printf 'interface = 2\n[agents]\nhost_profiles = true\nhost_env_keys = ["DCK_IT_HOSTENV"]\n' > "$HOME/.config/dck/profile.toml"
+  export DCK_IT_HOSTENV=dck-fake-value-first
+  # dck up never recreates a running container on its own: --recreate applies the overlay.
+  with_lock d up --recreate
+  assert_rc 0 "dck up --recreate with host accounts on"
+  local cid1 cid2
+  cid1="$(docker inspect -f '{{.Id}}' "${IT_PROJECT}-app-1")"
+  run_cmd docker exec -u root "${IT_PROJECT}-app-1" sh -c 'cat "$AGENTKIT_ENV"'
+  assert_contains "$RUN_OUT" "DCK_IT_HOSTENV='dck-fake-value-first'" "the env file is visible inside"
+  export DCK_IT_HOSTENV=dck-fake-value-second
+  with_lock d up
+  assert_rc 0 "a second, plain dck up succeeds"
+  cid2="$(docker inspect -f '{{.Id}}' "${IT_PROJECT}-app-1")"
+  assert_eq "$cid2" "$cid1" "the second up keeps the running container"
+  run_cmd docker exec -u root "${IT_PROJECT}-app-1" sh -c 'cat "$AGENTKIT_ENV"'
+  assert_contains "$RUN_OUT" "DCK_IT_HOSTENV='dck-fake-value-second'" "the second up's value is visible inside without a recreate"
+  rm -f "$HOME/.config/dck/profile.toml"; unset DCK_IT_HOSTENV
+
   # 8. Persistence across rebuild: the state and agent volumes survive.
   dev shell -c 'mkdir -p ~/.config/gh ~/.codex && echo kept > ~/.config/gh/it-marker && echo kept > ~/.codex/it-marker && echo kept > ~/.config/agentkit/it-marker'
   with_lock dev rebuild
@@ -186,6 +207,16 @@ Fixture Dev" "gh, a CLI home, agentkit and the git identity survive a rebuild"
   assert_eq "$RUN_OUT" "" "dev.sh down removed the container"
   run_cmd docker volume inspect "${IT_PROJECT}_state" --format '{{.Name}}'
   assert_eq "$RUN_OUT" "${IT_PROJECT}_state" "dev.sh down kept the per-project state volume"
+
+  # A state volume removed on purpose: a new host key, re-pinned from the container.
+  docker volume rm "${IT_PROJECT}_state" >/dev/null
+  with_lock dev up
+  assert_rc 0 "dev.sh up after removing the state volume"
+  wait_port "$port" || fail "sshd answers with its new host key"
+  d ssh true
+  assert_rc 0 "dck ssh logs in after the state volume was recreated"
+  assert_contains "$RUN_ERR" "re-pinned" "the new host key is re-pinned from the container, with a note"
+  dev down
 }
 
 test_python_fixture() {

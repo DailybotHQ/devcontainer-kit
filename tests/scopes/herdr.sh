@@ -112,6 +112,55 @@ test_waits_for_sshd() {
   assert_not_contains "$(fake_calls herdr)" "machine add" "nothing is registered before sshd answers"
 }
 
+KH="$HOME/.config/dck/ssh/known_hosts"
+KEY_NEW="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINewContainerHostKeyFakeOnlyForTests0000000"
+KEY_OLD="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOldContainerHostKeyFakeOnlyForTests0000000"
+
+test_a_recreated_state_volume_is_re_pinned() {
+  mk_repo
+  mkdir -p "$(dirname "$KH")"
+  printf 'dck-proj %s\ndck-other %s\n' "$KEY_OLD" "$KEY_OLD" > "$KH"
+  echo "$KEY_NEW dck-host-key" > "$DCK_FAKE_STATE/host_key_pub"
+  d herdr add
+  assert_rc 0 "add succeeds after the state volume was recreated"
+  assert_contains "$RUN_ERR" "host key changed (its state volume was recreated); re-pinned dck-proj" "the re-pin is reported"
+  assert_contains "$(cat "$KH")" "dck-proj $KEY_NEW" "the container's own key is pinned"
+  assert_not_contains "$(cat "$KH")" "dck-proj $KEY_OLD" "the stale pin is gone"
+  assert_contains "$(cat "$KH")" "dck-other $KEY_OLD" "other aliases' pins are kept"
+  assert_mode "$KH" 600 "known_hosts stays 0600"
+  : > "$DCK_FAKE_LOG"
+  d herdr add
+  assert_not_contains "$RUN_ERR" "re-pinned" "an unchanged key is not re-pinned"
+}
+
+test_first_pin_comes_from_the_container() {
+  mk_repo
+  echo "$KEY_NEW dck-host-key" > "$DCK_FAKE_STATE/host_key_pub"
+  d herdr add
+  assert_contains "$RUN_ERR" "pinned the host key of dck-proj" "the first pin is read from the container, not trusted on first use"
+  assert_contains "$(cat "$KH")" "dck-proj $KEY_NEW" "and written under the alias"
+}
+
+test_unreadable_key_and_a_mismatch_give_the_exact_fix() {
+  mk_repo
+  echo 255 > "$DCK_FAKE_STATE/ssh_rc"
+  echo "Host key verification failed." > "$DCK_FAKE_STATE/ssh_err"
+  d herdr add
+  assert_rc 1 "add fails"
+  assert_contains "$RUN_ERR" "no longer matches the container" "the mismatch is named"
+  assert_contains "$RUN_ERR" "ssh-keygen -R dck-proj -f $KH" "with the exact command"
+  assert_not_contains "$RUN_ERR" "does not answer" "instead of a bare 'does not answer'"
+}
+
+test_garbage_from_the_container_is_never_pinned() {
+  mk_repo
+  mkdir -p "$(dirname "$KH")"
+  printf 'dck-proj %s\n' "$KEY_OLD" > "$KH"
+  printf 'ssh-ed25519 not;a/key\n' > "$DCK_FAKE_STATE/host_key_pub"
+  d herdr add
+  assert_contains "$(cat "$KH")" "dck-proj $KEY_OLD" "a malformed key leaves the pin alone"
+}
+
 test_status() {
   mk_repo
   d herdr status

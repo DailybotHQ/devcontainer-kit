@@ -56,9 +56,12 @@ container through it.
 - **No `known_hosts` growth.** Host keys go to `~/.config/dck/ssh/known_hosts`,
   keyed by alias (`HostKeyAlias`), so a port later reused by another
   repository never collides and `~/.ssh/known_hosts` is untouched.
-- **A changed host key is refused** (`accept-new`). The container's host key
-  lives on its `state` volume and survives rebuilds; if you delete that volume
-  on purpose, forget the old key with
+- **The host key is pinned from the container itself.** `dck herdr add` (and `dck up`
+  with Herdr on, and `dck ssh`) reads the key's public half through `docker exec` and
+  pins it under the alias. It lives on the `state` volume and survives rebuilds; after
+  that volume is removed, the new key is re-pinned with a note. A key dck cannot read
+  (an image older than v0.3.1) falls back to `accept-new`: a changed key is refused,
+  and the error names the fix,
   `ssh-keygen -R dck-myrepo -f ~/.config/dck/ssh/known_hosts`.
 - **The include is dck's alone.** It starts with a provenance header; dck
   refuses to write a `config.d/dck` that lacks it, or one that is a symlink.

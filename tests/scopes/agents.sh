@@ -14,6 +14,7 @@ FAKE_VALUE_A="dck-fake-value-aaaa"
 FAKE_VALUE_B="dck-fake-value-bbbb"
 FAKE_VALUE_C="dck-fake-value-cccc"
 FAKE_VALUE_D="dck-fake-value-dddd"
+FAKE_VALUE_E="dck-fake-value-eeee"
 PROFILES="$HOME/.local/share/agentkit/profiles"
 
 mk_repo() {
@@ -48,7 +49,7 @@ profile() {
 
 up() { run_cmd bash -c 'cd "$1" && shift && env "$@"' _ "$REPO" TMPDIR="$SANDBOX/tmp" "$DCK" up; }
 overlay() { printf '%s/tmp/dck-%s/proj-agents.yml' "$SANDBOX" "$(id -u)"; }
-envfile() { printf '%s/.config/dck/agents/proj.env' "$HOME"; }
+envfile() { printf '%s/.config/dck/agents/proj/env' "$HOME"; }
 
 # binds <overlay> — one line per bind: "<target> <ro|rw>"
 binds() {
@@ -139,8 +140,9 @@ host_env_keys = ["OPENAI_API_KEY", "XAI_API_KEY"]'
   assert_contains "$o" 'DCK_HOST_PROFILES: "claude codex"' "the entrypoint learns which CLIs are shared"
   assert_contains "$o" "source: \"$HOME/.codex\"" "the host's Codex home is bound"
   assert_contains "$o" 'DCK_HOST_CODEX: "/home/dev/.dck/host/codex"' "and named for the entrypoint"
-  assert_contains "$o" "source: \"$(envfile)\"" "the env file is bound"
-  assert_contains "$o" 'AGENTKIT_ENV: "/home/dev/.dck/host/agentkit/env"' "AGENTKIT_ENV points at it"
+  assert_contains "$o" "source: \"$(dirname "$(envfile)")\"" "the env file's directory is bound, not the file"
+  assert_not_contains "$o" "source: \"$(envfile)\"" "the file itself is never bound (an atomic rewrite would not reach the container)"
+  assert_contains "$o" 'AGENTKIT_ENV: "/home/dev/.dck/host/agentkit/hostenv/env"' "AGENTKIT_ENV points at the file inside it"
   assert_contains "$o" "create_host_path: false" "a missing host path fails the start instead of being created"
   assert_contains "$o" "# Shared profiles: claude@team-b claude@work1 codex@work1 codex@default" "the overlay names the shared profiles"
   assert_contains "$o" "# Env file names (values only in the 0600 env file): CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN_WORK1 OPENAI_API_KEY" "and the env file's names"
@@ -174,8 +176,8 @@ test_mounts_are_read_write_only_where_the_cli_writes() {
   up
   local b
   b="$(binds "$(overlay)")"
-  assert_contains "$b" "/home/dev/.dck/host/agentkit/env ro" "the env file is read-only"
-  assert_no_match "$b" '/agentkit/env rw$' "the env file is never read-write"
+  assert_contains "$b" "/home/dev/.dck/host/agentkit/hostenv ro" "the env file's directory is read-only"
+  assert_no_match "$b" '/agentkit/hostenv rw$' "the env file is never read-write"
   assert_match "$b" '^/home/dev/\.dck/host/agentkit/profiles/claude/work1 rw$' "a Claude profile is read-write (its state is rewritten on every run)"
   assert_match "$b" '^/home/dev/\.dck/host/codex rw$' "the Codex home is read-write (auth.json token refresh)"
   assert_no_match "$b" '^/home/dev/\.dck/host/agentkit/profiles/[a-z]+ ' "no CLI directory is bound as a whole"
@@ -245,7 +247,43 @@ test_turning_it_off_removes_the_overlay_and_env_file() {
   assert_rc 0 "dck up succeeds"
   assert_not_file "$(overlay)" "the overlay is removed when the option is turned off"
   assert_not_file "$(envfile)" "and so is the env file"
+  assert_absent "$(dirname "$(envfile)")" "and its directory"
   assert_not_contains "$(fake_calls docker)" "-agents.yml" "compose is not given it"
+}
+
+inode() { python3 -I -c 'import os,sys; print(os.stat(sys.argv[1]).st_ino)' "$1"; }
+
+test_second_up_keeps_the_tokens_visible_inside() {
+  # A running container keeps its bind mounts: a single-file bind would pin the
+  # first env file's inode, and the atomic rewrite on the next `dck up` would
+  # never reach it. The directory is bound, so the new file is what it sees.
+  mk_repo || return 0
+  mk_host
+  profile 'host_profiles = true'
+  up
+  local o1 d1
+  o1="$(cat "$(overlay)")"
+  d1="$(inode "$(dirname "$(envfile)")")"
+  sed "s/$FAKE_VALUE_B/$FAKE_VALUE_E/" "$HOME/.config/agentkit/env" > "$SANDBOX/env.new"
+  cat "$SANDBOX/env.new" > "$HOME/.config/agentkit/env"
+  up
+  assert_rc 0 "the second dck up succeeds"
+  assert_eq "$(cat "$(overlay)")" "$o1" "the overlay is unchanged, so compose keeps the running container"
+  assert_eq "$(inode "$(dirname "$(envfile)")")" "$d1" "the bound directory is the same one the container holds"
+  assert_contains "$(cat "$(envfile)")" "CLAUDE_CODE_OAUTH_TOKEN_WORK1='$FAKE_VALUE_E'" "the rotated token is in the file the container reads"
+  assert_not_contains "$(cat "$(envfile)")" "$FAKE_VALUE_B" "the old value is gone"
+  assert_mode "$(envfile)" 600 "the rewritten env file is still 0600"
+}
+
+test_the_single_file_env_of_v030_is_removed() {
+  mk_repo || return 0
+  mk_host
+  mkdir -p "$HOME/.config/dck/agents"
+  printf "OLD='%s'\n" "$FAKE_VALUE_D" > "$HOME/.config/dck/agents/proj.env"
+  profile 'host_profiles = true'
+  up
+  assert_not_file "$HOME/.config/dck/agents/proj.env" "the v0.3.0 single-file env is removed"
+  assert_file "$(envfile)" "the per-project directory holds the env file"
 }
 
 test_agents_layer_off_shares_nothing() {

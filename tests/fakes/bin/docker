@@ -55,6 +55,8 @@ case "$1" in
         version) echo "Docker Compose version v2.99.0-fake"; exit 0 ;;
         ps) cat "$st/ps" 2>/dev/null; exit 0 ;;
         exec)
+          # The host key read by ssh_pin_host_key: $st/host_key_pub (nothing when absent).
+          case " $* " in *dck_host_key_pub*) cat "$st/host_key_pub" 2>/dev/null; exit 0 ;; esac
           [ -t 0 ] || cat > "$st/exec_stdin"
           cat "$st/exec_out" 2>/dev/null; exit "$(cat "$st/exec_rc" 2>/dev/null || echo 0)" ;;
         *) break ;;

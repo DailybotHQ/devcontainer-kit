@@ -7,8 +7,28 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-10-11
+
+Interface stays **2**.
+
+### Fixed
+
+- Host accounts keep working across `dck up`: the env file of `[agents] host_profiles`
+  is now bound through its per-project directory (`~/.config/dck/agents/<project>/env`,
+  in the container `~/.dck/host/agentkit/hostenv/env`), not as a single file. Every
+  `dck up` rewrites it atomically, and a single-file bind kept showing the old inode,
+  so tokens went stale or unset in a running container until `--recreate`. The v0.3.0
+  file `~/.config/dck/agents/<project>.env` is removed on the next `dck up`.
+- A removed `state` volume no longer breaks `dck ssh` and `dck herdr add` (and `dck up`
+  with Herdr on) behind a bare "sshd does not answer": the host key is pinned from the
+  container itself through `docker exec` (new entrypoint helper `dck_host_key_pub`), and
+  a changed key is re-pinned with a note. When the key cannot be read (an older image),
+  a mismatch is named with the exact `ssh-keygen -R <alias> -f …` fix.
+
 ### Changed
 
+- **Pins:** herdr-peers **v0.2.2** (`HERDR_PEERS_TAG`, verified by the sha256 of its
+  `SHA256SUMS`): Codex lanes pass `--pane`, and `list` shows full machine ids.
 - Agent tooling: the vendored `deepworkplan` skill moves to v7.6.0 and the AI Diff
   Reviewer skill to v3.3.9 (`skills-lock.json`, `.dwp/config.json`, AGENTS.md
   provenance), through the pack's own addon planner.
@@ -491,7 +511,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.1
 [0.3.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.0
 [0.2.11]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.11
 [0.2.10]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.10
