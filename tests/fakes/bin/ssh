@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fake ssh. Logs argv. $DCK_FAKE_STATE/ssh_rc sets the status (default 0),
-# ssh_server_rc the status of `... herdr status server`, ssh_out the output.
+# ssh_server_rc the status of `... herdr status server`, ssh_out the output,
+# ssh_err what it prints on stderr.
 # `ssh -G <alias>` prints $DCK_FAKE_STATE/ssh_G_<alias> (exit 255 when absent).
 # A command running dck_mesh_apply saves its stdin to ssh_stdin_<last host arg>.
 st="${DCK_FAKE_STATE:-/nonexistent}"
@@ -16,6 +17,7 @@ case " $* " in
     cat > "$st/ssh_stdin_$host" ;;
 esac
 cat "$st/ssh_out" 2>/dev/null
+cat "$st/ssh_err" >&2 2>/dev/null
 case " $* " in
   *" herdr status server "*) exit "$(cat "$st/ssh_server_rc" 2>/dev/null || echo 0)" ;;
 esac

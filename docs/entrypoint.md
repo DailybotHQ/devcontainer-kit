@@ -71,6 +71,14 @@ valid — writes `/etc/ssh/sshd_config.d/20-dck-runtime.conf` (`HostKey`,
 root login ([images.md](images.md)); the host publishes the port on
 `127.0.0.1` only.
 
+### `dck_host_key_pub`
+
+Prints the persistent host key's public half (nothing before sshd generated
+it). `dck ssh` and `dck herdr add` run it as root through `docker exec` and pin
+the key under the repository's alias, so a host key that changed because the
+`state` volume was removed is re-pinned from the container itself, never
+learned from the network.
+
 ### `dck_authorize_keys [--add]`
 
 Maintains the block between `# >>> dck >>>` and `# <<< dck <<<` in

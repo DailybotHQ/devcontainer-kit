@@ -83,9 +83,13 @@ entrypoint). `dck ssh` connects to `127.0.0.1:<ssh_port>` with:
 - `-i <dck key> -o IdentitiesOnly=yes` — no other key is offered;
 - `-o ForwardAgent=yes` — your own keys stay on the host; git inside the
   session uses them through the agent;
-- `-o StrictHostKeyChecking=accept-new` — a new container is trusted on first
-  use, a *changed* host key is refused (the key survives rebuilds on the
-  `state` volume);
+- the host key is **pinned from the container itself**: before connecting, dck reads
+  the persistent key's public half through `docker exec` and writes it under the
+  alias. The key survives rebuilds on the `state` volume; when that volume was
+  removed, the new key is re-pinned with a note instead of refused;
+- `-o StrictHostKeyChecking=accept-new` — only for an image older than v0.3.1
+  (no key helper): trusted on first use, a *changed* key refused, with the exact
+  `ssh-keygen -R` fix;
 - `-o UserKnownHostsFile=~/.config/dck/ssh/known_hosts` — your
   `~/.ssh/known_hosts` does not grow a line per container.
 

@@ -107,7 +107,11 @@ the repository — that binds:
 | --- | --- | --- |
 | each ak profile `$AGENTKIT_PROFILES_DIR/<cli>/<name>` (default root `~/.local/share/agentkit/profiles`) of the CLIs in `[agents] clis` — claude, codex, pi, cline, grok, opencode — or only those in `host_profile_names` | `~/.dck/host/agentkit/profiles/<cli>/<name>`; `AGENTKIT_PROFILES_DIR` points there | read-write: the CLI writes its state there |
 | `$CODEX_HOME` or `~/.codex` (the Codex `@default` login), when codex is installed and `codex@default` shared | `~/.dck/host/codex`; `~/.codex` links to it | read-write: token refresh in `auth.json` |
-| `~/.config/dck/agents/<project>.env`, generated (0600) on the host | `~/.dck/host/agentkit/env`; `AGENTKIT_ENV` points there | read-only |
+| the directory `~/.config/dck/agents/<project>/` (0700) holding the env file `env`, generated (0600) on the host | `~/.dck/host/agentkit/hostenv/`; `AGENTKIT_ENV` points at `hostenv/env` | read-only |
+
+The directory is bound, not the file: every `dck up` rewrites the env file atomically,
+and a running container sees the new file at once (a single-file bind would keep the old
+one until the container is recreated).
 
 Each read-write mount and its reason is listed in
 [SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles) and by `dck doctor`.

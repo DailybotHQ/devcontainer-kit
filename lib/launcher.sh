@@ -919,6 +919,54 @@ cmd_ports() {
   [ "$DCK_SSH_PORT" != "0" ] || [ -n "$DCK_PORTS" ] || note "  <no published ports>"
 }
 
+# ssh_known_hosts — dck's own known_hosts (host keys keyed by the alias).
+ssh_known_hosts() { printf '%s/ssh/known_hosts' "$(dck_config_home)"; }
+
+# ssh_pin_host_key — pin the container's host key under its alias, read through
+# `docker exec` from the container itself (the persistent key on the state
+# volume), never from the network. A pin that differs is replaced: the state
+# volume was recreated, so the container has a new key. Returns 0 when it
+# wrote a pin, 1 when the pin was already right or the key is not readable
+# (an image older than v0.3.1, or sshd still starting).
+ssh_pin_host_key() {
+  [ "${DCK_SSH_PORT:-0}" != "0" ] || return 1
+  local kh pub ktype kval rest cur tmp fp
+  kh="$(ssh_known_hosts)"
+  pub="$(dc exec -T --user root "$DC_SERVICE" bash -c '. /usr/local/lib/dck/entrypoint.sh && type dck_host_key_pub >/dev/null 2>&1 && dck_host_key_pub' 2>/dev/null </dev/null | head -n 1)"
+  read -r ktype kval rest <<EOF
+$pub
+EOF
+  case "$ktype" in ssh-ed25519|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521|ssh-rsa) ;; *) return 1 ;; esac
+  case "$kval" in ''|*[!A-Za-z0-9+/=]*) return 1 ;; esac
+  cur="$(awk -v a="$DCK_ALIAS" '$1 == a { print $2 " " $3 }' "$kh" 2>/dev/null)"
+  [ "$cur" = "$ktype $kval" ] && return 1
+  (umask 077 && mkdir -p "$(dirname "$kh")")
+  tmp="$kh.tmp-$$"
+  { awk -v a="$DCK_ALIAS" '$1 != a' "$kh" 2>/dev/null; printf '%s %s %s\n' "$DCK_ALIAS" "$ktype" "$kval"; } > "$tmp" \
+    && chmod 600 "$tmp" && mv -f "$tmp" "$kh" || { rm -f "$tmp"; return 1; }
+  fp="$(printf '%s %s\n' "$ktype" "$kval" | ssh-keygen -lf - 2>/dev/null | cut -d' ' -f2)"
+  if [ -n "$cur" ]; then
+    note "ssh: the container's host key changed (its state volume was recreated); re-pinned $DCK_ALIAS ${fp:-} from the container itself in $(pretty_path "$kh")" >&2
+  else
+    note "ssh: pinned the host key of $DCK_ALIAS ${fp:-} from the container itself" >&2
+  fi
+  return 0
+}
+
+# ssh_key_mismatch_hint — the exact fix when ssh refuses a changed host key and
+# dck could not read the new one from the container.
+ssh_key_mismatch_hint() {
+  local err
+  err="$(ssh -o BatchMode=yes -o ConnectTimeout=3 "$@" true 2>&1 </dev/null >/dev/null)" && return 1
+  case "$err" in
+    *"IDENTIFICATION HAS CHANGED"*|*"Host key verification failed"*)
+      printf 'the pinned host key of %s no longer matches the container (was its state volume removed?). If you removed it on purpose, run: ssh-keygen -R %s -f %s' \
+        "$DCK_ALIAS" "$DCK_ALIAS" "$(ssh_known_hosts)"
+      return 0 ;;
+  esac
+  return 1
+}
+
 cmd_ssh() {
   [ "$DCK_HAS_TOML" = "1" ] || die "$DCK_EXIT_CONFIG" "no .devcontainer/dck.toml — run: dck init"
   [ "$DCK_SSH_PORT" != "0" ] || die "$DCK_EXIT_CONFIG" "ssh is off for this repository (ssh_port = 0 in dck.toml)"
@@ -928,15 +976,16 @@ cmd_ssh() {
   [ -f "$DCK_SSH_IDENTITY" ] || die "$DCK_EXIT_CONFIG" "the dck SSH key $(pretty_path "$DCK_SSH_IDENTITY") is missing — run: dck setup && dck up"
   ssh_bind_reachable_on_loopback
   local host="127.0.0.1" kh
-  kh="$(dck_config_home)/ssh/known_hosts"
+  kh="$(ssh_known_hosts)"
   (umask 077 && mkdir -p "$(dirname "$kh")")
-  # Agent forwarding, never key copies. accept-new: a fresh container is
-  # trusted on first use, but a host key that CHANGES is refused (the key is
-  # meant to survive rebuilds on the state volume). Entries are keyed by the
-  # repository's alias, not host:port, so a port reused by another repository
-  # never collides; dck's own known_hosts keeps ~/.ssh/known_hosts unchanged.
-  # After deleting the state volume on purpose:
-  #   ssh-keygen -R <alias> -f ~/.config/dck/ssh/known_hosts
+  # Agent forwarding, never key copies. The host key is pinned from the
+  # container itself (ssh_pin_host_key, through docker exec), so a state volume
+  # recreated on purpose is re-pinned instead of refused; accept-new remains
+  # for images without that helper, where a key that CHANGES is refused.
+  # Entries are keyed by the repository's alias, not host:port, so a port
+  # reused by another repository never collides; dck's own known_hosts keeps
+  # ~/.ssh/known_hosts unchanged.
+  ssh_pin_host_key || true
   local cfg=()
   [ -n "${DCK_SSH_CONFIG:-}" ] && cfg=(-F "$DCK_SSH_CONFIG")
   ssh ${cfg[@]+"${cfg[@]}"} -p "$DCK_SSH_PORT" \

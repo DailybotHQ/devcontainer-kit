@@ -151,8 +151,9 @@ second runtime compose overlay (`$TMPDIR/dck-<uid>/<project>-agents.yml`, 0600 i
   program and would shadow the image's pinned ak;
 - the host's Codex home (`$CODEX_HOME`, else `~/.codex`, the Codex `@default` login)
   when codex is installed and `codex@default` is shared;
-- an env file generated on the host, `~/.config/dck/agents/<project>.env` (0600 in a
-  0700 directory), with `AGENTKIT_ENV` pointing at it.
+- an env file generated on the host, `~/.config/dck/agents/<project>/env` (0600 in a
+  0700 directory; the directory is bound read-only, so a rewrite on the next `dck up`
+  reaches a running container), with `AGENTKIT_ENV` pointing at it.
 
 **Least privilege.** Every mount is read-only unless the CLI must write there; each
 read-write mount and its reason (the same table the code uses, shown by `dck doctor`):

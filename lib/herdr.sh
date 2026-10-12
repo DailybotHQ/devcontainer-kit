@@ -103,7 +103,13 @@ herdr_prepare() {
   herdr_ensure_include
   herdr_authorize_key
   note "herdr: waiting for sshd on $HERDR_HOST:$DCK_SSH_PORT (up to ${HERDR_WAIT}s)"
-  herdr_wait_for "sshd" herdr_ssh_ok || die "sshd in $DC_SERVICE does not answer on $HERDR_HOST:$DCK_SSH_PORT — run: dck logs, dck herdr status"
+  ssh_pin_host_key || true
+  herdr_wait_for "sshd" herdr_ssh_ok && return 0
+  # sshd may have generated its key only now: pin again and retry once.
+  if ssh_pin_host_key && herdr_ssh_ok; then return 0; fi
+  local hint
+  if hint="$(ssh_key_mismatch_hint "$DCK_ALIAS")"; then die "$hint"; fi
+  die "sshd in $DC_SERVICE does not answer on $HERDR_HOST:$DCK_SSH_PORT — run: dck logs, dck herdr status"
 }
 
 # herdr_agent_key — mesh hops out of a container authenticate with the dck key

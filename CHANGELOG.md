@@ -7,6 +7,20 @@ and the interface number).
 
 ## [Unreleased]
 
+### Fixed
+
+- Host accounts kept working across `dck up`: the env file of `[agents] host_profiles`
+  is now bound through its per-project directory (`~/.config/dck/agents/<project>/env`,
+  in the container `~/.dck/host/agentkit/hostenv/env`), not as a single file. Every
+  `dck up` rewrites it atomically, and a single-file bind kept showing the old inode,
+  so tokens went stale or unset in a running container until `--recreate`. The v0.3.0
+  file `~/.config/dck/agents/<project>.env` is removed on the next `dck up`.
+- A removed `state` volume no longer breaks `dck ssh` and `dck herdr add` (and `dck up`
+  with Herdr on) behind a bare "sshd does not answer": the host key is pinned from the
+  container itself through `docker exec` (new entrypoint helper `dck_host_key_pub`), and
+  a changed key is re-pinned with a note. When the key cannot be read (an older image),
+  a mismatch is named with the exact `ssh-keygen -R <alias> -f …` fix.
+
 ### Changed
 
 - Agent tooling: the vendored `deepworkplan` skill moves to v7.6.0 and the AI Diff
