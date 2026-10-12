@@ -893,3 +893,22 @@ test_devsh_surfaces_a_refusal() {
   assert_contains "$RUN_OUT" "dev.sh: dck refused to up (exit 5)" "the refusal is on stdout, visible with stderr discarded"
   assert_contains "$RUN_OUT" "DCK_TRUST=1 bash dev.sh up" "with the way through once reviewed"
 }
+
+# v0.3.5: a workspace under the renamed user's home (workspace = /home/node/app).
+test_workspace_under_the_renamed_home() {
+  local r d
+  r="$(new_repo wh)"
+  init_repo "$r" --flavour node-24 --user node --workspace /home/node/app --ssh-port 0 --yes
+  assert_rc 0 "dck init renders a workspace under /home/node"
+  d="$(cat "$r/docker/local/app/Dockerfile")"
+  local rename workdir install
+  rename="$(grep -n '^RUN usermod -l node -d /home/node -m dev' "$r/docker/local/app/Dockerfile" | cut -d: -f1)"
+  install="$(grep -n '^RUN install -d -o node -g node /home/node/app$' "$r/docker/local/app/Dockerfile" | cut -d: -f1)"
+  workdir="$(grep -n '^WORKDIR /home/node/app$' "$r/docker/local/app/Dockerfile" | cut -d: -f1)"
+  assert_eq "$([ -n "$rename" ] && [ -n "$workdir" ] && [ "$rename" -lt "$workdir" ] && echo before)" "before" "the user is renamed (and its home moved) before WORKDIR"
+  assert_eq "$([ -n "$install" ] && [ "$install" -lt "$workdir" ] && echo before)" "before" "the workspace is created as the user's, before WORKDIR"
+  local p; p="$(new_repo wp)"
+  init_repo "$p" --flavour debian --ssh-port 0 --yes
+  assert_not_contains "$(cat "$p/docker/local/app/Dockerfile")" "usermod" "no rename, no usermod"
+  assert_not_contains "$(cat "$p/docker/local/app/Dockerfile")" "install -d -o" "nor a workspace step"
+}

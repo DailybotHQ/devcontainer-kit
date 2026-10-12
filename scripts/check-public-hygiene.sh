@@ -27,7 +27,8 @@ cd "$ROOT" || exit 2
 ALLOW_FILE="${HYGIENE_ALLOW_FILE:-.public-hygiene-allow}"
 
 # Container users of this product (paths like /home/dev/... are product paths, not personal).
-ALLOWED_HOME_USERS="dev builder runner"
+# node: the official node image's user, which a repository may keep (user = "node").
+ALLOWED_HOME_USERS="dev builder runner node"
 
 # rule<TAB>extended regex. B = a non-word boundary usable by BSD and GNU grep.
 B='(^|[^A-Za-z0-9_-])'

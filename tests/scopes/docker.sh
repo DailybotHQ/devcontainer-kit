@@ -590,10 +590,29 @@ open(p, "w").write(s)' "$IT_REPO/docker/local/docker-compose.yaml"
   d down postgres app
 }
 
+# v0.3.5: a workspace under the renamed user's home (a product that keeps its
+# node image's user and /home/node/app): the image builds and the user lands there.
+test_workspace_under_the_renamed_home() {
+  require_docker "a workspace under /home/node builds and runs as node" || return 0
+  export DCK_BACKEND=compose DCK_NONINTERACTIVE=1 DCK_SSH_CONFIG=/dev/null
+  new_fixture dckwh
+  trap it_cleanup EXIT
+  echo '{"name":"fixture"}' > "$IT_REPO/package.json"
+  run_cmd "$DCK" init --repo "$IT_REPO" --flavour node-24 --user node --workspace /home/node/app --ssh-port 0 --no-herdr --no-agents --no-editor --yes
+  assert_rc 0 "dck init renders workspace = /home/node/app"
+  with_lock d up
+  assert_rc 0 "the image builds (usermod -m before WORKDIR) and the container starts"
+  d shell -c 'printf "%s|%s|%s|%s|%s\n" "$(whoami)" "$(pwd)" "$HOME" "$(test -f package.json && echo repo)" "$(stat -c %U "$HOME")"'
+  assert_eq "$RUN_OUT" "node|/home/node/app|/home/node|repo|node" "the user is node, in /home/node/app with the repository, and owns its home"
+  d shell -c 'test -L ~/.ssh && readlink ~/.ssh'
+  assert_contains "$RUN_OUT" "/home/node/.dck/volumes/state/ssh" "the state volume is mounted under the renamed home"
+  d down
+}
+
 test_zz_nothing_left_behind() {
   # Runs last in the scope: every container, volume and network a test created is gone.
   require_docker "the docker scope leaves no container, volume or network behind" || return 0
   local left
-  left="$( { docker ps -a --format '{{.Names}}'; docker volume ls --format '{{.Name}}'; docker network ls --format '{{.Name}}'; } | grep -E '^(dckit|dckpy|dckdc|dckfr|dckas|dckdv)[0-9a-f]{8}' || true)"
+  left="$( { docker ps -a --format '{{.Names}}'; docker volume ls --format '{{.Name}}'; docker network ls --format '{{.Name}}'; } | grep -E '^(dckit|dckpy|dckdc|dckfr|dckas|dckdv|dckwh)[0-9a-f]{8}' || true)"
   assert_eq "$left" "" "the docker scope leaves no container, volume or network behind"
 }
