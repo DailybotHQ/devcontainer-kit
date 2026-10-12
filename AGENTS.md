@@ -26,6 +26,7 @@ devcontainer-kit (alias dck); skill dck
 | `scripts/` | `check-public-hygiene.sh` (CI hygiene gate), `release-sums.sh` (release `SHA256SUMS`) |
 | `.github/` | CI, image and release workflows; issue/PR templates; CODEOWNERS; Dependabot |
 | `.agents/` | vendored `deepworkplan` skill and the `dwp-*` command delegators (`.claude`, `.cursor` → `.agents`) |
+| `.devcontainer/`, `docker/local/`, `dev.sh` | the repository's own dck container (dogfood, rendered by `bin/dck init --repo .`; re-render after changing `lib/`, `images/common/` or `src/template/`) |
 | `tests/` | `run.sh` (scopes), `lib.sh`, `scopes/`, `fakes/`, `fixtures/`, `py/minischema.py` |
 
 ## Validation
@@ -47,6 +48,7 @@ bash tests/run.sh <scope>             # one area (map: docs/TESTING_GUIDE.md)
 bash scripts/check-public-hygiene.sh  # no private names, personal paths or secrets
 shellcheck -S warning bin/* lib/*.sh scripts/*.sh tests/run.sh install.sh
 bin/dck --version && bin/dck help     # run the launcher from the checkout (no install needed)
+bin/dck up && bin/dck shell           # the repository's own dev container (dogfood)
 ```
 
 ## Rules

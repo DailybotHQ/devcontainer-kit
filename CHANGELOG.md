@@ -36,6 +36,10 @@ Interface stays **2**.
   the image's shared skills directory; the entrypoint links them into every agent's
   skills directory at each start, so a recreate no longer loses them.
 
+- The repository dogfoods its own container (`.devcontainer/`, `docker/local/`,
+  `dev.sh`): python-3.13 with every coding-agents-kit CLI, Herdr, herdr-peers and
+  shellcheck, registered as a Herdr machine; the unit gate runs inside.
+
 ### Fixed
 
 - A container built from scratch reaches the host and its peers at once: `dck rebuild`,

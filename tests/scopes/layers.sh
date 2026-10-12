@@ -137,14 +137,19 @@ test_agents_installer_follows_the_kit_contract() {
 
 test_agents_installer_verifies_node() {
   EXTRA_PATH=""
-  local p="" d
-  # A PATH without any node: keep the system dirs, drop the ones holding node.
+  local p="" d f i=0
+  # A PATH without any node: a directory holding node is mirrored without it
+  # (dropping it would drop bash too where Debian's nodejs sits in /usr/bin).
   for d in $(printf '%s' "$PATH" | tr ':' ' '); do
-    [ -x "$d/node" ] && continue
+    if [ -x "$d/node" ]; then
+      i=$((i + 1)); mkdir -p "$SANDBOX/nonode/$i"
+      for f in "$d"/*; do [ "$(basename "$f")" = node ] || ln -s "$f" "$SANDBOX/nonode/$i/" 2>/dev/null; done
+      d="$SANDBOX/nonode/$i"
+    fi
     p="$p$d:"
   done
   run_cmd env DCK_VERSIONS="$DCK_REPO/images/versions.env" DCK_USER="$(id -un)" DCK_LAYER_PREFIX="$SANDBOX/prefix" \
-    PATH="$LFIX/bin:${p%:}" bash "$DCK_REPO/lib/layers/agents.sh" claude
+    PATH="$LFIX/bin:${p%:}" "$BASH" "$DCK_REPO/lib/layers/agents.sh" claude
   assert_ne "$RUN_RC" "0" "a Node download that does not match its pin fails the build"
   assert_contains "$RUN_ERR" "checksum mismatch" "the reason is a checksum mismatch"
   assert_contains "$(fake_calls curl)" "https://nodejs.org/dist/v$(sed -n 's/^NODE_VERSION=//p' "$DCK_REPO/images/versions.env")/" "Node comes from nodejs.org at the pinned version"

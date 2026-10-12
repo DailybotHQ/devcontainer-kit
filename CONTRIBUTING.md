@@ -30,6 +30,13 @@ Run one area with `bash tests/run.sh <scope>`; the scopes and the source-to-test
 in [docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md). Tests run in a sandbox `HOME`: never
 point them at your real home.
 
+The repository dogfoods its own container: `bash dev.sh up` (or `bin/dck up` from the
+checkout) builds a python-3.13 dev container from `.devcontainer/` with every
+coding-agents-kit CLI, Herdr, herdr-peers and shellcheck, registered as the Herdr machine
+`dck-devcontainer-kit`; `bin/dck shell -c 'bash tests/run.sh'` runs the unit gate inside
+(the `docker` scope reports "unavailable" there). After changing `lib/`, `images/common/`
+or `src/template/`, re-render it with `bin/dck init --repo . --yes` and `bin/dck rebuild`.
+
 ## Commits and pull requests
 
 - [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`,

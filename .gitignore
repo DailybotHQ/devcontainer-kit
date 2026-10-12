@@ -10,3 +10,11 @@ __pycache__/
 .DS_Store
 Thumbs.db
 *.swp
+
+# >>> dck:gitignore >>>
+# devcontainer-kit: runtime env files hold secrets; backups from `dck init`.
+docker/local/**/.env
+docker/local/**/.env.*
+!docker/local/**/.env.example
+*.dck-bak-*
+# <<< dck:gitignore <<<
