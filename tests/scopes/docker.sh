@@ -668,8 +668,13 @@ SH
   git config --global user.email "fixture-host@example.invalid"
   run_cmd "$DCK" init --repo "$IT_REPO" --flavour debian --ssh-port "$port" --herdr --no-agents --no-editor --yes
   assert_rc 0 "dck init renders the fixture"
+  # v0.3.6: a pre-dck image already under the service's tag (the repository's
+  # old tooling) is rebuilt, not reused.
+  local base; base="$(sed -n 's/^ARG BASE_IMAGE=//p' "$IT_REPO/docker/local/app/Dockerfile" | head -n 1)"
+  printf 'FROM %s\nENTRYPOINT ["/entrypoint.sh"]\n' "$base" | with_lock docker build -q -t "${IT_PROJECT}-app" - >/dev/null
   with_lock d up
   assert_rc 0 "the main service is up"
+  assert_contains "$RUN_OUT" "image ${IT_PROJECT}-app: not built by dck" "a pre-dck image under the same tag is detected and rebuilt"
   # A login on the main service's state volume, to seed the satellite from.
   d shell -c 'mkdir -p ~/.config/gh && echo "github.com: {user: fixture}" > ~/.config/gh/hosts.yml'
   # In an overlay file, extends names the file of the service it extends.
@@ -706,6 +711,7 @@ SH
   assert_contains "$RUN_OUT" "backend=1" "the overlay applies and the dck key is authorized"
   assert_match "$RUN_OUT" 'self=[0-9a-f]{32}$' "HERDR_PEERS_SELF is pushed again"
   d down
+  assert_not_contains "$(herdr machine list --json)" "dck-${IT_PROJECT}\"" "dck down removes the primary's Herdr machine"
 }
 
 test_zz_nothing_left_behind() {

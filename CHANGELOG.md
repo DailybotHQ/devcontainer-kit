@@ -64,6 +64,18 @@ Interface stays **2**.
 - `--service` needs `--project`; `--compose-file` without `--service` is PRIMARY mode
   (it was a usage error).
 
+### Fixed
+
+- `dck up` reused an image dck did not build when one already had the service's tag (a
+  pre-dck image left by a repository's old tooling, with its own entrypoint), so no host
+  step ran until `dck rebuild`. `dck up` now inspects the image first: one without dck's
+  `DCK_IMAGE_VERSION` or `dck-entrypoint`, or built by another dck version than the
+  repository's render (`docker/local/<svc>/dck/VERSION`), is rebuilt and its container
+  replaced, with a note naming the image and why.
+- `dck down` left the primary's Herdr machine registered (only a satellite's `down`
+  removed it). It now removes the machine and SSH alias `dck up` registered whenever the
+  dev service goes down; the next `dck up` registers them again.
+
 ## [0.3.5] — 2026-10-12
 
 Interface stays **2**.

@@ -981,6 +981,14 @@ cmd_up() {
   else
     write_overlay
     [ -n "$seed" ] && seed_state "$seed"
+    # An image under this service's tag that dck did not build (a pre-dck image
+    # left by the repository's old tooling), or built from an older render: no
+    # host step would run in it. Rebuild it and replace the container.
+    if stale_service_image; then
+      note "image $STALE_IMAGE: $STALE_WHY — rebuilding $DC_SERVICE"
+      dc build "$DC_SERVICE"
+      recreate=1
+    fi
     note "starting ${SERVICES[*]} (project $PROJECT)"
     if [ "$recreate" -eq 1 ]; then
       dc up -d --force-recreate "${SERVICES[@]}"
@@ -993,6 +1001,41 @@ cmd_up() {
     fi
   fi
   after_start
+}
+
+# stale_service_image — true when the image compose would run for the dev
+# service exists but is not this render's: no DCK_IMAGE_VERSION or no
+# dck-entrypoint (built by something else under the same tag), or another
+# version than docker/local/<svc>/dck/VERSION. Sets STALE_IMAGE and STALE_WHY.
+# A missing image is not stale: compose builds it.
+stale_service_image() {
+  STALE_IMAGE=""; STALE_WHY=""
+  case " ${SERVICES[*]} " in *" $DC_SERVICE "*) ;; *) return 1 ;; esac
+  local img cfg ver want stamp
+  img="$(dc config --format json 2>/dev/null | python3 -I -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    print(d["services"][sys.argv[1]].get("image") or "")
+except Exception:
+    pass' "$DC_SERVICE" 2>/dev/null || true)"
+  [ -n "$img" ] || img="${PROJECT}-${DC_SERVICE}"
+  cfg="$(docker image inspect -f '{{range .Config.Env}}{{println .}}{{end}}entrypoint={{json .Config.Entrypoint}}' "$img" 2>/dev/null)" || return 1
+  STALE_IMAGE="$img"
+  ver="$(printf '%s\n' "$cfg" | sed -n 's/^DCK_IMAGE_VERSION=//p' | head -n 1)"
+  if [ -z "$ver" ]; then
+    STALE_WHY="not built by dck (no DCK_IMAGE_VERSION; a pre-dck image under the same tag)"; return 0
+  fi
+  case "$cfg" in *dck-entrypoint*) ;; *) STALE_WHY="its entrypoint is not dck's"; return 0 ;; esac
+  stamp="$COMPOSE_DIR/$DC_SERVICE/dck/VERSION"
+  if [ -f "$stamp" ] && [ ! -L "$stamp" ]; then
+    # "devcontainer-kit v0.3.6": the version the repository was rendered with.
+    want="$(head -n 1 "$stamp" | sed -n 's/^devcontainer-kit v\([0-9][0-9.]*[0-9A-Za-z.-]*\)[[:space:]]*$/\1/p')"
+    if [ -n "$want" ] && [ "$want" != "$ver" ]; then
+      STALE_WHY="built by dck $ver, the repository is rendered with $want"; return 0
+    fi
+  fi
+  return 1
 }
 
 # seed_state <volume> — a satellite starts logged in: copy the login state only
@@ -1065,6 +1108,12 @@ cmd_down() {
   if [ "${DCK_SATELLITE:-0}" = "1" ] && declare -F herdr_remove >/dev/null 2>&1; then
     # A satellite is a temporary instance: its Herdr machine and SSH alias go too.
     ( herdr_remove ) || warn "the satellite is down, but its Herdr machine was not removed (dck herdr status)"
+  elif [ "${DCK_HERDR_MACHINE:-0}" = "1" ] && declare -F herdr_remove >/dev/null 2>&1; then
+    # The primary: the machine `dck up` registered goes with its container (the
+    # next `dck up` registers it again), so Herdr never lists a dead machine.
+    case " ${SERVICES[*]} " in
+      *" $DC_SERVICE "*) ( herdr_remove ) || warn "the container is down, but its Herdr machine was not removed (dck herdr status)" ;;
+    esac
   fi
   note "named volumes were kept; list them with: docker volume ls --filter name=${PROJECT}_"
 }

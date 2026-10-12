@@ -884,3 +884,39 @@ test_primary_mode_with_extra_compose_files() {
   run_cmd bash -c 'cd "$1" && shift && "$@"' _ "$REPO" "$DCK" --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.primary-backend.yaml doctor
   assert_contains "$RUN_OUT" "compose files  docker/local/docker-compose.yaml, docker/local/docker-compose.primary-backend.yaml (--compose-file)" "the doctor shows the files in use"
 }
+
+# v0.3.6: dck down removes the primary's Herdr machine (dck up registers it again).
+test_primary_down_removes_its_machine() {
+  mk_repo
+  d herdr add
+  assert_contains "$(machines)" "dck-proj" "registered"
+  : > "$DCK_FAKE_LOG"
+  d down
+  assert_rc 0 "dck down"
+  assert_contains "$(fake_calls herdr)" "machine remove" "the primary's machine is removed"
+  assert_contains "$RUN_OUT" "herdr: removed machine dck-proj" "and reported"
+  assert_not_contains "$(cat "$HOME/.ssh/config.d/dck" 2>/dev/null)" "Host dck-proj" "with its SSH alias"
+  : > "$DCK_FAKE_LOG"
+  d down other
+  assert_not_contains "$(fake_calls herdr)" "machine remove" "down of another service keeps the machine"
+}
+
+# v0.3.6: dck up rebuilds an image under the service's tag that dck did not build.
+test_up_rebuilds_a_stale_image() {
+  mk_repo
+  printf 'PATH=/usr/bin\nentrypoint=["/entrypoint.sh"]\n' > "$DCK_FAKE_STATE/image_inspect_out"
+  : > "$DCK_FAKE_LOG"
+  d up
+  assert_rc 0 "dck up with a pre-dck image"
+  assert_contains "$RUN_OUT" "image proj-app: not built by dck (no DCK_IMAGE_VERSION; a pre-dck image under the same tag) — rebuilding app" "the stale image is named"
+  assert_contains "$(fake_calls docker)" "build app" "the service is rebuilt"
+  assert_contains "$(fake_calls docker)" "up -d --force-recreate app" "and its container replaced"
+  printf 'DCK_IMAGE_VERSION=0.0.1\nentrypoint=["/usr/local/bin/dck-entrypoint"]\n' > "$DCK_FAKE_STATE/image_inspect_out"
+  d up
+  assert_contains "$RUN_OUT" "built by dck 0.0.1, the repository is rendered with $(cat "$DCK_REPO/VERSION")" "an image from an older render is rebuilt"
+  printf 'DCK_IMAGE_VERSION=%s\nentrypoint=["/usr/local/bin/dck-entrypoint"]\n' "$(cat "$DCK_REPO/VERSION")" > "$DCK_FAKE_STATE/image_inspect_out"
+  : > "$DCK_FAKE_LOG"
+  d up
+  assert_not_contains "$(fake_calls docker)" " build " "the current image is used as it is"
+  assert_contains "$(fake_calls docker)" "up -d --no-recreate app" "without a recreate"
+}
