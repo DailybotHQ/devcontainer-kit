@@ -41,11 +41,11 @@ Requires bash 3.2+ and python3 ≥ 3.11 on a Linux or macOS host; Docker (Deskto
 colima or Engine) with Compose v2 for the container verbs.
 
 ```bash
-git clone --branch v0.3.5 https://github.com/DailybotHQ/devcontainer-kit
-( cd devcontainer-kit && curl -fsSLO https://github.com/DailybotHQ/devcontainer-kit/releases/download/v0.3.5/SHA256SUMS \
+git clone --branch v0.3.6 https://github.com/DailybotHQ/devcontainer-kit
+( cd devcontainer-kit && curl -fsSLO https://github.com/DailybotHQ/devcontainer-kit/releases/download/v0.3.6/SHA256SUMS \
     && shasum -a 256 -c SHA256SUMS )   # optional: verify the checkout against the release
 ./devcontainer-kit/install.sh          # --no-rc for scripted installs, --uninstall to remove
-dck --version                          # devcontainer-kit 0.3.5
+dck --version                          # devcontainer-kit 0.3.6
 ```
 
 `install.sh` copies the kit to `~/.local/share/dck` and adds one guarded PATH block to
@@ -75,10 +75,11 @@ ssh_agent = true           # git over SSH through the host's agent; keys never e
 ssh_port = 22040           # loopback-only; 0 = no sshd
 ports = { web = 4321 }     # published on 127.0.0.1
 [layers]
-agents = true              # coding-agents-kit (ak) + the CLIs in [agents].clis
+agents = true              # coding-agents-kit (ak) + the chosen CLIs
 editor = true              # nvim + DeepWorkPlan Vim
 [agents]
-clis = ["claude", "codex"]
+clis = ["claude", "codex"] # wired and installed for everyone; advanced: supported = "all"
+                           # lets each developer choose (docs/config.md)
 [herdr]
 machine = true             # register as a Herdr machine on `dev.sh up`
 layout = "standard"        # App · Editor · Development · Agents ("none" to skip)
@@ -105,8 +106,8 @@ each item is one check:
 5. **Git over SSH, no key inside** — `bash dev.sh shell -c 'ssh-add -l && git config user.name'`
    shows your agent's keys and your identity; `ssh -T git@github.com` greets you, and your
    `~/.ssh/config` aliases (`git@github.com-work:…`) work the same inside.
-6. **Every coding agent** — `bash dev.sh shell -c 'ak doctor'` lists the CLIs from
-   `[agents].clis`, and `claudex` / `codex-glm` are shell functions.
+6. **Every coding agent** — `bash dev.sh shell -c 'ak doctor'` lists the CLIs your image
+   installs (`[agents].clis`, or your own list in the advanced mode), and `claudex` / `codex-glm` are shell functions.
 7. **Autonomy by default, opt-out documented** — `ak doctor --json` → `"permissions":
    "auto"`; `AGENTKIT_PERMISSIONS=ask` in `docker/local/<service>/.env` makes agents ask.
 8. **Persistence** — after `bash dev.sh rebuild`, the CLIs' logins, `gh auth status`, the

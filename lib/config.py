@@ -89,6 +89,12 @@ REPO_RULES = {
     "layers.dailybot": ("bool", False, None),
     "layers.editor": ("bool", True, None),
     "agents.clis": ("kind_list", [], ("enum", AGENT_KINDS)),
+    # The CLIs the image is WIRED for (v0.3.6): their home volumes, host-profile
+    # sharing and default_profile, installed or not. Unset (the default): clis —
+    # wire and install what onboarding chose. "all" or a list (advanced): each
+    # developer chooses what to install within it (DCK_AGENT_CLIS,
+    # INSTALL_<CLI>_CLI, the host profile), defaulting to clis.
+    "agents.supported": ("kinds_or_all", None, ("enum", AGENT_KINDS)),
     "herdr.machine": ("bool", False, None),
     "ssh_agent": ("bool", True, None),
     "ssh_host_config": ("bool", True, None),
@@ -141,11 +147,16 @@ PROFILE_RULES = {
     # The account a bare `ak <cli>` uses inside: { claude = "@work3" }, exported as
     # AGENTKIT_DEFAULT_PROFILE_<CLI> (coding-agents-kit v0.5.2+). Host profile only.
     "agents.default_profile": ("default_profile_map", {}, ("pattern", RE_DEFAULT_PROFILE)),
+    # The coding-agent CLIs YOU want in every repository's image (v0.3.6): clis
+    # replaces the repository's [agents] clis, clis_extra adds to it (or to your
+    # clis). Exported as DCK_AGENT_CLIS by dck up / rebuild; the environment wins.
+    "agents.clis": ("kind_list", None, ("enum", AGENT_KINDS)),
+    "agents.clis_extra": ("kind_list", [], ("enum", AGENT_KINDS)),
 }
 TABLES = {"repo": ("layers", "agents", "herdr", "ssh", "compose", "build"), "profile": ("labels", "ssh", "host", "mesh", "agents")}
 # Keys only the host profile may set; in a repository's dck.toml they are ignored.
 HOST_ONLY_REPO_KEYS = ("agents.host_profiles", "agents.host_env_keys", "agents.host_profile_names",
-                       "agents.default_profile",
+                       "agents.default_profile", "agents.clis_extra",
                        "ssh.copy_keys")
 
 # Where each listener kind listens and which public host key pins it.
@@ -297,6 +308,11 @@ def _check(key, value, rule, problems):
                 bad("invalid profile %r (\"<cli>@<name>\", cli one of claude codex pi cline grok opencode)" % item)
         if len(value) > 64:
             bad("at most 64 profiles")
+    elif kind == "kinds_or_all":
+        if value != "all" and not isinstance(value, list):
+            return bad("expected \"all\" or an array of strings, got %s" % _type_name(value))
+        if isinstance(value, list):
+            _check(key, value, ("kind_list", rule[1], rule[2]), problems)
     elif kind == "kind_list":
         if not isinstance(value, list):
             return bad("expected an array of strings, got %s" % _type_name(value))
@@ -348,6 +364,11 @@ def validate(data, kind="repo", path="dck.toml"):
         if effective["agents.node_first"] and not effective["layers.agents"]:
             warnings.append("%s: agents.node_first is set but layers.agents is false; there is no agents' "
                             "Node to put first" % path)
+        unsupported = [c for c in effective["agents.clis"]
+                       if c not in supported_kinds(effective["agents.supported"], effective["agents.clis"])]
+        if unsupported:
+            problems.append("agents.clis: %s not in agents.supported (%s)" % (
+                ", ".join(unsupported), ", ".join(supported_kinds(effective["agents.supported"])) or "none"))
         if effective["agents.clis"] and not effective["layers.agents"]:
             warnings.append("%s: agents.clis is set but layers.agents is false; no CLI will be installed" % path)
         ssh = effective["ssh_port"]
@@ -555,6 +576,81 @@ def read_dotenv(path):
     return out
 
 
+def parse_clis(text, where):
+    """A DCK_AGENT_CLIS value ("grok opencode" or "grok,opencode") as a list of
+    known kinds; ConfigError naming the kinds when one is unknown."""
+    names = [n for n in str(text).replace(",", " ").split() if n]
+    bad = [n for n in names if n not in AGENT_KINDS]
+    if bad:
+        raise ConfigError(where, ["unknown coding-agent CLI%s %s (one of: %s)" % (
+            "s" if len(bad) > 1 else "", ", ".join(repr(b) for b in bad), ", ".join(AGENT_KINDS))])
+    out = []
+    for n in names:
+        if n not in out:
+            out.append(n)
+    return out
+
+
+def supported_kinds(value, clis=()):
+    """[agents] supported as a list of kinds, in ak's order: "all" is every kind ak
+    knows; unset (None) is the default mode, the repository's clis."""
+    if value is None:
+        value = list(clis)
+    return list(AGENT_KINDS) if value == "all" else [k for k in AGENT_KINDS if k in value]
+
+
+def install_var(kind):
+    return "INSTALL_%s_CLI" % kind.upper()
+
+
+def effective_clis(repo_clis, supported, prof, env=None, dotenv=None, dotenv_path="docker/local/.env"):
+    """The CLIs this developer's image installs, and where the list comes from.
+    The list: DCK_AGENT_CLIS in the environment, then in the compose directory's
+    .env, then the host profile ([agents] clis replaces, clis_extra adds), then
+    dck.toml's clis. Added to it: every kind whose INSTALL_<CLI>_CLI is exactly
+    "true" (the environment, then .env). An empty DCK_AGENT_CLIS counts as unset
+    (compose's ${VAR:-default} does too). Every kind must be supported."""
+    env = os.environ if env is None else env
+    dotenv = dotenv or {}
+    if (env.get("DCK_AGENT_CLIS") or "").strip():
+        out, sources = parse_clis(env["DCK_AGENT_CLIS"], "DCK_AGENT_CLIS (environment)"), ["env"]
+    elif (dotenv.get("DCK_AGENT_CLIS") or "").strip():
+        out, sources = parse_clis(dotenv["DCK_AGENT_CLIS"], "DCK_AGENT_CLIS (%s)" % dotenv_path), ["env (%s)" % dotenv_path]
+    else:
+        out, sources = list(repo_clis), ["repo"]
+        if prof.get("agents.clis") is not None:
+            out, sources = list(prof["agents.clis"]), ["profile"]
+        extra = [c for c in prof.get("agents.clis_extra") or [] if c not in out]
+        if extra:
+            out += extra
+            if sources != ["profile"]:
+                sources.append("profile")
+    from_env, from_dotenv = [], []
+    for kind in AGENT_KINDS:
+        name = install_var(kind)
+        value = env[name] if name in env else dotenv.get(name)
+        if value == "true":
+            (from_env if name in env else from_dotenv).append(kind)
+            if kind not in out:
+                out.append(kind)
+    if from_env:
+        sources.append("INSTALL_* (env)")
+    if from_dotenv:
+        sources.append("INSTALL_* (%s)" % dotenv_path)
+    allowed = supported_kinds(supported, repo_clis)
+    bad = [c for c in out if c not in allowed]
+    if bad:
+        if supported is None:
+            hint = ("this repository wires only the CLIs chosen at onboarding (dck.toml [agents] clis); to let each "
+                    "developer choose, set [agents] supported = \"all\" in dck.toml (advanced mode, docs/config.md)")
+        else:
+            hint = "add %s to dck.toml's [agents] supported, or do not request %s" % (
+                "it" if len(bad) == 1 else "them", "it" if len(bad) == 1 else "them")
+        raise ConfigError(" + ".join(sources), ["%s not in [agents] supported (%s): %s" % (
+            ", ".join(bad), ", ".join(allowed) or "none", hint)])
+    return out, " + ".join(sources)
+
+
 def expand_home(path, env):
     if path == "~" or path.startswith("~/"):
         return env.get("HOME", "") + path[1:]
@@ -602,6 +698,13 @@ def effective(repo, default_tag, profile_name=None, env=None):
     dotenv = read_dotenv(os.path.join(repo, "docker", "local", ".env"))
     merged["ssh_port_spec"] = cfg["ssh_port"]
     merged["ssh_port"] = resolve_port(cfg["ssh_port"], dotenv, env)
+    # The CLIs this developer's image gets (v0.3.6); agents.clis stays the repository's.
+    if cfg["layers.agents"]:
+        merged["clis_effective"], merged["clis_source"] = effective_clis(
+            cfg["agents.clis"], cfg["agents.supported"], prof, env, dotenv)
+        merged["clis_supported"] = supported_kinds(cfg["agents.supported"], cfg["agents.clis"])
+    else:
+        merged["clis_effective"], merged["clis_source"], merged["clis_supported"] = [], "repo", []
     merged["herdr.label"] = expand_label(label_fmt, {
         "repo": repo_name, "service": cfg["service"], "user": cfg["user"],
         "project": prof["compose_project_prefix"] + rslug})

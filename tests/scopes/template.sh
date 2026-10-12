@@ -739,13 +739,13 @@ test_agent_presets() {
   r="$(new_repo pr)"
   init_repo "$r" --flavour node-24 --agents --clis "claude" --ssh-port 0 --yes
   assert_contains "$(cat "$r/.devcontainer/dck.toml")" "presets = []" "a new render turns the ak presets off"
-  assert_contains "$(cat "$r/docker/local/app/Dockerfile")" 'RUN DCK_USER=dev DCK_AGENT_PRESETS="" dck-layer agents ${DCK_AGENT_CLIS}' "and the layer is told so"
+  assert_contains "$(cat "$r/docker/local/app/Dockerfile")" 'RUN DCK_USER=dev DCK_AGENT_SUPPORTED="claude" DCK_AGENT_PRESETS="" dck-layer agents ${DCK_AGENT_CLIS}' "and the layer is told so (with the wired CLIs)"
   set_toml "$r" 's = s.replace("presets = []", "presets = [\"classic\"]")'
   init_repo "$r" --yes
   assert_contains "$(cat "$r/docker/local/app/Dockerfile")" 'DCK_AGENT_PRESETS="classic"' "a chosen preset is passed"
   set_toml "$r" 'import re; s = re.sub(r"\npresets = .*", "", s)'
   init_repo "$r" --yes
-  assert_contains "$(cat "$r/docker/local/app/Dockerfile")" 'RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}' "no presets key renders the v0.3.2 line (both on)"
+  assert_contains "$(cat "$r/docker/local/app/Dockerfile")" 'RUN DCK_USER=dev DCK_AGENT_SUPPORTED="claude" dck-layer agents ${DCK_AGENT_CLIS}' "no presets key passes no DCK_AGENT_PRESETS (both on)"
   set_toml "$r" 's = s.replace("[agents]\n", "[agents]\npresets = [\"bogus\"]\n", 1)'
   init_repo "$r" --yes
   assert_rc 3 "an unknown preset is refused"
@@ -911,4 +911,31 @@ test_workspace_under_the_renamed_home() {
   init_repo "$p" --flavour debian --ssh-port 0 --yes
   assert_not_contains "$(cat "$p/docker/local/app/Dockerfile")" "usermod" "no rename, no usermod"
   assert_not_contains "$(cat "$p/docker/local/app/Dockerfile")" "install -d -o" "nor a workspace step"
+}
+
+# v0.3.6: dck init offers the advanced CLI mode (interactive, agents on, new render).
+test_init_offers_the_advanced_cli_mode() {
+  local r answer
+  for answer in yes no; do
+    r="$(new_repo "offer-$answer")"
+    run_cmd python3 -I - "$DCK_REPO" "$r" "$answer" <<'PY'
+import os, sys
+sys.path.insert(0, os.path.join(sys.argv[1], "lib"))
+import render
+asked = []
+render.ask = lambda q: asked.append(q) or sys.argv[3] == "yes"
+opts = {"repo": sys.argv[2], "flavour": "node-24", "agents": True, "clis": ["claude", "codex"], "ssh_port": 0,
+        "herdr_machine": False, "yes": True, "interactive": True}
+rc = render.init(opts, "v" + open(os.path.join(sys.argv[1], "VERSION")).read().strip())
+print("rc=%d asked=%d" % (rc, len(asked)))
+print(asked[0] if asked else "")
+PY
+    assert_contains "$RUN_OUT" "rc=0 asked=1" "init asks once ($answer)"
+    assert_contains "$RUN_OUT" "wires and installs claude codex for everyone (the default)" "the question names the default ($answer)"
+    if [ "$answer" = yes ]; then
+      assert_contains "$(cat "$r/.devcontainer/dck.toml")" 'supported = "all"' "yes: the advanced mode is written"
+    else
+      assert_no_match "$(cat "$r/.devcontainer/dck.toml")" '^supported' "no: the default mode (no supported key)"
+    fi
+  done
 }

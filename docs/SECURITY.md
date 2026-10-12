@@ -155,8 +155,10 @@ second runtime compose overlay (`$TMPDIR/dck-<uid>/<project>-agents.yml`, 0600 i
 0700 directory you own — never written into the repository) that binds, one by one:
 
 - each host ak profile `$AGENTKIT_PROFILES_DIR/<cli>/<name>` (default root
-  `~/.local/share/agentkit/profiles`) of the CLIs in the repository's `[agents] clis`
-  with file-portable profiles — claude, codex, pi, cline, grok, opencode — and points
+  `~/.local/share/agentkit/profiles`) of the CLIs the repository wires (`[agents] clis`, or
+  `[agents] supported` in the advanced mode, installed or not; only profiles that exist on
+  the host are bound) with file-portable
+  profiles — claude, codex, pi, cline, grok, opencode — and points
   `AGENTKIT_PROFILES_DIR` at them. `[agents] host_profile_names` (for example
   `["claude@work1", "codex@default"]`) limits the share to the profiles listed; empty
   means every profile of those CLIs. A whole CLI directory is never bound. cursor (and

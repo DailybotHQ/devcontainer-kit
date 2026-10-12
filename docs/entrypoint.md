@@ -109,7 +109,8 @@ entrypoint.
 ### `dck_agent_trust`
 
 Unattended agent launches ([layers.md](layers.md#unattended-agent-launches)): with
-autonomy on, the workspace is marked trusted for the CLIs in `DCK_AGENTS` — Claude's
+autonomy on, the workspace is marked trusted for the CLIs in `DCK_AGENTS` (the wired
+CLIs: `[agents] clis`, or every supported CLI in the advanced mode, installed or not) — Claude's
 `projects[<workspace>].hasTrustDialogAccepted` and Codex's
 `[projects."<workspace>"] trust_level = "trusted"` in the container's own homes and in
 the shared host profiles; Claude's bypass-permissions acknowledgement and onboarding

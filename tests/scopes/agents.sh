@@ -20,7 +20,7 @@ PROFILES="$HOME/.local/share/agentkit/profiles"
 mk_repo() {
   mkdir -p "$REPO"
   git -C "$REPO" init -q
-  "$DCK" init --repo "$REPO" --flavour node-24 --agents --clis "${1:-claude codex cursor pi}" --no-herdr --yes >/dev/null 2>&1 \
+  "$DCK" init --repo "$REPO" --flavour node-24 --agents --clis "${1:-claude codex cursor pi}" "${@:2}" --no-herdr --yes >/dev/null 2>&1 \
     || { fail "fixture: dck init failed"; return 1; }
   : > "$DCK_FAKE_LOG"
 }
@@ -584,4 +584,99 @@ test_login_profile_points_plain_clis_at_the_default_profile() {
   assert_eq "$RUN_OUT" "unset" "a malformed name is refused"
   run_cmd env HOME="$SANDBOX/lh" sh -c '. "$1"; printf "%s" "${CLAUDE_CONFIG_DIR:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
   assert_eq "$RUN_OUT" "unset" "without default_profile, nothing changes"
+}
+
+# v0.3.6: each developer's coding-agent CLIs through dck up.
+clis_overlay() { printf '%s/tmp/dck-%s/proj-clis.yml' "$SANDBOX" "$(id -u)"; }
+
+# The advanced mode: [agents] supported = "all", each developer chooses.
+test_developer_clis_reach_the_build() {
+  mk_repo "claude codex" --supported all || return 0
+  up
+  assert_rc 0 "up with dck.toml's list"
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_clis")" "claude codex" "compose sees dck.toml's list as DCK_AGENT_CLIS"
+  assert_not_file "$(clis_overlay)" "no CLI overlay when the list is the repository's"
+  local c; c="$(cat "$REPO/docker/local/docker-compose.yaml")"
+  assert_contains "$c" "- grok:/home/dev/.dck/volumes/grok" "every supported CLI is wired (grok, not installed)"
+  assert_contains "$c" 'DCK_AGENTS: "claude codex cursor opencode pi cline grok"' "the entrypoint persists every supported CLI's home"
+  profile 'clis_extra = ["grok"]'
+  : > "$DCK_FAKE_LOG"
+  up
+  assert_rc 0 "up with the host profile's clis_extra"
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_clis")" "claude codex grok" "dck up exports the effective list as DCK_AGENT_CLIS"
+  assert_contains "$(fake_calls docker)" "proj-clis.yml" "compose is given the CLI overlay"
+  local o; o="$(cat "$(clis_overlay)")"
+  assert_contains "$o" 'DCK_AGENT_CLIS: "claude codex grok"' "the overlay carries the build arg (a compose rendered before v0.3.6 too)"
+  assert_not_contains "$o" "volumes:" "no volume in the overlay: the rendered compose wires every supported CLI"
+  assert_contains "$RUN_OUT" "agent CLIs: installing claude codex grok (from repo + profile" "up says which list applies and why"
+  printf 'claude codex\n' > "$DCK_FAKE_STATE/image_agent_clis"
+  up
+  assert_contains "$RUN_ERR" "the image was built with 'claude codex', your list is 'claude codex grok' (repo + profile) — rebuild needed: dck rebuild" "a stale image is reported after the start"
+  printf 'grok codex claude\n' > "$DCK_FAKE_STATE/image_agent_clis"
+  up
+  assert_not_contains "$RUN_ERR" "rebuild needed" "an image built with the same CLIs (any order) is current"
+  run_cmd bash -c 'cd "$1" && shift && env "$@"' _ "$REPO" TMPDIR="$SANDBOX/tmp" DCK_AGENT_CLIS="opencode" "$DCK" up
+  assert_rc 0 "DCK_AGENT_CLIS in the shell"
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_clis")" "opencode" "the environment wins over the host profile"
+  printf 'INSTALL_CURSOR_CLI=true\nINSTALL_PI_CLI=yes\n' >> "$REPO/docker/local/.env"
+  up
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_clis")" "claude codex grok cursor" "INSTALL_<CLI>_CLI=true in docker/local/.env adds a CLI (only an exact true)"
+  assert_contains "$RUN_OUT" "(from repo + profile + INSTALL_* (docker/local/.env)" "and the source says so"
+  run_cmd bash -c 'cd "$1" && shift && env "$@"' _ "$REPO" TMPDIR="$SANDBOX/tmp" DCK_AGENT_CLIS="opencode gemini" "$DCK" up
+  assert_rc 3 "an unknown CLI stops dck up"
+  assert_contains "$RUN_ERR" "unknown coding-agent CLI 'gemini'" "with the CLI named"
+  rm -f "$HOME/.config/dck/profile.toml"
+  python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read(); open(p, "w").write(s.replace("INSTALL_CURSOR_CLI=true", ""))' "$REPO/docker/local/.env"
+  up
+  assert_not_file "$(clis_overlay)" "back to dck.toml's list: the overlay is removed"
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_clis")" "claude codex" "and compose sees dck.toml's list again"
+}
+
+test_requested_clis_must_be_supported() {
+  mk_repo "claude" --supported "claude codex" || return 0
+  assert_not_contains "$(cat "$REPO/docker/local/docker-compose.yaml")" "grok:" "an unsupported CLI is not wired"
+  profile 'clis_extra = ["codex"]'
+  up
+  assert_rc 0 "a supported extra CLI"
+  profile 'clis_extra = ["grok"]'
+  up
+  assert_rc 3 "an unsupported CLI is refused"
+  assert_contains "$RUN_ERR" "grok not in [agents] supported (claude, codex)" "with the supported list"
+  profile ''
+  run_cmd bash -c 'cd "$1" && shift && env "$@"' _ "$REPO" TMPDIR="$SANDBOX/tmp" INSTALL_CURSOR_CLI=true "$DCK" up
+  assert_rc 3 "INSTALL_<CLI>_CLI for an unsupported CLI too"
+  assert_contains "$RUN_ERR" "cursor not in [agents] supported" "named"
+}
+
+test_host_profiles_follow_the_effective_clis() {
+  mk_repo "claude" --supported all || return 0
+  mk_host
+  profile 'host_profiles = true
+clis_extra = ["codex"]'
+  up
+  assert_rc 0 "up with host profiles and an extra CLI"
+  assert_match "$(binds "$(overlay)")" '^/home/dev/\.dck/host/agentkit/profiles/codex/work1 rw$' "the extra CLI's ak profiles are shared"
+  assert_match "$(binds "$(overlay)")" '^/home/dev/\.dck/host/codex rw$' "and the host's Codex home"
+  profile 'host_profiles = true'
+  up
+  assert_match "$(binds "$(overlay)")" '^/home/dev/\.dck/host/agentkit/profiles/codex/work1 rw$' "a supported CLI nobody installs is shared too (installed later, it just works)"
+  assert_no_match "$(binds "$(overlay)")" 'profiles/(pi|grok|opencode|cline)/' "no mount for a profile that does not exist on the host"
+}
+
+# The default mode: only the CLIs chosen at onboarding are wired and installed.
+test_default_mode_wires_only_the_chosen_clis() {
+  mk_repo "claude codex" || return 0
+  local c; c="$(cat "$REPO/docker/local/docker-compose.yaml")"
+  assert_contains "$c" 'DCK_AGENTS: "claude codex"' "the chosen CLIs are wired"
+  assert_not_contains "$c" "grok:" "no other CLI's volume"
+  mk_host
+  profile 'host_profiles = true'
+  up
+  assert_rc 0 "up in the default mode"
+  assert_no_match "$(binds "$(overlay)")" 'profiles/cursor/' "host profiles of a CLI not chosen are not shared"
+  assert_not_file "$(clis_overlay)" "no CLI overlay"
+  profile 'clis_extra = ["grok"]'
+  up
+  assert_rc 3 "a developer's CLI outside the chosen ones is refused"
+  assert_contains "$RUN_ERR" 'set [agents] supported = "all" in dck.toml (advanced mode' "with the way to the advanced mode"
 }

@@ -807,9 +807,9 @@ test_satellite_arguments() {
   mk_repo
   d --service appsatellite up
   assert_rc 2 "--service without --project is a usage error"
-  assert_contains "$RUN_ERR" "need --project (a satellite runs in its own compose project)" "and says why"
-  d --project sat --compose-file docker/local/docker-compose.yaml up
-  assert_rc 2 "--compose-file without --service is a usage error"
+  assert_contains "$RUN_ERR" "needs --project (a satellite runs in its own compose project)" "and says why"
+  d --compose-file docker/local/docker-compose.yaml init
+  assert_rc 2 "PRIMARY mode (--compose-file without --service) refuses a verb it does not cover"
   d --project sat --service appsatellite doctor
   assert_rc 2 "a verb that does not take --service is refused"
   d --project sat --service 'bad name' up
@@ -860,4 +860,27 @@ test_satellite_state_seed() {
   assert_contains "$RUN_OUT" "already has data; not seeded" "a state volume with data is never overwritten"
   d --project satproj --service appsatellite up --seed-state-from 'bad;name'
   assert_rc 2 "an invalid volume name is refused"
+}
+
+# v0.3.6: PRIMARY mode — the main service through extra compose files (a host
+# kit's preview-proxy overlay), with the same alias, label and machine and every
+# host step.
+test_primary_mode_with_extra_compose_files() {
+  mk_repo
+  d herdr add
+  printf 'services:\n  app:\n    ports: !override\n      - "127.0.0.1:22040:22"\n' > "$REPO/docker/local/docker-compose.primary-backend.yaml"
+  : > "$DCK_FAKE_LOG"
+  DCK_HOST_OS=Darwin d --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.primary-backend.yaml up --recreate app
+  assert_rc 0 "PRIMARY mode: up --recreate with an extra overlay"
+  local calls; calls="$(fake_calls docker)"
+  assert_contains "$calls" "compose -p proj -f $REPO/docker/local/docker-compose.yaml -f $REPO/docker/local/docker-compose.primary-backend.yaml" "the main project, through the given files in order"
+  assert_contains "$calls" "--force-recreate app" "the primary service is recreated"
+  assert_not_contains "$calls" "port app 22" "the primary's own port, not a satellite's lookup"
+  assert_contains "$calls" "dck_herdr_self" "the reply route (HERDR_PEERS_SELF) is pushed"
+  assert_contains "$(cat "$DCK_FAKE_STATE/last_authorized_keys")" "ssh-ed25519" "the dck key is authorized (Herdr can attach)"
+  assert_not_contains "$(fake_calls herdr)" "machine add" "the same Herdr machine as a plain up (no second one)"
+  assert_contains "$(cat "$HOME/.ssh/config.d/dck")" "Host dck-proj" "the same alias"
+  assert_not_contains "$(cat "$HOME/.ssh/config.d/dck")" "dck-proj-app" "no satellite alias"
+  run_cmd bash -c 'cd "$1" && shift && "$@"' _ "$REPO" "$DCK" --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.primary-backend.yaml doctor
+  assert_contains "$RUN_OUT" "compose files  docker/local/docker-compose.yaml, docker/local/docker-compose.primary-backend.yaml (--compose-file)" "the doctor shows the files in use"
 }

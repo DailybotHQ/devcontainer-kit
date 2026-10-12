@@ -3,7 +3,7 @@ name: dck
 description: Operate a repository's development container with devcontainer-kit (dck) — render the Dev Container template (dck init), start/enter/rebuild it from a terminal (dck setup|up|shell|exec|rebuild|down), SSH in with agent forwarding, register it as a Herdr machine (dck herdr add|status|repair), and diagnose it (dck doctor --json). Use only when the user mentions dck or devcontainer-kit, a dev container / devcontainer / .devcontainer/ or docker/local/ setup they want created or operated, or a container they want as a Herdr machine. Do not use for building or deploying production images, for Kubernetes, or merely because a repository contains a Dockerfile.
 license: MIT
 metadata:
-  version: 0.3.5
+  version: 0.3.6
   interface: 2
   homepage: https://github.com/DailybotHQ/devcontainer-kit
 ---
@@ -27,7 +27,7 @@ tell the user and show the pinned install line — do not install it without
 being asked:
 
 ```bash
-git clone --branch v0.3.5 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.3.6 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh
 ```
 
@@ -47,7 +47,9 @@ git clone --branch v0.3.5 https://github.com/DailybotHQ/devcontainer-kit
 | agents inside to reach agents on the host | ask the user first (it lets any dck container open a shell on the host): `dck host listener enable` (macOS), or a `[host]` table with `listener = "external"` for a listener they already run; then `dck herdr mesh` |
 | agents inside to reach other containers | `dck herdr mesh` (also run by `dck up`): the other dck containers and the host's other loopback Herdr machines (`[mesh] external`); containers another kit manages log in with keys listed in `[ssh] authorized_extra` |
 | to list or ask agents from the host | `dck agents`, `dck ask <machine>:<pane> "<prompt>"` (herdr-peers; `dck host peers install` if missing) |
-| coding-agent CLIs inside | set `[layers] agents = true` and `[agents] clis = [...]` in `dck.toml`, `dck init` (shows the diff), `dck rebuild` |
+| coding-agent CLIs inside | at onboarding, ask the developer which CLIs to install and set `[layers] agents = true` and `[agents] clis = [...]` in `dck.toml` (the default: exactly those are wired and installed for everyone); offer the advanced mode as an explicit choice — `supported = "all"` (`dck init --supported all`) wires every CLI and lets each developer choose — never pick it silently; `dck init` (shows the diff), `dck rebuild` |
+| a different set of CLIs for one developer | default mode: only fewer of `clis` (anything else needs the advanced mode in `dck.toml`, the team's decision). Advanced mode: `DCK_AGENT_CLIS="grok opencode"` or `INSTALL_<CLI>_CLI=true` in the gitignored `docker/local/.env`, or `[agents] clis` / `clis_extra` in the host profile (every repository); then `dck rebuild`. `dck doctor` shows the mode, supported / requested / installed and says when a rebuild is needed |
+| a script to recreate the main service with an extra compose file | `dck --compose-file <base> --compose-file <extra> up --recreate <svc>` (PRIMARY mode: no `--service`; keeps every host step, the same alias and Herdr machine) |
 | the host's agent accounts inside (no login in the container) | ask the user first (it shares their credentials with the container): they set `[agents] host_profiles = true` in their **host profile** (`~/.config/dck/profile.toml`, never `dck.toml`), then `dck up --recreate`; `dck doctor` names what is shared and which Claude profiles need `claude setup-token` and the token stored in ak's env file |
 | `gh auth login` (or any tool that only offers key files) to use the host's SSH keys | ask the user first (it puts their PRIVATE keys inside the container): they set `[ssh] copy_keys = true` in their **host profile** (or answer yes in `dck setup`), then `dck up --recreate`; `dck doctor` lists the copied key names |
 | to know what is wrong | `dck doctor` (human) or `dck doctor --json` (parse `problems`) |

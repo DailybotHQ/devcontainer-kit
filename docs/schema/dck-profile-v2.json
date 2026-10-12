@@ -141,7 +141,7 @@
         "host_profiles": {
           "type": "boolean",
           "default": false,
-          "description": "dck up binds the host's ak profiles of the CLIs the repository installs (claude codex pi cline grok opencode), the host's Codex home when codex@default is shared, and an env file read-only; read-write only where the CLI writes"
+          "description": "dck up binds the host's ak profiles of the image's CLIs (the repository's [agents] clis, or yours: clis / clis_extra / DCK_AGENT_CLIS) (claude codex pi cline grok opencode), the host's Codex home when codex@default is shared, and an env file read-only; read-write only where the CLI writes"
         },
         "host_env_keys": {
           "type": "array",
@@ -181,6 +181,39 @@
             "pattern": "^@?[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
           },
           "description": "the account a bare `ak <cli>` uses inside containers, e.g. { claude = \"@work3\" }: exported as AGENTKIT_DEFAULT_PROFILE_<CLI> (coding-agents-kit v0.5.2+) when that profile is shared ([agents] host_profiles); host profile only"
+        },
+        "clis": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "claude",
+              "codex",
+              "cursor",
+              "opencode",
+              "pi",
+              "cline",
+              "grok"
+            ]
+          },
+          "description": "the coding-agent CLIs YOU want in every repository's image: replaces the repository's [agents] clis (unset: the repository's list; [] installs none). dck up / rebuild export the effective list as DCK_AGENT_CLIS; DCK_AGENT_CLIS in the environment or docker/local/.env wins. Needs `dck rebuild` after a change"
+        },
+        "clis_extra": {
+          "type": "array",
+          "uniqueItems": true,
+          "default": [],
+          "items": {
+            "enum": [
+              "claude",
+              "codex",
+              "cursor",
+              "opencode",
+              "pi",
+              "cline",
+              "grok"
+            ]
+          },
+          "description": "CLIs added to the repository's [agents] clis (or to your clis) in every repository's image; host profile only"
         }
       }
     }

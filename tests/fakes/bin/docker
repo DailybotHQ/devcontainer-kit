@@ -18,6 +18,8 @@
 #   container_image_env  /etc/dck/image.env as `docker exec` would print it
 #   container_ssh_manifest  ~/.ssh/.dck-copied-keys as `docker exec` would print it
 #   container_herdr_self    ~/.dck/volumes/state/herdr-self as `docker exec` would print it
+#   image_agent_clis     /opt/dck/agent-clis (the image's CLIs), for `docker exec` and `compose exec`
+#   last_agent_clis      written: DCK_AGENT_CLIS as the last `docker compose` saw it ("<unset>")
 st="${DCK_FAKE_STATE:-/nonexistent}"
 printf 'docker %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
 # Record stdin for exec calls that pipe data in (e.g. authorized keys).
@@ -44,6 +46,8 @@ case "$1" in
         cat "$st/container_ssh_manifest"; exit 0 ;;
       */.dck/volumes/state/herdr-self) [ -f "$st/container_herdr_self" ] || exit 1
         cat "$st/container_herdr_self"; exit 0 ;;
+      /opt/dck/agent-clis) [ -f "$st/image_agent_clis" ] || exit 1
+        cat "$st/image_agent_clis"; exit 0 ;;
     esac
     # docker exec <container> cat /etc/dck/image.env -> $st/container_image_env
     [ -f "$st/container_image_env" ] || exit 1
@@ -75,6 +79,7 @@ case "$1" in
   compose)
     printf '%s' "${DCK_AUTHORIZED_KEYS:-}" > "$st/last_authorized_keys" 2>/dev/null
     printf '%s' "${DCK_HOST_SSH_AUTH_SOCK:-}" > "$st/last_agent_sock" 2>/dev/null
+    printf '%s' "${DCK_AGENT_CLIS-<unset>}" > "$st/last_agent_clis" 2>/dev/null
     shift
     while [ $# -gt 0 ]; do
       case "$1" in
@@ -87,6 +92,8 @@ case "$1" in
         exec)
           # The host key read by ssh_pin_host_key: $st/host_key_pub (nothing when absent).
           case " $* " in *dck_host_key_pub*) cat "$st/host_key_pub" 2>/dev/null; exit 0 ;; esac
+          case " $* " in *" /opt/dck/agent-clis "*) [ -f "$st/image_agent_clis" ] || exit 1
+            cat "$st/image_agent_clis"; exit 0 ;; esac
           # dck_herdr_self takes its id as an argument: its empty stdin is not a payload.
           case "$*" in *dck_herdr_self*) ;; *) [ -t 0 ] || cat > "$st/exec_stdin" ;; esac
           cat "$st/exec_out" 2>/dev/null; exit "$(cat "$st/exec_rc" 2>/dev/null || echo 0)" ;;

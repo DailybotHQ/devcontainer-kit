@@ -170,13 +170,27 @@ def plan(merged, env=None):
         return not selected or ("%s@%s" % (cli, name)) in selected
 
     root = out["profiles_root"]
-    clis = merged.get("agents.clis") or []
+    # Every SUPPORTED CLI (v0.3.6: dck.toml [agents] supported), installed or not:
+    # a CLI a developer installs later finds its profiles. Only profiles that
+    # exist on the host are bound.
+    clis = merged.get("clis_supported")
+    if clis is None:
+        clis = merged.get("agents.clis") or []
+    # What is skipped is reported for the CLIs this image installs; a supported
+    # CLI nobody installs and nobody has profiles for is not news.
+    requested = merged.get("clis_effective")
+    requested = clis if requested is None else requested
+
+    def skip(cli, why):
+        if cli in requested:
+            out["skipped"].append((cli, why))
+
     for cli in clis:
         if cli in NOT_PORTABLE:
-            out["skipped"].append((cli, NOT_PORTABLE[cli]))
+            skip(cli, NOT_PORTABLE[cli])
             continue
         if cli not in SHAREABLE:
-            out["skipped"].append((cli, "not a shareable kind"))
+            skip(cli, "not a shareable kind")
             continue
         d = os.path.join(root, cli)
         names = sorted(n for n in (os.listdir(d) if os.path.isdir(d) else [])
@@ -188,7 +202,7 @@ def plan(merged, env=None):
                                   "target": "%s/%s/%s" % (out["container_profiles"], cli, n),
                                   "mode": mode, "why": why})
         if not names:
-            out["skipped"].append((cli, "no %sak profiles in %s" % ("selected " if selected else "", d)))
+            skip(cli, "no %sak profiles in %s" % ("selected " if selected else "", d))
     if "codex" in clis and wanted("codex", "default"):
         ch = codex_home(env)
         if os.path.isdir(ch):
@@ -220,7 +234,7 @@ def plan(merged, env=None):
         if prof == "@default" or ("%s%s" % (cli, prof)) in shared:
             out["defaults"].append((cli, prof))
         elif cli not in clis:
-            out["defaults_skipped"].append((cli, prof, "this repository does not install %s" % cli))
+            out["defaults_skipped"].append((cli, prof, "%s is not in this repository's [agents] supported" % cli))
         else:
             out["defaults_skipped"].append((cli, prof, "%s %s is not shared (host_profile_names, or no such "
                                             "ak profile on the host)" % (cli, prof)))

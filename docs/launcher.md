@@ -7,6 +7,8 @@ repository it runs in.
 
 ```
 dck [--repo DIR] [--profile NAME] [--project NAME] <verb> [args]
+dck [--project NAME] --compose-file F... <verb> [args]                      # PRIMARY mode
+dck --project NAME --compose-file F... --service S <verb> [args]           # a satellite
 ```
 
 `dck` finds the repository by walking up from the current directory to the
@@ -57,8 +59,8 @@ dck --project acme-ws1 --compose-file ... --service apisatellite ssh
 dck --project acme-ws1 --compose-file ... --service apisatellite down   # it and its Herdr machine
 ```
 
-- `--project` is required: a satellite never runs in the main service's project, and
-  nothing of the main service is touched.
+- `--project` is required with `--service`: a satellite never runs in the main
+  service's project, and nothing of the main service is touched.
 - `--compose-file` (repeatable) replaces the compose file set; without it, the
   repository's files are used.
 - Its sshd port is read from compose (`docker compose port <svc> 22`) once it runs.
@@ -69,6 +71,40 @@ dck --project acme-ws1 --compose-file ... --service apisatellite down   # it and
 
 The recipe for repositories that start satellites from their own scripts:
 [shared-stack.md](shared-stack.md#workspace-satellites).
+
+## PRIMARY mode: the main service through other compose files
+
+`--compose-file` (repeatable) **without** `--service` runs the main service through the
+given files instead of `devcontainer.json`'s `dockerComposeFile` — for a repository's own
+script that recreates it with an extra overlay (for example a backend file that moves its
+ports behind a preview proxy):
+
+```bash
+dck --compose-file docker/local/docker-compose.yaml \
+    --compose-file docker/local/docker-compose.primary-backend.yaml up --recreate api
+```
+
+- The files replace the list in order (paths relative to the current directory; a
+  symlink is refused); dck's runtime overlays (devcontainer mounts, host profiles,
+  `copy_keys`, the developer's CLIs) still go last.
+- It is the primary, not a satellite: the same project, alias, label and Herdr machine as
+  a plain `dck up`, and every host step (authorized key, copied keys, host profiles and
+  `default_profile`, git identity, `HERDR_PEERS_SELF`, the mesh).
+- Always the compose backend. For `up [--recreate] [svc]`, `rebuild`, `down`, `ps`,
+  `logs`, `shell`, `exec`, `ssh`, `stop`, `start`, `restart`, `config`, `herdr` and
+  `doctor` (which lists the files in use); another verb is a usage error.
+
+## Each developer's coding-agent CLIs
+
+`dck up` and `dck rebuild` resolve which CLIs this developer's image installs
+([config.md](config.md#each-developers-coding-agent-clis)), pass the list to compose as `DCK_AGENT_CLIS` (that
+command's environment only) and print `agent CLIs: installing … (from <source>)` when it
+is not dck.toml's (fewer CLIs in the default mode; any supported ones in the advanced
+mode — a CLI the repository does not wire stops the command with exit 3). Then a fourth runtime overlay (`$TMPDIR/dck-<uid>/<project>-clis.yml`)
+repeats it as the build arg — for a compose file rendered before v0.3.6, and for an empty
+list, which `${DCK_AGENT_CLIS:-…}` would replace — and the compose backend is used
+(`DCK_BACKEND=devcontainer` warns). After a start, `dck up` compares the list with what
+the running image installed and says `rebuild needed: dck rebuild` when they differ.
 
 ## Rules it follows
 
@@ -83,7 +119,8 @@ The recipe for repositories that start satellites from their own scripts:
   `mounts` and `containerEnv` in a private overlay
   (`$TMPDIR/dck-<uid>/<project>-overlay.yml`, 0600, in a 0700 directory dck
   must own — a planted or symlinked directory is refused). `DCK_BACKEND=compose|devcontainer`
-  forces one; `--project` always uses compose.
+  forces one; `--project`, `--compose-file` and a developer CLI list that is not
+  dck.toml's always use compose.
 - **Never `--remove-orphans`.** A compose project may be shared or declare
   on-demand services; the flag would delete containers someone else uses.
 - **Never the directory-name default project.** The project name comes from
@@ -151,7 +188,7 @@ entrypoint). `dck ssh` connects to `127.0.0.1:<ssh_port>` with:
 ## Install
 
 ```bash
-git clone --branch v0.3.5 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.3.6 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh            # or --no-rc for scripted installs
 ```
 

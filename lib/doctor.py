@@ -118,17 +118,22 @@ def port_answers(host, port, timeout=2.0):
         return False, None
 
 
-def repo_info(repo, dck_tag, profile, rt, problems):
+def repo_info(repo, dck_tag, profile, rt, problems, compose_files=None):
     info = {"path": repo, "devcontainer": None, "config_valid": False, "errors": [],
             "warnings": [], "flavour": None, "base_image": None, "digest_pinned": False,
             "kit_version": None, "vendored": None, "project": None,
-            "service": None, "container": None, "env_files": []}
+            "service": None, "container": None, "env_files": [], "compose_files": [],
+            "compose_override": bool(compose_files)}
     merged = None
     try:
         d = devc.read(repo)
         info["devcontainer"] = os.path.relpath(d["file"], repo)
         info["service"] = d["service"]
-        compose_dir = os.path.dirname(d["compose_files"][0])
+        # dck --compose-file F... (PRIMARY mode): those files, in order, instead of
+        # devcontainer.json's dockerComposeFile.
+        files = [os.path.abspath(f) for f in compose_files] if compose_files else list(d["compose_files"])
+        info["compose_files"] = [os.path.relpath(f, repo) if f.startswith(repo + os.sep) else f for f in files]
+        compose_dir = os.path.dirname(files[0])
         info["project"] = compose_project(compose_dir, d["compose_name"], toml_project(repo))
         svc_dir = os.path.join(compose_dir, d["service"] or "")
         dockerfile = os.path.join(svc_dir, "Dockerfile")
@@ -446,7 +451,7 @@ def compose_info(project, service, state_volume, problems):
     return out
 
 
-def collect(start, profile=None):
+def collect(start, profile=None, compose_files=None):
     problems = []
     version = config_version()
     py_ok = sys.version_info >= (3, 11)
@@ -480,14 +485,31 @@ def collect(start, profile=None):
     merged = None
     container_running = False
     if repo:
-        info, merged = repo_info(repo, "v" + version, profile, rt, problems)
+        info, merged = repo_info(repo, "v" + version, profile, rt, problems, compose_files)
         if merged is not None:
             merged["_kit_version"] = info["kit_version"]
         report["repo"] = info
         container_running = bool(info["container"] and info["container"]["state"] == "running")
         if merged:
             report["layers"] = {"agents": merged["layers.agents"], "clis": merged["agents.clis"],
-                                "dailybot": merged["layers.dailybot"], "editor": merged["layers.editor"]}
+                                "dailybot": merged["layers.dailybot"], "editor": merged["layers.editor"],
+                                "clis_supported": list(merged.get("clis_supported") or []),
+                                # default: wire and install the onboarding choice (clis);
+                                # advanced: [agents] supported, each developer chooses.
+                                "clis_mode": "advanced" if merged.get("agents.supported") is not None else "default",
+                                "clis_effective": list(merged.get("clis_effective") or []),
+                                "clis_source": merged.get("clis_source") or "repo", "clis_image": None}
+            if merged["layers.agents"] and container_running:
+                # The CLIs the running image was built with (recorded by the agents layer).
+                rc, out = run(["docker", "exec", info["container"]["name"], "cat", "/opt/dck/agent-clis"])
+                if rc == 0 and re.match(r"^[a-z ]*$", (out or "").strip()):
+                    built = (out or "").split()
+                    report["layers"]["clis_image"] = built
+                    if sorted(built) != sorted(report["layers"]["clis_effective"]):
+                        problems.append("agent CLIs: the running image has %s installed; you request %s (%s) — "
+                                        "rebuild needed: dck rebuild" % (" ".join(built) or "none",
+                                                                         " ".join(report["layers"]["clis_effective"])
+                                                                         or "none", report["layers"]["clis_source"]))
             ssh = {"enabled": merged["ssh_port"] != 0, "port": merged["ssh_port"] or None,
                    "bind": merged["bind"], "identity": merged["ssh_identity"],
                    "identity_present": os.path.isfile(merged["ssh_identity"]),
@@ -560,6 +582,8 @@ def text(report):
                 "  base image     %s" % (r["base_image"] or "-"),
                 "  digest         %s" % ("pinned" if r["digest_pinned"] else "not pinned"),
                 "  rendered with  %s (dck/ %s)" % (r["kit_version"] or "-", r["vendored"] or "-"),
+                "  compose files  %s%s" % (", ".join(r["compose_files"]) or "-",
+                                           " (--compose-file)" if r["compose_override"] else ""),
                 "  container      %s" % ((r["container"] or {}).get("state") or "-")]
         for e in r["env_files"]:
             out.append("  env file       %s: %s%s" % (e["path"],
@@ -571,6 +595,17 @@ def text(report):
         l = report["layers"]  # noqa: E741
         out.append("layers           agents %s%s, dailybot %s, editor %s" % (
             yes(l["agents"]), (" (" + " ".join(l["clis"]) + ")") if l["clis"] else "", yes(l["dailybot"]), yes(l["editor"])))
+        if l["agents"]:
+            out.append("agent CLIs       mode %s" % (
+                "advanced ([agents] supported: each developer chooses what to install)" if l["clis_mode"] == "advanced"
+                else "default (the CLIs chosen at onboarding, dck.toml clis, are wired and installed)"))
+            out.append("                 supported %s" % (" ".join(l["clis_supported"]) or "none"))
+            out.append("                 requested %s (from %s)" % (" ".join(l["clis_effective"]) or "none",
+                                                               l["clis_source"]))
+            out.append("                 installed %s" % (
+                "- (no running container, or an image from before v0.3.6)" if l["clis_image"] is None else
+                (" ".join(l["clis_image"]) or "none") + (
+                    "" if sorted(l["clis_image"]) == sorted(l["clis_effective"]) else " — rebuild needed: dck rebuild")))
     s = report["ssh"]
     if s:
         out.append("ssh              %s" % ("off" if not s["enabled"] else "%s:%s, key %s, answering %s" % (
@@ -632,6 +667,7 @@ def main(args):
     start = os.getcwd()
     if "--repo" in args:
         start = args[args.index("--repo") + 1]
-    report = collect(start, profile)
+    files = [args[i + 1] for i, a in enumerate(args[:-1]) if a == "--compose-file"]
+    report = collect(start, profile, files or None)
     print(json.dumps(report, indent=2, sort_keys=True) if as_json else text(report))
     return 1 if (strict and not report["ok"]) else 0

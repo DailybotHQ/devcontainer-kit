@@ -11,6 +11,15 @@ services:
     build:
       context: {{build_context}}
       dockerfile: {{build_dockerfile}}
+{% if layers_agents_on %}
+      args:
+        # The coding-agent CLIs installed in YOUR image: dck.toml [agents] clis,
+        # unless you set DCK_AGENT_CLIS (docker/local/.env, the shell, or your host
+        # profile's [agents] clis / clis_extra through dck up), plus each
+        # INSTALL_<CLI>_CLI=true. Then `dck rebuild`. Every supported CLI is wired.
+        DCK_AGENT_CLIS: "${DCK_AGENT_CLIS:-{{agents_clis_space}}}"
+{{install_arg_lines}}
+{% endif %}
     init: true
     working_dir: {{workspace}}
     command: ["sleep", "infinity"]
@@ -46,12 +55,13 @@ services:
       SSH_AUTH_SOCK: /run/dck/ssh-agent.sock
 {% endif %}
 {% if layers_agents_on %}
-      # Agents layer: one named volume per CLI home (persisted by the entrypoint);
-      # ak profiles live on the agentkit volume. Every agent launched through ak
-      # runs in autonomy (this container is the sandbox). Opt-out — agents ask
-      # before acting: set AGENTKIT_PERMISSIONS=ask in ./{{service}}/.env (this
-      # block is reconciled by `dck init`; the .env is yours).
-      DCK_AGENTS: "{{agents_clis_space}}"
+      # Agents layer: one named volume per supported CLI's home, installed or
+      # not (persisted by the entrypoint); ak profiles live on the agentkit
+      # volume. Every agent launched through ak runs in autonomy (this container
+      # is the sandbox). Opt-out — agents ask before acting:
+      # set AGENTKIT_PERMISSIONS=ask in ./{{service}}/.env (this block is
+      # reconciled by `dck init`; the .env is yours).
+      DCK_AGENTS: "{{agents_supported_space}}"
       AGENTKIT_PROFILES_DIR: /home/{{user}}/.dck/volumes/agentkit/profiles
 {% endif %}
 {% if layers_dailybot_on %}

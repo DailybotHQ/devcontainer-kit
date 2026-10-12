@@ -333,6 +333,28 @@ merged into the main service's keys at `dck init`); the satellite's own block, w
 needs one, is plain compose under its own service. The satellite's `.env` files are the
 main service's (`extends` copies `env_file`).
 
+**The primary through an extra overlay.** A script that recreates the main service
+itself with another file (a backend overlay behind a preview proxy) calls dck in PRIMARY
+mode — `--compose-file` without `--service` — instead of plain compose, so the host steps
+stay ([launcher.md](launcher.md#primary-mode-the-main-service-through-other-compose-files)):
+
+```bash
+# docker.sh primary.backend
+dck --compose-file docker/local/docker-compose.yaml \
+    --compose-file docker/local/docker-compose.primary-backend.yaml up --recreate api
+```
+
+## Each developer's coding-agent CLIs
+
+By default a repository wires and installs the CLIs chosen at onboarding (`[agents]
+clis`) for everyone. When teammates use different CLIs, opt into the advanced mode:
+`[agents] supported = "all"` with `clis = []` (or a minimal set) wires every CLI —
+volumes, host profiles — installed or not, and each developer picks what their image
+installs in their gitignored `docker/local/.env` (`DCK_AGENT_CLIS="grok opencode"`, or
+`INSTALL_GROK_CLI=true`), or for every repository in the host profile (`[agents] clis` /
+`clis_extra`); then `dck rebuild`. The `.env.example` `dck init` writes explains the
+repository's mode and its options ([config.md](config.md#each-developers-coding-agent-clis)).
+
 ## When `dck up` refuses (exit 5)
 
 A user block, a satellite or any hand-written part of the file that reaches the host —

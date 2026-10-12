@@ -16,6 +16,9 @@ dck_cmd_doctor() {
   done
   [ -n "$DCK_PROFILE_NAME" ] && a+=(--profile "$DCK_PROFILE_NAME")
   [ -n "$DCK_REPO_ARG" ] && a+=(--repo "$DCK_REPO_ARG")
+  # PRIMARY mode: the compose files in use, as dck up was given them.
+  local f
+  for f in ${DCK_COMPOSE_OVERRIDE[@]+"${DCK_COMPOSE_OVERRIDE[@]}"}; do a+=(--compose-file "$f"); done
   dckpy doctor ${a[@]+"${a[@]}"}
 }
 

@@ -14,6 +14,56 @@ and the interface number).
   pack's own upgrade flow and addon planner; `.dwp/config.json` now also records the dev
   container addon (the repository's own dck container, v0.3.5).
 
+## [0.3.6] — 2026-10-12
+
+Interface stays **2**.
+
+### Added
+
+- **Two modes for the coding-agent CLIs.** The default: the CLIs chosen at onboarding
+  (`[agents] clis`) are wired (home volume, `DCK_AGENTS` persistence, host-profile sharing,
+  `default_profile`) and installed for everyone; a developer may install fewer. The
+  **advanced** opt-in, `[agents] supported = "all" | [...]`, wires every supported CLI,
+  installed or not, and each developer chooses what to install; `dck init` offers it
+  (one interactive question for a new `dck.toml` with the agents layer, or
+  `dck init --supported all|"a b"`). What **your** image installs: env
+  `DCK_AGENT_CLIS` > `DCK_AGENT_CLIS` in `docker/local/.env` > host profile `[agents] clis`
+  (replace), then `clis_extra` (add) > dck.toml `clis` (`[]` = none), plus every
+  `INSTALL_<CLI>_CLI` that is exactly `true` (environment or `docker/local/.env`). An
+  unknown or unwired name stops `dck up` / `rebuild` (exit 3) with the list (in the default
+  mode, with the way to the advanced mode); the layer refuses it at build time too
+  (`DCK_AGENT_SUPPORTED`). See
+  [docs/config.md](docs/config.md#each-developers-coding-agent-clis).
+- The rendered compose passes `DCK_AGENT_CLIS: "${DCK_AGENT_CLIS:-<clis>}"` and one
+  `INSTALL_<CLI>_CLI: "${INSTALL_<CLI>_CLI:-false}"` per wired CLI as build args, so
+  plain compose and the editor's rebuild read `docker/local/.env` too; `dck init` creates
+  a create-only `docker/local/.env.example` that explains the repository's mode and its
+  options.
+  `dck up` / `rebuild` pass the effective list, through a fourth runtime overlay
+  (`<project>-clis.yml`, the build arg only) when it differs from dck.toml's.
+- The image records what it installed (`/opt/dck/agent-clis`): `dck up` warns and `dck
+  doctor` reports **rebuild needed: dck rebuild** when it differs from the requested list;
+  the doctor shows the mode, supported, requested (with its source) and installed
+  (`layers.clis_mode`, `clis_supported`, `clis_effective`, `clis_source`, `clis_image`).
+- **PRIMARY mode.** `dck [--project P] --compose-file F… <verb>` without `--service` runs
+  the main service through other compose files (a repository's own overlay, for example a
+  preview proxy's backend file): the files replace `dockerComposeFile` in order, dck's
+  runtime overlays still go last, with the same alias, label and Herdr machine as a plain
+  `up` and every host step (always the compose backend). For `up`, `rebuild`, `down`,
+  `ps`, `logs`, `shell`, `exec`, `ssh`, `stop`, `start`, `restart`, `config`, `herdr`,
+  `doctor` (which lists the files in use: `repo.compose_files`, `compose_override`).
+
+### Changed
+
+- An existing repository keeps its wiring (the default mode: its `clis`); its compose
+  file gains the build args, so `dck up` and `dck doctor` report it as stale until
+  `dck init` re-renders it.
+- `[agents] host_profiles` shares the ak profiles of the wired CLIs that exist on the host
+  (in the advanced mode, every supported CLI, installed or not); what it skips is reported
+  for the requested CLIs only.
+- `--service` needs `--project`; `--compose-file` without `--service` is PRIMARY mode
+  (it was a usage error).
+
 ## [0.3.5] — 2026-10-12
 
 Interface stays **2**.

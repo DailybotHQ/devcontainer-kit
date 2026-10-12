@@ -130,7 +130,14 @@
               "grok"
             ]
           },
-          "description": "Kinds passed to `ak install` when layers.agents is true"
+          "description": "The CLIs installed (and, without supported, wired) when layers.agents is true ([] = none). With supported (advanced), the default set each developer can change (DCK_AGENT_CLIS, INSTALL_<CLI>_CLI, the host profile's [agents] clis / clis_extra); must be within supported"
+        },
+        "supported": {
+          "type": ["string", "array"],
+          "pattern": "^all$",
+          "uniqueItems": true,
+          "items": {"enum": ["claude", "codex", "cursor", "opencode", "pi", "cline", "grok"]},
+          "description": "Advanced: the CLIs every image is wired for, installed or not (home volumes, host-profile sharing, default_profile); each developer chooses what to install within them. \"all\" = every kind ak knows. Unset (the default): clis — wire and install the CLIs chosen at onboarding"
         },
         "presets": {
           "type": "array",

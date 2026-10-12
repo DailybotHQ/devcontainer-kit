@@ -42,7 +42,8 @@ agents = false                 # true → runs the coding-agents-kit installer
 dailybot = false               # true only when the dailybot addon asks for it
 editor = true                  # nvim + deepworkplan-vim as the default editor
 [agents]
-clis = []                      # kinds for `ak install` when layers.agents is true
+clis = []                      # the CLIs wired and installed for everyone
+# supported = "all"            # advanced: wire every CLI, each developer chooses
 [herdr]
 machine = true                 # register as a Herdr machine on `dck up`
 label = "{repo}"
@@ -79,7 +80,8 @@ other services' volumes and networks, port strings and satellites:
 | `layers.agents` | boolean | `false` | see [layers.md](layers.md) |
 | `layers.dailybot` | boolean | `false` | see [layers.md](layers.md) |
 | `layers.editor` | boolean | `true` | see [layers.md](layers.md) |
-| `agents.clis` | array | `[]` | kinds from `claude codex cursor opencode pi cline grok`, no duplicates; a warning when set while `layers.agents` is false. Also the CLIs whose host accounts `agents.host_profiles` (host profile) shares |
+| `agents.clis` | array | `[]` | the CLIs chosen at onboarding: kinds from `claude codex cursor opencode pi cline grok`, no duplicates; a warning when set while `layers.agents` is false. Without `agents.supported` (the default) they are both **wired** (home volume, host-profile sharing, `default_profile`) and **installed** for everyone; with it, they are the default install set, within `supported` ([Each developer's CLIs](#each-developers-coding-agent-clis)) |
+| `agents.supported` | `"all"` or array | unset (= `clis`) | **advanced** opt-in: the CLIs every image is wired for, installed or not; each developer chooses what to install within them. `"all"` = every kind ak knows. A volume for a CLI nobody installed stays empty, so a CLI a developer installs later just works. `dck init --supported all` writes it; an interactive `dck init` offers it ([Each developer's CLIs](#each-developers-coding-agent-clis)) |
 | `herdr.machine` | boolean | `false` | requires a non-zero `ssh_port` |
 | `herdr.label` | string | `{repo}` | 1–64 chars; placeholders `{repo}` `{service}` `{project}` `{user}` |
 | `herdr.layout` | string | `standard` | `standard` (App · Editor · Development · Agents, created by `dck up`) or `none` ([herdr.md](herdr.md)) |
@@ -148,9 +150,11 @@ default_profile = {}               # e.g. { claude = "@work3" }: a bare `ak clau
 | `ssh.identity` | string | `~/.config/dck/ssh/id_ed25519` | `~` expands to `$HOME` |
 | `ssh.host_extra` | array of strings | `[]` | aliases or host names beyond the git hosting services whose `~/.ssh/config` blocks `ssh_host_config` also copies into containers. Host-side only — a repository's `dck.toml` cannot set it. Every container with the agent socket can then reach those hosts as you |
 | `ssh.copy_keys` | boolean | `false` | `dck up` binds the host's **whole** `~/.ssh` read-only at `~/.ssh_host` — while it is on, every file there (not only `id_*`: `config`, `known_hosts`, other keys) is readable by processes in the container (a runtime compose overlay, never written into the repository; uses the compose backend) and every container start copies its `id_*` keys into the container's `~/.ssh` on the state volume: private keys 0600, `.pub` 0644, refreshed when they change on the host, removed when they are removed there. For tools that only offer key files, such as `gh auth login`. Never touches dck's `config`, `config.d/`, `authorized_keys` or `known_hosts.dck-host`. **Your private keys then rest in the volume, readable by code in the container** ([SECURITY.md](SECURITY.md#host-ssh-keys-ssh-copy_keys)). `dck setup` asks once and records the answer. Off: `copy_keys = false`, then `dck up --recreate` (the copies are removed at the next start); full wipe: `dck down` and remove the `<project>_state` volume. Host-side only — a repository's `dck.toml` cannot set it |
-| `agents.host_profiles` | boolean | `false` | `dck up` shares the host's agent accounts with containers whose repository turns `layers.agents` on: each host ak profile (`$AGENTKIT_PROFILES_DIR/<cli>/<name>`, default root `~/.local/share/agentkit/profiles`) of the CLIs in that repository's `agents.clis` — claude, codex, pi, cline, grok, opencode; never cursor, whose profiles hold absolute host symlinks — the host's Codex home (`$CODEX_HOME` or `~/.codex`) when `codex@default` is shared, and an env file read-only. Read-write only where the CLI writes (each reason in SECURITY.md). Through a runtime compose overlay, never written into the repository; uses the compose backend. Host-side only — a repository's `dck.toml` cannot set it. See [layers.md](layers.md#host-accounts) and [SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles) |
+| `agents.host_profiles` | boolean | `false` | `dck up` shares the host's agent accounts with containers whose repository turns `layers.agents` on: each host ak profile (`$AGENTKIT_PROFILES_DIR/<cli>/<name>`, default root `~/.local/share/agentkit/profiles`) of the CLIs in that repository's `agents.supported` (installed or not; only profiles that exist on the host are bound) — claude, codex, pi, cline, grok, opencode; never cursor, whose profiles hold absolute host symlinks — the host's Codex home (`$CODEX_HOME` or `~/.codex`) when `codex@default` is shared, and an env file read-only. Read-write only where the CLI writes (each reason in SECURITY.md). Through a runtime compose overlay, never written into the repository; uses the compose backend. Host-side only — a repository's `dck.toml` cannot set it. See [layers.md](layers.md#host-accounts) and [SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles) |
 | `agents.default_profile` | table | `{}` | the account a bare `ak <cli>` uses inside: `{ claude = "@work3", codex = "@work2" }` (cli one of claude codex pi cline grok opencode), exported as `AGENTKIT_DEFAULT_PROFILE_<CLI>` (coding-agents-kit v0.5.2+) when that profile is shared by `host_profiles`, and the container's login profile points `CLAUDE_CONFIG_DIR` / `CODEX_HOME` at it, so a plain `claude --resume` or `codex resume` that Herdr's session restore relaunches without ak uses that account too; the answer to a macOS `@default` Claude login, which lives in the keychain and cannot reach a container. `dck doctor` shows the mapping and flags one it cannot apply. Host-side only |
-| `agents.host_profile_names` | array of strings | `[]` | only these host profiles are shared and get their Claude token: `"<cli>@<name>"` (`cli` one of claude codex pi cline grok opencode; `@default` is the CLI's own home, for Codex `~/.codex`, for Claude the default token); at most 64. Empty: every profile of the repository's CLIs, and their own homes |
+| `agents.host_profile_names` | array of strings | `[]` | only these host profiles are shared and get their Claude token: `"<cli>@<name>"` (`cli` one of claude codex pi cline grok opencode; `@default` is the CLI's own home, for Codex `~/.codex`, for Claude the default token); at most 64. Empty: every profile of the repository's supported CLIs, and their own homes |
+| `agents.clis` | array | unset | the coding-agent CLIs **you** want installed in every repository's image, instead of its `dck.toml` `clis`; `[]` installs none. Each must be wired by the repository (its `clis` in the default mode, its `agents.supported` in the advanced mode). Needs `dck rebuild` after a change ([Each developer's CLIs](#each-developers-coding-agent-clis)) |
+| `agents.clis_extra` | array | `[]` | CLIs added to the repository's `clis` (or to your `clis`) in every image. Host-side only — in a repository's `dck.toml` it is ignored with a warning |
 | `agents.host_env_keys` | array of strings | `[]` | exact variable names (`^[A-Z_][A-Z0-9_]*$`, no prefix or wildcard; at most 64) copied from the host's ak env file into the container's, besides the Claude token of each shared Claude profile. `[]` copies nothing else; with `host_profiles` off nothing is copied. Values never appear in compose files, logs or `dck doctor` |
 | `ssh.authorized_extra` | array of strings | `[]` | public key files (paths ending in `.pub`, at most 16) added to the dck block of every container's `authorized_keys` at `dck up`, for clients that log in with your own keys (for example containers another kit manages). Host-side only; each listed key can open a shell in your containers |
 
@@ -161,10 +165,79 @@ default_profile = {}               # e.g. { claude = "@work3" }: a bare `ak clau
 - `herdr.label` in the repo wins over `labels.machine` in the profile.
 - Credentials are the host's decision: `agents.host_profiles`, `agents.host_env_keys`
   and `ssh.copy_keys` are read from the profile only; in a repository's `dck.toml` they are ignored with a
-  warning. The repository still decides *which* CLIs exist (`agents.clis`), so only
-  their accounts are shared.
+  warning. The repository decides which CLIs are *wired* (`agents.clis`, or
+  `agents.supported` in the advanced mode), so only their accounts are shared; in
+  the advanced mode each developer decides which are *installed*.
 - The repo **slug** is the directory name lower-cased with every character
   outside `[a-z0-9_-]` replaced by `-` (`My Repo` → `my-repo`).
+
+## Each developer's coding-agent CLIs
+
+Two modes. The repository picks one in `dck.toml`; `dck init` asks.
+
+**Default — the CLIs chosen at onboarding.** Without `[agents] supported`, the CLIs in
+`[agents] clis` are wired (home volume, host-profile sharing, `default_profile`) and
+installed for everyone, and no other CLI is. A developer may install **fewer** of them
+(the settings below, within `clis`); any other CLI is refused:
+
+```text
+grok not in [agents] supported (claude, codex): this repository wires only the CLIs
+chosen at onboarding (dck.toml [agents] clis); to let each developer choose, set
+[agents] supported = "all" in dck.toml (advanced mode, docs/config.md)
+```
+
+**Advanced — each developer chooses.** `[agents] supported = "all"` (or a list) wires
+every supported CLI, installed or not; `clis` becomes the default install set (`[]` or a
+minimal one), and each developer installs what they use. For a team whose members use
+different CLIs:
+
+```toml
+# .devcontainer/dck.toml
+[agents]
+supported = "all"   # wired: claude codex cursor opencode pi cline grok
+clis = []           # installed for nobody by default
+```
+
+`dck init --supported all` (or `--supported "claude codex grok"`) writes it; an
+interactive `dck init` that renders a new `dck.toml` with the agents layer asks once:
+*"dck wires and installs <clis> for everyone (the default). Advanced: wire every CLI ak
+knows and let each developer choose what to install …? [y/N]"*.
+
+**What your image installs** (both modes; first match wins):
+
+1. `DCK_AGENT_CLIS` in the environment (`"grok opencode"` or `"grok,opencode"`);
+2. `DCK_AGENT_CLIS` in `docker/local/.env` (gitignored; `dck init` writes a
+   `docker/local/.env.example` explaining the repository's mode and its options);
+3. the host profile: `[agents] clis` replaces the repository's list, then `clis_extra`
+   adds to it — one setting for every repository;
+4. `dck.toml` `[agents] clis`.
+
+Added to it: every CLI whose `INSTALL_<CLI>_CLI` is exactly `true` (`INSTALL_GROK_CLI=true`,
+from the environment or `docker/local/.env`; the environment wins per variable; any other
+value installs nothing). An empty `DCK_AGENT_CLIS` counts as unset. Every name must be
+wired by the repository: an unknown or unwired one stops `dck up` / `dck rebuild` (exit 3)
+with the list, and the image build refuses it too.
+
+The rendered compose passes `DCK_AGENT_CLIS: "${DCK_AGENT_CLIS:-<dck.toml clis>}"` and one
+`INSTALL_<CLI>_CLI` per wired CLI as build args, so plain `docker compose` and the editor's
+"Rebuild Container" read `docker/local/.env` too. `dck up` and `dck rebuild` pass the
+effective list (through a runtime overlay when it differs from `dck.toml`'s). The image
+records what it installed (`/opt/dck/agent-clis`): `dck up` warns and `dck doctor` shows the
+mode, supported, requested (with its source) and installed, with `rebuild needed: dck
+rebuild` when the last two differ.
+
+Advanced-mode examples:
+
+```toml
+# ~/.config/dck/profile.toml — every repository in the advanced mode
+[agents]
+clis = ["claude", "codex", "grok"]
+```
+
+```bash
+# docker/local/.env — this repository only
+INSTALL_CURSOR_CLI=true
+```
 
 ## Output for scripts
 

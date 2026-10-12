@@ -8,13 +8,21 @@ default).
 
 ```toml
 [layers]
-agents = false     # coding-agents-kit (ak) + the CLIs in [agents].clis
+agents = false     # coding-agents-kit (ak) + the CLIs chosen at onboarding
 dailybot = false   # the Dailybot CLI — only when the dailybot addon asks for it
 editor = true      # nvim + deepworkplan-vim as the default editor
 
 [agents]
-clis = []          # claude codex cursor opencode pi cline grok
+clis = ["claude", "codex"]   # wired and installed for everyone
+# supported = "all"          # advanced: wire every CLI, each developer chooses
 ```
+
+By default the CLIs in `clis` are both **wired** (home volumes, host-profile sharing) and
+**installed**; a developer may only install fewer. The **advanced** opt-in,
+`supported = "all"` (or a list), wires every supported CLI, installed or not, and each
+developer chooses what their image installs — `DCK_AGENT_CLIS` or `INSTALL_<CLI>_CLI=true`
+(environment or `docker/local/.env`), or `[agents] clis` / `clis_extra` in the host
+profile, defaulting to `clis` ([config.md](config.md#each-developers-coding-agent-clis)).
 
 After changing the file, run `dck init` (it shows the diff and asks), then
 `dck rebuild`.
@@ -25,22 +33,36 @@ Installs [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit)
 at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v0.5.3**) into the
 dev user's home, following the kit's install contract: the release tarball, verified
 against the pinned `AGENTKIT_SHA256` before it is unpacked, then `install.sh --no-rc`, then `ak install <kind>…` for the
-kinds in `agents.clis`, each through its vendor's official channel.
+requested kinds (`DCK_AGENT_CLIS` plus each `INSTALL_<CLI>_CLI=true`; commas or spaces),
+each through its vendor's official channel. A kind outside `DCK_AGENT_SUPPORTED` (the
+wired CLIs: `clis`, or `supported` in the advanced mode) stops the build (exit 2) with the
+list. The installed list is recorded in
+`/opt/dck/agent-clis`; `dck up` and `dck doctor` compare it with the requested one and
+say **rebuild needed: dck rebuild** when they differ.
 
-What `dck init` renders when `agents = true`:
+What `dck init` renders when `agents = true` with `clis = ["claude", "codex"]` (the
+default mode; the advanced mode renders the same for every CLI in `supported`):
 
 ```dockerfile
 # >>> dck:layers >>>
 ARG DCK_AGENT_CLIS="claude codex"
-RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}
+ARG INSTALL_CLAUDE_CLI=false
+ARG INSTALL_CODEX_CLI=false
+RUN DCK_USER=dev DCK_AGENT_SUPPORTED="claude codex" DCK_AGENT_PRESETS="" dck-layer agents ${DCK_AGENT_CLIS}
 # <<< dck:layers <<<
 ```
 
 ```yaml
+    build:
+      args:
+        DCK_AGENT_CLIS: "${DCK_AGENT_CLIS:-claude codex}"
+        INSTALL_CLAUDE_CLI: "${INSTALL_CLAUDE_CLI:-false}"
+        INSTALL_CODEX_CLI: "${INSTALL_CODEX_CLI:-false}"
     volumes:
       - agentkit:/home/dev/.dck/volumes/agentkit
       - claude:/home/dev/.dck/volumes/claude
       - codex:/home/dev/.dck/volumes/codex
+      # advanced mode: one per supported CLI, installed or not (an unused one stays empty)
     environment:
       DCK_AGENTS: "claude codex"
       AGENTKIT_PROFILES_DIR: /home/dev/.dck/volumes/agentkit/profiles
@@ -121,7 +143,7 @@ the repository — that binds:
 
 | Host | Container | Mode |
 | --- | --- | --- |
-| each ak profile `$AGENTKIT_PROFILES_DIR/<cli>/<name>` (default root `~/.local/share/agentkit/profiles`) of the CLIs in `[agents] clis` — claude, codex, pi, cline, grok, opencode — or only those in `host_profile_names` | `~/.dck/host/agentkit/profiles/<cli>/<name>`; `AGENTKIT_PROFILES_DIR` points there | read-write: the CLI writes its state there |
+| each ak profile `$AGENTKIT_PROFILES_DIR/<cli>/<name>` (default root `~/.local/share/agentkit/profiles`) of the wired CLIs (`clis`, or `[agents] supported` in the advanced mode, installed or not; only profiles that exist on the host) — claude, codex, pi, cline, grok, opencode — or only those in `host_profile_names` | `~/.dck/host/agentkit/profiles/<cli>/<name>`; `AGENTKIT_PROFILES_DIR` points there | read-write: the CLI writes its state there |
 | `$CODEX_HOME` or `~/.codex` (the Codex `@default` login), when codex is installed and `codex@default` shared | `~/.dck/host/codex`; `~/.codex` links to it | read-write: token refresh in `auth.json` |
 | the directory `~/.config/dck/agents/<project>/` (0700) holding the env file `env`, generated (0600) on the host | `~/.dck/host/agentkit/hostenv/`; `AGENTKIT_ENV` points at `hostenv/env` | read-only |
 
@@ -164,7 +186,7 @@ Each read-write mount and its reason is listed in
 An orchestrating agent (or you) must be able to start a new agent in the container —
 `ak claude`, `ak codex @work1`, a new Herdr pane — and have it work at once, with no
 first-run screen waiting for a key nobody presses. With autonomy on (the default) the
-entrypoint does this at every start, for the CLIs in `[agents] clis`:
+entrypoint does this at every start, for the wired CLIs (`DCK_AGENTS`):
 
 - **Folder trust for the app path** (`workspace`, `/app` by default): Claude's "trust
   this folder" and Codex's "Trust this folder?" are pre-answered — in the container's
