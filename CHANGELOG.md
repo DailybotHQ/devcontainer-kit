@@ -23,8 +23,9 @@ Interface stays **2**.
   removed there). dck's own `config`, `config.d/`, `authorized_keys` and
   `known_hosts.dck-host` are never touched, a key the container made itself is kept, and
   the agent forwarding is unchanged. Turning it off removes the copies at the next start.
-  Private keys then rest in the state volume: the trade-off and the wipe are in
-  `docs/SECURITY.md`. New entrypoint function `dck_ssh_copy_keys`.
+  While it is on, the whole host `~/.ssh` is readable inside (read-only), not only the
+  `id_*` keys, and private keys rest in the state volume: the trade-off and the wipe are
+  in `docs/SECURITY.md`. New entrypoint function `dck_ssh_copy_keys`.
 - `dck setup` asks once, on a terminal, whether to copy the host's SSH keys (default no)
   and records the answer in the profile's `[ssh]` table.
 - `dck doctor` reports the opt-in and the key file names (`ssh keys copied: …`, names

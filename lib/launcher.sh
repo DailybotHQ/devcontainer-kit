@@ -741,7 +741,8 @@ ssh_copy_keys_offer() {
         "dck: copy your SSH keys (~/.ssh/id_*) into your dck containers at every start?" \
         "     gh auth login and other tools that only offer key files then use the same keys" \
         "     as this machine. Your PRIVATE keys rest in each container's state volume, and" \
-        "     code running in a container can read them. Undo: [ssh] copy_keys = false in your" \
+        "     code running in a container can read them; the whole ~/.ssh is bound read-only," \
+        "     so every file in it is readable inside while this is on. Undo: [ssh] copy_keys = false in your" \
         "     profile, then dck up --recreate (removes the copies); docs/config.md." >&2
       printf 'dck: copy the host SSH keys into containers? [y/N] ' >&2
       read -r ans </dev/tty || ans=n
