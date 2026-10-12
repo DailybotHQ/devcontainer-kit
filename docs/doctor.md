@@ -58,6 +58,12 @@ by other accounts is a problem (`dck setup` narrows it to 0600).
   could not be copied. Logins are read from the host's `ak profiles --json`
   (schema `profiles-v1`, coding-agents-kit v0.5.0+); without it the doctor says so.
 
+The text report also says, as a note, when Claude's default account will not be logged
+in inside: Claude's own home (`~/.claude`) is never shared — on macOS its login lives in
+the keychain — so `@default` gets in only through `CLAUDE_CODE_OAUTH_TOKEN` in ak's env
+file (`claude setup-token`), or through a login made once inside (`ak claude`), which the
+container's `claude` volume keeps across recreates and rebuilds.
+
 ## Not in v0.1
 
 The doctor does not read DeepWorkPlan's `.dwp/config.json`: a DWP integrator

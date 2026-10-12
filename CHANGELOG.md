@@ -42,6 +42,9 @@ Interface stays **2**.
 
 ### Fixed
 
+- `dck doctor` says when Claude's default account will not be logged in inside (its
+  host login is the macOS keychain, never shared, and `CLAUDE_CODE_OAUTH_TOKEN` is not in
+  ak's env file), with both fixes, instead of a bare "not copied" line.
 - A container built from scratch reaches the host and its peers at once: `dck rebuild`,
   `dck start` and `dck restart` now run the same post-start steps as `dck up` — the Herdr
   machine is registered (re-added when it was removed, its host key re-pinned), the mesh

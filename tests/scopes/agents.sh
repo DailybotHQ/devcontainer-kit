@@ -485,3 +485,16 @@ test_python_side_never_logs_values() {
   run_cmd grep -nE 'print\(.*values\[|log.*values\[' "$DCK_REPO/lib/hostagents.py" "$DCK_REPO/lib/dckpy.py" "$DCK_REPO/lib/doctor.py"
   assert_eq "$RUN_OUT" "" "no code path prints an env file value"
 }
+
+test_doctor_explains_the_default_claude_login() {
+  mk_repo "claude" || return 0
+  mk_host
+  fake_ak
+  sed -i.orig '/^CLAUDE_CODE_OAUTH_TOKEN=/d' "$HOME/.config/agentkit/env" && rm -f "$HOME/.config/agentkit/env.orig"
+  profile 'host_profiles = true'
+  run_cmd bash -c 'cd "$1" && PATH="$2:$PATH" "$3" doctor' _ "$REPO" "$SANDBOX/akbin" "$DCK"
+  assert_contains "$RUN_OUT" "claude @default will not be logged in inside" "the doctor says the default Claude account will not be logged in"
+  assert_contains "$RUN_OUT" "claude setup-token" "with the fix: a long-lived token in ak's env file"
+  assert_contains "$RUN_OUT" "log in once inside" "or a login the claude volume keeps"
+  assert_not_contains "$RUN_OUT" "CLAUDE_CODE_OAUTH_TOKEN not copied" "instead of the bare not-copied line"
+}
