@@ -46,6 +46,10 @@ RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}
       AGENTKIT_PROFILES_DIR: /home/dev/.dck/volumes/agentkit/profiles
 ```
 
+- **Codex skips its startup update check** inside containers
+  (`check_for_update_on_startup = false` in the container's own Codex configs, written
+  by the entrypoint; never in the host's Codex home or a host-shared profile): dck pins
+  every CLI version. Codex's hook trust screen is left to the developer.
 - **The kit's agent skills.** `agentkit`, `agentkit-setup` and `agentkit-orchestrate`
   come from the same verified release tarball into the image's shared skills directory
   (`/usr/local/share/dck/skills`); at every start the entrypoint links them, with the

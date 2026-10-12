@@ -7,6 +7,19 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.3.4] — 2026-10-12
+
+Interface stays **2**.
+
+### Changed
+
+- **Codex skips its startup update check inside containers.** The entrypoint
+  (`dck_codex_config`) writes `check_for_update_on_startup = false` into the container's
+  own Codex configs (`~/.codex` on its volume, ak codex profiles on the container's
+  volume) at every start, since dck pins every CLI version. Never in the host's Codex
+  home or a host-shared profile; a value the developer set is kept. Codex's hooks are
+  not pre-trusted: that consent stays the developer's.
+
 ## [0.3.3] — 2026-10-12
 
 Interface stays **2**. Additive: a repository that sets none of the new keys renders
@@ -660,7 +673,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.4
 [0.3.3]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.3
 [0.3.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.2
 [0.3.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.1

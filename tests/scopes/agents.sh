@@ -521,3 +521,38 @@ default_profile = { claude = "@work1", codex = "nope" }'
   run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" config show --repo "$REPO" --format json
   assert_contains "$RUN_ERR" "agents.default_profile is a host-profile setting" "a repository cannot set it"
 }
+
+# v0.3.4: Codex never checks for an update at startup inside a container — only
+# in the container's own configs; the host's Codex home and host-shared profiles
+# are never written; hooks are never pre-trusted.
+test_codex_update_check_off_only_in_own_configs() {
+  mk_container_home
+  local own="$SANDBOX/h/.dck/volumes/codex/codex" p="$SANDBOX/h/.dck/volumes/agentkit/profiles/codex"
+  mkdir -p "$own" "$p/own1" "$p/mine"
+  ln -sfn "$own" "$SANDBOX/h/.codex"
+  printf '[projects."/app"]\ntrust_level = "trusted"\n' > "$own/config.toml"
+  printf 'check_for_update_on_startup = true\n' > "$p/mine/config.toml"
+  local host_before; host_before="$(cat "$SANDBOX/h/.dck/host/codex/config.toml")"
+  EP_FUNCS=dck_codex_config ep DCK_AGENTS="codex" AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  assert_rc 0 "dck_codex_config runs"
+  assert_eq "$(head -1 "$own/config.toml")" "check_for_update_on_startup = false" "the container's ~/.codex skips the update check (a top-level key, before any table)"
+  assert_contains "$(cat "$own/config.toml")" '[projects."/app"]' "the rest of the config is kept"
+  assert_eq "$(cat "$p/own1/config.toml")" "check_for_update_on_startup = false" "an ak codex profile on the container's volume too"
+  assert_eq "$(cat "$p/mine/config.toml")" "check_for_update_on_startup = true" "a value the developer set is kept"
+  assert_contains "$RUN_ERR" "codex: startup update check off in 2 config(s)" "and logged"
+  EP_FUNCS=dck_codex_config ep DCK_AGENTS="codex" AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  assert_not_contains "$RUN_ERR" "update check off" "a second start changes nothing"
+  assert_eq "$(grep -c check_for_update_on_startup "$own/config.toml")" "1" "the key is written once"
+  # The host's Codex home and host-shared profiles: never written.
+  mkdir -p "$SANDBOX/h/.dck/host/agentkit/profiles/codex/work1"
+  printf 'model = "w"\n' > "$SANDBOX/h/.dck/host/agentkit/profiles/codex/work1/config.toml"
+  ln -sfn "$SANDBOX/h/.dck/host/codex" "$SANDBOX/h/.codex"
+  EP_FUNCS=dck_codex_config ep DCK_AGENTS="codex" DCK_HOST_CODEX="$SANDBOX/h/.dck/host/codex" DCK_HOST_PROFILES="codex" \
+     AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/host/agentkit/profiles"
+  assert_eq "$(cat "$SANDBOX/h/.dck/host/codex/config.toml")" "$host_before" "the host's Codex home is never written"
+  assert_eq "$(cat "$SANDBOX/h/.dck/host/agentkit/profiles/codex/work1/config.toml")" 'model = "w"' "nor a host-shared codex profile"
+  assert_not_contains "$(cat "$own/config.toml" "$p/own1/config.toml")" "hooks" "hooks are never pre-trusted"
+  EP_FUNCS=dck_codex_config ep DCK_AGENTS="claude" AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  assert_not_contains "$RUN_ERR" "codex:" "without codex, nothing"
+  assert_contains "$(sed -n '/^dck_start() {/,/^}/p' "$DCK_REPO/lib/entrypoint.sh")" "dck_codex_config || true" "dck_start runs it at every start"
+}

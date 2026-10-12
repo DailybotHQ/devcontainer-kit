@@ -24,6 +24,7 @@
 #   dck_git_identity_host                    the host's git identity pushed by `dck up` (stdin; DCK_GIT_* wins)
 #   dck_skills_link                          herdr-peers and Herdr skills into each agent's skills dir
 #   dck_agent_trust                          the workspace trusted by Claude and Codex (autonomy on)
+#   dck_codex_config                         Codex's startup update check off, in the container's own configs
 #   dck_ssh_agent_access                     the mounted host SSH agent socket usable by the user
 #   dck_ssh_copy_keys                        [ssh] copy_keys: the host's ~/.ssh/id_* keys into ~/.ssh
 #   dck_herdr_self <id|->                    this container's host-catalog machine id (HERDR_PEERS_SELF)
@@ -699,6 +700,68 @@ print(changed)
 }
 
 # --------------------------------------------------------------------------
+# dck_codex_config — Codex inside a container never checks for an update at
+# startup (check_for_update_on_startup = false): dck pins every CLI version, and
+# an update offered there would be lost on the next rebuild. Written in the
+# container's OWN Codex configs only — ~/.codex on its volume and the ak codex
+# profiles on the container's volume — never in the host's Codex home or a
+# host-shared profile (host_profiles). A value the developer set is kept.
+# Codex's hooks are not touched: trusting them is a consent the developer gives.
+# --------------------------------------------------------------------------
+dck_codex_config() {
+  _dck_env
+  case " ${DCK_AGENTS:-} " in *" codex "*) ;; *) return 0 ;; esac
+  local profiles="${AGENTKIT_PROFILES_DIR:-$DCK_PERSIST_ROOT/agentkit/profiles}" dirs="" dir
+  if ! _dck_host_codex; then
+    dirs="$DCK_HOME/.codex"
+  fi
+  case " ${DCK_HOST_PROFILES:-} " in
+    *" codex "*) ;;
+    *) for dir in "$profiles"/codex/*; do [ -d "$dir" ] && [ ! -L "$dir" ] && dirs="$dirs
+$dir"; done ;;
+  esac
+  [ -n "$dirs" ] || return 0
+  local n
+  n="$(printf '%s\n' "$dirs" | _dck_as_user python3 -I -c '
+import os, re, sys
+n = 0
+own = os.path.realpath(sys.argv[1]) + os.sep
+for d in sys.stdin.read().splitlines():
+    d = d.strip()
+    if not d or not os.path.isdir(d):
+        continue
+    # ~/.codex is a link onto the own volume of the container; any other link is skipped.
+    if os.path.islink(d) and not os.path.realpath(d).startswith(own):
+        continue
+    path = os.path.join(d, "config.toml")
+    if os.path.islink(path):
+        continue
+    lines, mode = [], 0o600
+    if os.path.exists(path):
+        mode = os.stat(path).st_mode & 0o777
+        try:
+            lines = open(path).read().splitlines()
+        except OSError:
+            continue
+    first_table = next((i for i, l in enumerate(lines) if l.lstrip().startswith("[")), len(lines))
+    if any(re.match(r"^\s*check_for_update_on_startup\s*=", l) for l in lines[:first_table]):
+        continue  # the developer chose; keep it
+    lines.insert(first_table, "check_for_update_on_startup = false")
+    if first_table < len(lines) - 1 and lines[first_table + 1].strip():
+        lines.insert(first_table + 1, "")
+    tmp = "%s.dck-tmp-%d" % (path, os.getpid())
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
+    with os.fdopen(fd, "w") as fh:
+        fh.write("\n".join(lines) + "\n")
+    os.replace(tmp, path)
+    n += 1
+print(n)
+' "$DCK_PERSIST_ROOT" 2>/dev/null)" || { dck_log "codex: could not write the update-check setting"; return 0; }
+  [ "${n:-0}" = "0" ] || dck_log "codex: startup update check off in ${n} config(s) (dck pins the CLI version)"
+  return 0
+}
+
+# --------------------------------------------------------------------------
 # dck_start — the standard sequence (what /usr/local/bin/dck-entrypoint runs)
 # --------------------------------------------------------------------------
 
@@ -1233,6 +1296,7 @@ dck_start() {
   dck_ssh_copy_keys || true
   dck_skills_link || true
   dck_agent_trust || true
+  dck_codex_config || true
   dck_herdr_config || true
   dck_herdr_agent_link || true
   dck_env_profile || true
