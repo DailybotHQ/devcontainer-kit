@@ -780,7 +780,8 @@ test_mesh_repins_a_rebuilt_peer() {
   DREPO="$SANDBOX/other" d herdr add
   mk_repo proj 22040
   d herdr add
-  local kh="$HOME/.config/dck/ssh/known_hosts" newkey="AAAAC3NzaC1lZDI1NTE5AAAAIRebuiltPeerHostKeyFakeOnlyForTests0000000000"
+  local kh="$HOME/.config/dck/ssh/known_hosts" newkey
+  newkey="AAAAC3NzaC1lZDI1NTE5AAAAI$(printf 'R%.0s' $(seq 1 43))"
   printf 'dck-other ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOldPeerHostKeyFakeOnlyForTests00000000000000\n' >> "$kh"
   printf 'other-app-1\n' > "$DCK_FAKE_STATE/ps_publish_22041"
   printf 'ssh-ed25519 %s dck-host-key\n' "$newkey" > "$DCK_FAKE_STATE/host_key_pub_other-app-1"
