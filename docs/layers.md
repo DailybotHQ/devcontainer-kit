@@ -64,7 +64,9 @@ RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}
   the shell's `node` and npm trees are never mixed: `ak install` runs with the
   agents' Node first on PATH, and every npm-installed agent CLI whose entry point is
   a node script gets a launcher in `~/.local/bin` that runs it on that Node.
-  `node-24` (or any image with a current Node) needs none of this.
+  `node-24` (or any image with a current Node) needs none of this. A repository whose
+  own tooling needs that Node too sets `[agents] node_first = true`: `/opt/dck/node/bin`
+  then comes first on PATH for every process and login shell.
 - **One named volume per CLI home**, per compose project. At start the
   entrypoint (`dck_layer_persist`, [entrypoint.md](entrypoint.md)) links each
   kind's home onto its volume:

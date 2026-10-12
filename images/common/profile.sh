@@ -10,6 +10,11 @@ export PATH
 export EDITOR="${EDITOR:-nvim}" VISUAL="${VISUAL:-nvim}" GIT_EDITOR="${GIT_EDITOR:-nvim}"
 # The container's own environment for ssh sessions (written by dck_env_profile).
 if [ -r "$HOME/.dck/env.sh" ]; then . "$HOME/.dck/env.sh"; fi
+# [agents] node_first: the agents' own Node first, also in login shells (Debian's
+# /etc/profile resets the image's ENV PATH). Only when that Node was installed.
+if [ "${DCK_NODE_FIRST:-0}" = "1" ] && [ -x /opt/dck/node/bin/node ]; then
+  case ":${PATH}:" in *":/opt/dck/node/bin:"*) ;; *) PATH="/opt/dck/node/bin:${PATH}"; export PATH ;; esac
+fi
 # herdr-peers' reply route: this container's machine id in the host's Herdr catalog
 # (written by `dck up` / `dck herdr add|mesh`; dck_herdr_self). Codex panes cannot
 # discover it, so asks from them failed with "no reply route" without it.

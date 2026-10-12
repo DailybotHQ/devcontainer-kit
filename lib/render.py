@@ -706,6 +706,13 @@ def layers_block(values):
             "# Dailybot layer (layers.dailybot = true): requested by the dailybot addon.",
             "RUN DCK_USER=%s dck-layer dailybot" % user,
         ]
+    if values["layers.agents"] and values.get("agents.node_first"):
+        lines += [
+            "# [agents] node_first = true: the agents' Node (/opt/dck/node, present when the",
+            "# image's node is older than the pinned major) first on PATH for every process.",
+            "ENV PATH=/opt/dck/node/bin:$PATH \\",
+            "    DCK_NODE_FIRST=1",
+        ]
     if not values["layers.editor"]:
         lines += [
             "# Editor layer off (layers.editor = false): nano is the default editor.",

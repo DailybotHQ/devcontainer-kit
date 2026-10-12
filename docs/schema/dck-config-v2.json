@@ -142,6 +142,11 @@
           },
           "uniqueItems": true,
           "description": "ak alias presets turned on; absent = classic and providers (as before v0.3.3); new renders write []"
+        },
+        "node_first": {
+          "type": "boolean",
+          "default": false,
+          "description": "put the agents' own Node (/opt/dck/node, installed when the image's node is older than the pinned major) first on PATH for every process and login shell, for a repository whose own tooling needs it; off: the image's node stays first"
         }
       }
     },

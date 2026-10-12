@@ -863,3 +863,20 @@ test_no_dev_sh() {
   init_repo "$e" --flavour debian --ssh-port 0 --no-dev-sh --yes
   assert_absent "$e/dev.sh" "no dev.sh is created"
 }
+
+# #22: [agents] node_first puts the agents' Node first; off by default.
+test_agents_node_first() {
+  local r
+  r="$(new_repo nf)"
+  init_repo "$r" --flavour python-3.13 --agents --clis "codex" --ssh-port 0 --yes
+  assert_not_contains "$(cat "$r/docker/local/app/Dockerfile")" "/opt/dck/node/bin" "off by default: the image's node stays first"
+  set_toml "$r" 's = s.replace("[agents]\n", "[agents]\nnode_first = true\n", 1)'
+  init_repo "$r" --yes
+  assert_rc 0 "node_first is accepted"
+  assert_contains "$(cat "$r/docker/local/app/Dockerfile")" 'ENV PATH=/opt/dck/node/bin:$PATH' "the agents' Node comes first for every process"
+  local d; d="$(new_repo nf2)"
+  init_repo "$d" --flavour debian --no-agents --ssh-port 0 --yes
+  set_toml "$d" 's = s.replace("[agents]\n", "[agents]\nnode_first = true\n", 1)'
+  init_repo "$d" --yes
+  assert_contains "$RUN_ERR" "agents.node_first is set but layers.agents is false" "without the agents layer it warns"
+}

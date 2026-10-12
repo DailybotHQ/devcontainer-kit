@@ -82,6 +82,9 @@ REPO_RULES = {
     # services' data volumes keep reattaching: <project>_<name>).
     "compose.volumes": ("volume_list", [], ("pattern", RE_VOLUME)),
     "agents.presets": ("preset_list", None, ("enum", AK_PRESETS)),
+    # The agents' own Node (/opt/dck/node) first on PATH, for a repository whose
+    # own tooling needs that Node too. Off: the image's node stays first.
+    "agents.node_first": ("bool", False, None),
     "layers.agents": ("bool", False, None),
     "layers.dailybot": ("bool", False, None),
     "layers.editor": ("bool", True, None),
@@ -342,6 +345,9 @@ def validate(data, kind="repo", path="dck.toml"):
             effective[key] = list(default) if isinstance(default, list) else (
                 dict(default) if isinstance(default, dict) else default)
     if kind == "repo" and not problems:
+        if effective["agents.node_first"] and not effective["layers.agents"]:
+            warnings.append("%s: agents.node_first is set but layers.agents is false; there is no agents' "
+                            "Node to put first" % path)
         if effective["agents.clis"] and not effective["layers.agents"]:
             warnings.append("%s: agents.clis is set but layers.agents is false; no CLI will be installed" % path)
         ssh = effective["ssh_port"]

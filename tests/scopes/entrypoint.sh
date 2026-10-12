@@ -518,3 +518,14 @@ test_git_identity_from_the_host() {
   assert_eq "$(cat "$DCK_PERSIST_ROOT/state/git-identity-source")" "host+env" "both sources are recorded"
   assert_contains "$RUN_ERR" "1 kept from DCK_GIT_*" "and logged"
 }
+
+test_profile_node_first() {
+  run_cmd env HOME="$DCK_HOME" PATH="/usr/bin:/bin" DCK_NODE_FIRST=1 sh -c '. "$1"; printf "%s" "$PATH"' _ "$DCK_REPO/images/common/profile.sh"
+  if [ -x /opt/dck/node/bin/node ]; then
+    assert_match "$RUN_OUT" '^/opt/dck/node/bin:' "node_first puts the agents' Node first in login shells"
+  else
+    assert_not_contains "$RUN_OUT" "/opt/dck/node" "only when that Node was installed"
+  fi
+  run_cmd env HOME="$DCK_HOME" PATH="/usr/bin:/bin" sh -c '. "$1"; printf "%s" "$PATH"' _ "$DCK_REPO/images/common/profile.sh"
+  assert_not_contains "$RUN_OUT" "/opt/dck/node" "off by default"
+}

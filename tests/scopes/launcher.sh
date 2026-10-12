@@ -292,7 +292,13 @@ test_python_isolation() {
 }
 
 test_no_repository_names_hardcoded() {
-  assert_no_match "$(cat "$DCK_REPO"/bin/* "$DCK_REPO"/lib/*.sh "$DCK_REPO"/lib/*.py)" 'dailybot|dwpwebsite|pertechtalks|xergioalex|deepworkplan-website' "no repository is known by name"
+  # Code (comments aside) never special-cases a repository or a person. The
+  # dailybot layer, its com.dailybothq label and "ported from" credits are not
+  # repository names. (This assertion used to pass vacuously: a SIGPIPE under
+  # pipefail hid its matches; see assert_match in tests/lib.sh.)
+  local code
+  code="$(cat "$DCK_REPO"/bin/* "$DCK_REPO"/lib/*.sh "$DCK_REPO"/lib/*.py | grep -vE '^[[:space:]]*#' | grep -vE '^[[:space:]]*(Ported from|launcher|the most complete)')"
+  assert_no_match "$code" 'dwpwebsite|pertechtalks|xergioalex|deepworkplan-website|dailybot-(core|hub|platform|webapp)|dailybotplatformlocal' "no repository is known by name"
 }
 
 test_system_bash() {

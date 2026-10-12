@@ -7,6 +7,11 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.3.3] — 2026-10-12
+
+Interface stays **2**. Additive: a repository that sets none of the new keys renders
+byte-identically to v0.3.2.
+
 ### Added
 
 - **`HERDR_PEERS_SELF` inside containers.** Asks from a Codex pane failed with "no reply
@@ -35,6 +40,8 @@ and the interface number).
     `[build] dockerfile` (a Dockerfile shared by several services, where dck's blocks and
     its `dck/` directory go).
   - `[compose] project` and `[compose] networks` (one top-level `networks:`, external).
+  - `[agents] node_first = true`: the agents' own Node first on PATH (Dockerfile
+    `ENV` and login shells), for a repository whose tooling needs it; off by default.
   - `dev_sh = false` (`dck init --no-dev-sh`): a repository that keeps its own `dev.sh`;
     `dck init` neither creates nor touches it.
   - `[agents] presets`: the ak alias presets (`classic`, `providers`). Unset keeps both,
@@ -650,7 +657,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.3
 [0.3.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.2
 [0.3.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.1
 [0.3.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.0

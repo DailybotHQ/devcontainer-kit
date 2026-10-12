@@ -108,13 +108,15 @@ assert_not_contains() {
   esac
 }
 
+# grep reads its whole input (no -q): an early exit would SIGPIPE printf, which
+# fails the assertion under pipefail on a large text.
 assert_match() {
-  if printf '%s\n' "$1" | grep -Eq -- "$2"; then pass "$3"; else fail "$3" "no line matches /$2/ in:
+  if printf '%s\n' "$1" | grep -E -- "$2" >/dev/null; then pass "$3"; else fail "$3" "no line matches /$2/ in:
 $(printf '%s' "$1" | head -c 2000)"; fi
 }
 
 assert_no_match() {
-  if printf '%s\n' "$1" | grep -Eq -- "$2"; then fail "$3" "a line matches /$2/:
+  if printf '%s\n' "$1" | grep -E -- "$2" >/dev/null; then fail "$3" "a line matches /$2/:
 $(printf '%s\n' "$1" | grep -E -- "$2" | head -5)"; else pass "$3"; fi
 }
 
