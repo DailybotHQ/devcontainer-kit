@@ -11,6 +11,7 @@
 #   info_out             stdout of `docker info` ("version|os|name")
 #   image_inspect_out    stdout of `docker image inspect` (RepoDigests JSON)
 #   container_image_env  /etc/dck/image.env as `docker exec` would print it
+#   container_ssh_manifest  ~/.ssh/.dck-copied-keys as `docker exec` would print it
 st="${DCK_FAKE_STATE:-/nonexistent}"
 printf 'docker %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
 # Record stdin for exec calls that pipe data in (e.g. authorized keys).
@@ -26,6 +27,11 @@ case "$1" in
     [ -f "$st/image_inspect_out" ] || { echo "No such image" >&2; exit 1; }
     cat "$st/image_inspect_out"; exit 0 ;;
   exec)
+    # docker exec <container> cat ~/.ssh/.dck-copied-keys -> $st/container_ssh_manifest
+    case "${*: -1}" in
+      */.ssh/.dck-copied-keys) [ -f "$st/container_ssh_manifest" ] || exit 1
+        cat "$st/container_ssh_manifest"; exit 0 ;;
+    esac
     # docker exec <container> cat /etc/dck/image.env -> $st/container_image_env
     [ -f "$st/container_image_env" ] || exit 1
     cat "$st/container_image_env"; exit 0 ;;

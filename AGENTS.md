@@ -16,7 +16,7 @@ devcontainer-kit (alias dck); skill dck
 | --- | --- |
 | `bin/dck`, `bin/devcontainer-kit` | the launcher (bash 3.2+) |
 | `lib/*.sh` | launcher modules: `common`, `launcher`, `herdr`, `doctor`; `entrypoint.sh` is the in-container library |
-| `lib/*.py` | python side (stdlib, run as `python3 -I lib/dckpy.py`): `config`, `render` (`dck init`), `devc`, `jsonc`, `sshconf`, `doctor`, `hostagents` (`[agents] host_profiles`) |
+| `lib/*.py` | python side (stdlib, run as `python3 -I lib/dckpy.py`): `config`, `render` (`dck init`), `devc`, `jsonc`, `sshconf`, `doctor`, `hostagents` (`[agents] host_profiles`), `sshkeys` (`[ssh] copy_keys`) |
 | `lib/layers/` | opt-in layer installers baked into the images (agents, dailybot) |
 | `src/template/` | the Dev Container template `dck init` renders |
 | `images/` | base image Dockerfiles per flavour, `common/` build steps, `versions.env` (the single pin file) |
@@ -42,7 +42,7 @@ The test map lives in [`docs/TESTING_GUIDE.md`](docs/TESTING_GUIDE.md).
 ## Quick Commands
 
 ```bash
-bash tests/run.sh                     # full gate (14 scopes; docker last, "unavailable" without a daemon)
+bash tests/run.sh                     # full gate (15 scopes; docker last, "unavailable" without a daemon)
 bash tests/run.sh <scope>             # one area (map: docs/TESTING_GUIDE.md)
 bash scripts/check-public-hygiene.sh  # no private names, personal paths or secrets
 shellcheck -S warning bin/* lib/*.sh scripts/*.sh tests/run.sh install.sh

@@ -353,6 +353,19 @@ def host_profiles_info(merged, problems):
             "env_names": p["env_names"], "notes": [m for _lvl, m in lines]}
 
 
+def ssh_keys_info(merged, container_name):
+    """[ssh] copy_keys: the opt-in state and key file NAMES (never contents).
+    `copied` comes from the running container's manifest, else null."""
+    import sshkeys
+    p = sshkeys.plan(merged)
+    copied = None
+    if container_name:
+        rc, out = run(["docker", "exec", container_name, "cat", p["manifest"]])
+        copied = sshkeys.parse_manifest(out) if rc == 0 else []
+    return {"enabled": p["enabled"], "reason": p["reason"] or None,
+            "host_keys": p["host_keys"], "copied": copied}
+
+
 def collect(start, profile=None):
     problems = []
     version = config_version()
@@ -377,6 +390,7 @@ def collect(start, profile=None):
         "runtime": rt,
         "profile": prof_out,
         "repo": None, "layers": None, "ssh": None, "herdr": None, "drift": [], "host_profiles": None,
+        "ssh_keys": None,
         "problems": problems,
     }
     merged = None
@@ -403,6 +417,8 @@ def collect(start, profile=None):
                     problems.append("sshd does not answer on %s:%s" % (host, merged["ssh_port"]))
             report["ssh"] = ssh
             report["host_profiles"] = host_profiles_info(merged, problems)
+            report["ssh_keys"] = ssh_keys_info(
+                merged, report["repo"]["container"]["name"] if container_running else None)
     h = herdr_info(merged, problems)
     if h["registered"] and report["ssh"] and report["ssh"]["answering"]:
         rc, _ = run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=3", h["alias"],
@@ -452,6 +468,14 @@ def text(report):
     if s:
         out.append("ssh              %s" % ("off" if not s["enabled"] else "%s:%s, key %s, answering %s" % (
             s["bind"], s["port"], "present" if s["identity_present"] else "missing", yes(s["answering"]))))
+    k = report.get("ssh_keys")
+    if k:
+        if not k["enabled"]:
+            out.append("ssh keys         %s" % k["reason"])
+        elif k["copied"] is not None:
+            out.append("ssh keys         copy_keys on; ssh keys copied: %s" % (", ".join(k["copied"]) or "none"))
+        else:
+            out.append("ssh keys         copy_keys on; copied at the next start: %s" % (", ".join(k["host_keys"]) or "none"))
     hp = report.get("host_profiles")
     if hp:
         out += ["%-17s%s" % ("host profiles", m[len("host profiles: "):]) for m in hp["notes"]]

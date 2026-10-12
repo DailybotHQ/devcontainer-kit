@@ -25,6 +25,7 @@ Set by the compose file `dck init` renders ([init.md](init.md)):
 | `DCK_REPO_HOOK` | `$DCK_WORKSPACE/docker/local/dev-setup-hook.sh` | the repository hook |
 | `DCK_HOST_PROFILES` | empty | the CLIs whose ak profiles are the host's (`[agents] host_profiles`, set by `dck up`'s runtime overlay) |
 | `DCK_HOST_CODEX` | empty | the mounted host Codex home (`$DCK_HOME/.dck/host/codex`); `~/.codex` links to it. Ignored outside `$DCK_HOME/.dck/host/` |
+| `DCK_SSH_COPY_KEYS` | `0` | `1` copies the host's `~/.ssh/id_*` keys from `~/.ssh_host` (`[ssh] copy_keys`, set with that read-only bind by `dck up`'s runtime overlay); see `dck_ssh_copy_keys` |
 | `AGENTKIT_PERMISSIONS` | empty | `ask` turns autonomy off: `dck_agent_trust` then writes nothing |
 
 ## Functions
@@ -116,6 +117,19 @@ only in the container's own homes (`~/.claude.json`, `~/.claude/settings.json`, 
 profiles on the container's volume), never in a profile listed by `DCK_HOST_PROFILES`.
 Idempotent; an invalid file is left alone; only the number of files changed is logged.
 
+### `dck_ssh_copy_keys`
+
+`[ssh] copy_keys` (host profile, opt-in; [SECURITY.md](SECURITY.md#host-ssh-keys-ssh-copy_keys)).
+With `DCK_SSH_COPY_KEYS=1`, copies every regular `id_*` file of `~/.ssh_host` (the
+host's `~/.ssh`, mounted read-only) into `~/.ssh` on the state volume: private keys
+0600, `.pub` 0644, `~/.ssh` 0700. Runs at every start: a key changed on the host is
+refreshed, one removed from the host is removed. Only `id_*` names are written, so
+dck's `config`, `config.d/`, `authorized_keys` and `known_hosts.dck-host` are never
+touched; a key the container made itself under the same name is kept, and symlinks are
+not followed. The copied names go to `~/.ssh/.dck-copied-keys`; without
+`DCK_SSH_COPY_KEYS=1` the next start removes exactly those files. Names only are
+logged (`ssh keys copied: …`), never a key's contents.
+
 ### `dck_start`
 
 The standard sequence:
@@ -124,7 +138,8 @@ The standard sequence:
    machines (`~/.local/state/herdr/client`) and `~/.bash_history` on
    the per-project `state` volume (and the agents layer's homes, see
    [layers.md](layers.md));
-2. git identity, SSH agent access, skills links and `dck_agent_trust`;
+2. git identity, SSH agent access, `dck_ssh_copy_keys`, skills links (herdr-peers,
+   Herdr and, with the agents layer, coding-agents-kit's skills) and `dck_agent_trust`;
 3. `dck_herdr_config`;
 4. `dck_env_profile`;
 5. `dck_sshd`;

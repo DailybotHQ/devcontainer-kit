@@ -37,6 +37,7 @@ change touches shared code (`lib/common.sh`, `lib/dckpy.py`, `bin/dck`).
 | `launcher` | `bin/dck`, `bin/devcontainer-kit`, `lib/*.sh`, `install.sh` (fake `docker`/`devcontainer`) | no |
 | `layers` | the agents/editor/dailybot layers in the template and entrypoint | no |
 | `agents` | `[agents] host_profiles`: `lib/hostagents.py`, the runtime overlay and env file (`lib/launcher.sh`), the doctor's report, the entrypoint's host Codex home and `dck_agent_trust` (fake `docker`, a fake host `ak profiles --json`) | no |
+| `sshkeys` | `[ssh] copy_keys`: `lib/sshkeys.py`, the runtime overlay and `dck setup`'s offer (`lib/launcher.sh`), `config copy-keys` (`lib/config.py`), the entrypoint's `dck_ssh_copy_keys` (modes, refresh, never-overwrite, off removes the copies), the doctor's `ssh_keys` report (fake `docker`, throwaway keys) | no |
 | `herdr` | `lib/herdr.sh`, `lib/sshconf.py` (fake `herdr`/`ssh`/`docker`, sandbox `~/.ssh`) | no |
 | `doctor` | `lib/doctor.py`, `lib/doctor.sh`, `docs/schema/dck-doctor-v2.json` (validated by `tests/py/minischema.py`), `skills/dck/` | no |
 | `security` | static posture checks over `src/template/`, `images/`, `lib/` | no |

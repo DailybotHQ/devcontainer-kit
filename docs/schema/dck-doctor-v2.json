@@ -501,6 +501,48 @@
         }
       }
     },
+    "ssh_keys": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "[ssh] copy_keys (host profile): the opt-in state and key file names, never contents",
+      "required": [
+        "enabled",
+        "host_keys",
+        "copied"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host_keys": {
+          "type": "array",
+          "description": "the id_* files of the host's ~/.ssh the entrypoint copies",
+          "items": {
+            "type": "string",
+            "pattern": "^id_[A-Za-z0-9._-]+$"
+          }
+        },
+        "copied": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "description": "the names the running container copied (its manifest); null without a running container",
+          "items": {
+            "type": "string",
+            "pattern": "^id_[A-Za-z0-9._-]+$"
+          }
+        }
+      }
+    },
     "host_profiles": {
       "type": [
         "object",

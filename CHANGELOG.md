@@ -7,6 +7,43 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-10-11
+
+Interface stays **2**.
+
+### Added
+
+- **The host's SSH keys inside containers, opt-in** (`[ssh] copy_keys = true` in the host
+  profile; off by default, a repository's `dck.toml` cannot set it). Tools that only offer
+  key files, such as `gh auth login`, ignored the forwarded agent and asked to generate a
+  new key. With it on, `dck up` binds the host's `~/.ssh` read-only at `~/.ssh_host`
+  through a runtime compose overlay (`$TMPDIR/dck-<uid>/<project>-sshkeys.yml`), and every
+  container start copies its `id_*` keys into the container's `~/.ssh` on the state
+  volume (private 0600, `.pub` 0644, refreshed when they change on the host, removed when
+  removed there). dck's own `config`, `config.d/`, `authorized_keys` and
+  `known_hosts.dck-host` are never touched, a key the container made itself is kept, and
+  the agent forwarding is unchanged. Turning it off removes the copies at the next start.
+  Private keys then rest in the state volume: the trade-off and the wipe are in
+  `docs/SECURITY.md`. New entrypoint function `dck_ssh_copy_keys`.
+- `dck setup` asks once, on a terminal, whether to copy the host's SSH keys (default no)
+  and records the answer in the profile's `[ssh]` table.
+- `dck doctor` reports the opt-in and the key file names (`ssh keys copied: …`, names
+  only); `doctor --json` gains an optional `ssh_keys` object (`enabled`, `reason`,
+  `host_keys`, `copied`).
+- The agents layer installs coding-agents-kit's three skills (`agentkit`,
+  `agentkit-setup`, `agentkit-orchestrate`) from the same verified release tarball into
+  the image's shared skills directory; the entrypoint links them into every agent's
+  skills directory at each start, so a recreate no longer loses them.
+
+### Fixed
+
+- A container built from scratch reaches the host and its peers at once: `dck rebuild`,
+  `dck start` and `dck restart` now run the same post-start steps as `dck up` — the Herdr
+  machine is registered (re-added when it was removed, its host key re-pinned), the mesh
+  and the host-catalog mirror are pushed, and the layout is created. A rebuild after the
+  volumes were removed left an empty Herdr catalog inside until `dck herdr mesh` ran by
+  hand.
+
 ### Changed
 
 - Agent tooling: the vendored `deepworkplan` skill moves to v7.6.1 (`skills-lock.json`,
@@ -517,7 +554,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.2
 [0.3.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.1
 [0.3.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.0
 [0.2.11]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.2.11

@@ -116,6 +116,18 @@ def cmd_config(args):
                 print("%s=%s" % (k, v))
             print("DCK_SSH_IDENTITY=%s" % config.expand_home(prof["ssh.identity"], os.environ))
             return EXIT_OK
+        if sub == "copy-keys":
+            # [ssh] copy_keys of the host profile: prints true|false|unset; with
+            # --set, records the answer only while it is unset.
+            name, value = opt(args, "--profile"), opt(args, "--set")
+            if value is not None:
+                if value not in ("true", "false"):
+                    return usage("config copy-keys [--profile NAME] [--set true|false]")
+                print("recorded" if config.record_copy_keys(value == "true", name) else
+                      config.profile_copy_keys(name))
+                return EXIT_OK
+            print(config.profile_copy_keys(name))
+            return EXIT_OK
         if sub == "rules":
             out = {}
             for kind, rules in (("repo", config.REPO_RULES), ("profile", config.PROFILE_RULES)):
@@ -381,12 +393,39 @@ def cmd_agents(args):
     return EXIT_OK
 
 
+def cmd_sshkeys(args):
+    """`sshkeys overlay --repo DIR --out FILE [--profile NAME]`: the runtime
+    overlay of [ssh] copy_keys (written, or removed when off)."""
+    import devc
+    import sshkeys
+    if not args or args[0] != "overlay":
+        return usage("sshkeys overlay --repo DIR --out FILE [--profile NAME]")
+    args = args[1:]
+    repo, out, profile = opt(args, "--repo"), opt(args, "--out"), opt(args, "--profile")
+    if not (repo and out):
+        return usage("sshkeys overlay --repo DIR --out FILE")
+    try:
+        merged, _ = config.effective(repo, default_tag(), profile)
+        p = sshkeys.write(merged, devc.read(repo)["service"], out)
+    except (sshkeys.SshKeysError, devc.DevcError, OSError) as exc:
+        sys.stderr.write("dck: ssh keys: %s\n" % exc)
+        return EXIT_REFUSED
+    except config.ConfigError as exc:
+        sys.stderr.write("dck: invalid configuration\n%s\n" % exc)
+        return EXIT_CONFIG
+    # File names only: never a key's contents.
+    print("enabled=%s" % ("1" if p["enabled"] else "0"))
+    print("keys=%s" % " ".join(p["host_keys"]))
+    print("reason=%s" % p["reason"])
+    return EXIT_OK
+
+
 def cmd_doctor(args):
     import doctor
     return doctor.main(args)
 
 
-GROUPS = {"agents": cmd_agents, "doctor": cmd_doctor, "config": cmd_config, "init": cmd_init, "devc": cmd_devc, "sshconf": cmd_sshconf, "herdr": cmd_herdr}
+GROUPS = {"agents": cmd_agents, "sshkeys": cmd_sshkeys, "doctor": cmd_doctor, "config": cmd_config, "init": cmd_init, "devc": cmd_devc, "sshconf": cmd_sshconf, "herdr": cmd_herdr}
 
 
 def main(argv):

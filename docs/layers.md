@@ -46,6 +46,12 @@ RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}
       AGENTKIT_PROFILES_DIR: /home/dev/.dck/volumes/agentkit/profiles
 ```
 
+- **The kit's agent skills.** `agentkit`, `agentkit-setup` and `agentkit-orchestrate`
+  come from the same verified release tarball into the image's shared skills directory
+  (`/usr/local/share/dck/skills`); at every start the entrypoint links them, with the
+  herdr-peers and Herdr skills, into each agent's skills directory (`~/.agents/skills`,
+  `~/.claude/skills`, and the others that exist). Agent homes live on volumes, so a skill
+  installed there by hand is lost on a recreate; these are not.
 - **npm globals go to `~/.local`.** The layer writes `prefix=~/.local` to the dev
   user's `~/.npmrc` (Node's own prefix is root's), so `ak install` of npm-based
   CLIs (codex, pi, cline …) works at build time and later inside the container;

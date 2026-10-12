@@ -72,7 +72,7 @@ test_agents_layer_on_python_flavour() {
 run_layer() {
   local layer="$1"; shift
   run_cmd env DCK_VERSIONS="$DCK_REPO/images/versions.env" DCK_USER="$(id -un)" \
-    DCK_LAYER_PREFIX="$SANDBOX/prefix" DCK_LAYER_TOOL_DIR="$SANDBOX/tools" DCK_LAYER_BIN_DIR="$SANDBOX/toolbin" \
+    DCK_SKILLS_DIR="$SANDBOX/skills" DCK_LAYER_PREFIX="$SANDBOX/prefix" DCK_LAYER_TOOL_DIR="$SANDBOX/tools" DCK_LAYER_BIN_DIR="$SANDBOX/toolbin" \
     PATH="$LFIX/bin:$EXTRA_PATH$PATH" bash "$DCK_REPO/lib/layers/$layer.sh" "$@"
 }
 
@@ -90,6 +90,12 @@ mkdir -p "$HOME/.local/share/agentkit/bin"
 printf '#!/usr/bin/env bash\nprintf "ak %%s npm_prefix=%%s\\n" "$*" "${NPM_CONFIG_PREFIX:-}" >> "${DCK_FAKE_LOG:-/dev/null}"\n' > "$HOME/.local/share/agentkit/bin/ak"
 chmod +x "$HOME/.local/share/agentkit/bin/ak"
 SH
+  local skill
+  for skill in agentkit agentkit-setup agentkit-orchestrate; do
+    mkdir -p "$dir/skills/$skill/references"
+    printf -- '---\nname: %s\n---\n' "$skill" > "$dir/skills/$skill/SKILL.md"
+    printf 'ref\n' > "$dir/skills/$skill/references/r.md"
+  done
   tar -czf "$SANDBOX/akrel/agentkit.tar.gz" -C "$SANDBOX/akrel" "coding-agents-kit-$tag"
   sed "s/^AGENTKIT_SHA256=.*/AGENTKIT_SHA256=$(shasum -a 256 "$SANDBOX/akrel/agentkit.tar.gz" | cut -d' ' -f1)/" \
     "$DCK_REPO/images/versions.env" > "$SANDBOX/akrel/versions.env"
@@ -99,7 +105,7 @@ test_agents_installer_follows_the_kit_contract() {
   EXTRA_PATH="$LFIX/nodebin:"
   agentkit_fixture
   run_cmd env DCK_VERSIONS="$SANDBOX/akrel/versions.env" DCK_USER="$(id -un)" FAKE_CURL_FILE="$SANDBOX/akrel/agentkit.tar.gz" \
-    DCK_LAYER_PREFIX="$SANDBOX/prefix" PATH="$LFIX/bin:$EXTRA_PATH$PATH" bash "$DCK_REPO/lib/layers/agents.sh" claude codex
+    DCK_SKILLS_DIR="$SANDBOX/skills" DCK_LAYER_PREFIX="$SANDBOX/prefix" PATH="$LFIX/bin:$EXTRA_PATH$PATH" bash "$DCK_REPO/lib/layers/agents.sh" claude codex
   assert_rc 0 "the agents installer runs"
   local tag; tag="$(sed -n 's/^AGENTKIT_TAG=//p' "$DCK_REPO/images/versions.env")"
   assert_contains "$(fake_calls curl)" "https://github.com/DailybotHQ/coding-agents-kit/releases/download/$tag/coding-agents-kit-$tag.tar.gz" "coding-agents-kit comes from its pinned release tarball"
@@ -110,9 +116,15 @@ test_agents_installer_follows_the_kit_contract() {
   assert_contains "$(cat "$HOME/.bashrc")" '.local/share/agentkit/aliases.sh' "bash loads the presets"
   assert_contains "$(fake_calls ak)" "ak install claude codex npm_prefix=$HOME/.local" "ak installs exactly the requested kinds, npm globals into ~/.local"
   assert_eq "$(cat "$HOME/.npmrc")" "prefix=$HOME/.local" "the dev user's npm prefix is ~/.local (Node's prefix is root's)"
+  local skill
+  for skill in agentkit agentkit-setup agentkit-orchestrate; do
+    assert_file "$SANDBOX/skills/$skill/SKILL.md" "the kit's $skill skill lands in the shared skills directory"
+    assert_file "$SANDBOX/skills/$skill/references/r.md" "with its references ($skill)"
+  done
+  assert_contains "$RUN_ERR" "its skills agentkit, agentkit-setup, agentkit-orchestrate" "the skills are reported"
   : > "$DCK_FAKE_LOG"
   run_cmd env DCK_VERSIONS="$SANDBOX/akrel/versions.env" DCK_USER="$(id -un)" FAKE_CURL_FILE="$SANDBOX/akrel/agentkit.tar.gz" \
-    DCK_LAYER_PREFIX="$SANDBOX/prefix" PATH="$LFIX/bin:$EXTRA_PATH$PATH" bash "$DCK_REPO/lib/layers/agents.sh" claude
+    DCK_SKILLS_DIR="$SANDBOX/skills" DCK_LAYER_PREFIX="$SANDBOX/prefix" PATH="$LFIX/bin:$EXTRA_PATH$PATH" bash "$DCK_REPO/lib/layers/agents.sh" claude
   assert_eq "$(grep -c '^prefix=' "$HOME/.npmrc")" "1" "the npm prefix is written once"
   assert_eq "$(grep -c 'agentkit/aliases.sh' "$HOME/.bashrc")" "1" "the presets line is written once"
   assert_not_contains "$(fake_calls curl)" "nodejs.org" "Node is not downloaded when present"

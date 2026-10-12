@@ -138,12 +138,13 @@ load_context() {
   export DCK_SSH_HOST_CONFIG="1"  # read by host_ssh_identities
   export DCK_SSH_HOST_EXTRA=""  # read by host_ssh_identities
   DCK_HOST_PROFILES="0"  # [agents] host_profiles (host profile) with the agents layer on
+  DCK_SSH_COPY_KEYS="0"  # [ssh] copy_keys (host profile)
   while IFS= read -r line; do
     k="${line%%=*}"; v="${line#*=}"
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HOST_LISTENER|DCK_HOST_PORT|DCK_HOST_KEY|DCK_HOST_LABEL|DCK_HOST_CONFIGURED|DCK_MESH_EXTERNAL|DCK_SSH_AUTHORIZED_EXTRA|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_HOST_PROFILES|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HOST_LISTENER|DCK_HOST_PORT|DCK_HOST_KEY|DCK_HOST_LABEL|DCK_HOST_CONFIGURED|DCK_MESH_EXTERNAL|DCK_SSH_AUTHORIZED_EXTRA|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_HOST_PROFILES|DCK_SSH_COPY_KEYS|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out
@@ -200,7 +201,8 @@ resolve_backend() {
       command -v devcontainer >/dev/null 2>&1 || die "$DCK_EXIT_ENV" "DCK_BACKEND=devcontainer but the devcontainer CLI is not installed"
       BACKEND=devcontainer ;;
     auto)
-      if [ -z "$DCK_PROJECT_OVERRIDE" ] && [ "${DCK_HOST_PROFILES:-0}" != "1" ] && command -v devcontainer >/dev/null 2>&1; then
+      if [ -z "$DCK_PROJECT_OVERRIDE" ] && [ "${DCK_HOST_PROFILES:-0}" != "1" ] && [ "${DCK_SSH_COPY_KEYS:-0}" != "1" ] \
+        && command -v devcontainer >/dev/null 2>&1; then
         BACKEND=devcontainer
       else
         BACKEND=compose
@@ -210,6 +212,9 @@ resolve_backend() {
   # The host-profiles overlay is a compose file the devcontainer CLI never reads.
   if [ "$BACKEND" = devcontainer ] && [ "${DCK_HOST_PROFILES:-0}" = "1" ]; then
     warn "host profiles: DCK_BACKEND=devcontainer does not apply [agents] host_profiles (use the compose backend)"
+  fi
+  if [ "$BACKEND" = devcontainer ] && [ "${DCK_SSH_COPY_KEYS:-0}" = "1" ]; then
+    warn "ssh keys: DCK_BACKEND=devcontainer does not apply [ssh] copy_keys (use the compose backend)"
   fi
 }
 
@@ -242,6 +247,7 @@ ensure_overlay_dir() {
 
 write_overlay() {
   write_agents_overlay
+  write_sshkeys_overlay
   if [ "$DC_MOUNTS" = "0" ] && [ "$DC_ENVS" = "0" ]; then return 0; fi
   ensure_overlay_dir
   dckpy devc overlay --repo "$DC_REPO" --project "$PROJECT" --out "$(overlay_path)" >/dev/null
@@ -279,6 +285,36 @@ OUT
   return 0
 }
 
+# [ssh] copy_keys: the host's ~/.ssh bound read-only into the container through a
+# third runtime overlay; the entrypoint copies its id_* keys at every start.
+# Written when on, removed when off; key file names only are printed.
+sshkeys_overlay_path() {
+  local base="${TMPDIR:-/tmp}"
+  printf '%s/dck-%s/%s-sshkeys.yml' "${base%/}" "$(id -u)" "$PROJECT"
+}
+
+write_sshkeys_overlay() {
+  local f out line k v args on=0
+  f="$(sshkeys_overlay_path)"
+  if [ "${DCK_SSH_COPY_KEYS:-0}" != "1" ] && [ ! -f "$f" ]; then return 0; fi
+  ensure_overlay_dir
+  args=(sshkeys overlay --repo "$DC_REPO" --out "$f")
+  [ -n "${DCK_PROFILE_NAME:-}" ] && args+=(--profile "$DCK_PROFILE_NAME")
+  out="$(dckpy "${args[@]}")" || die "$DCK_EXIT_REFUSED" "ssh keys: the overlay could not be written"
+  [ "${DCK_SSH_COPY_KEYS:-0}" = "1" ] || return 0
+  while IFS= read -r line; do
+    k="${line%%=*}"; v="${line#*=}"
+    case "$k" in
+      enabled) on="$v" ;;
+      keys) [ "$on" = 1 ] && note "ssh keys: copy_keys on — the host's ~/.ssh is bound read-only; copied at start: ${v:-no id_* keys} (dck up --recreate applies a change)" ;;
+      reason) [ -n "$v" ] && note "ssh keys: $v" ;;
+    esac
+  done <<OUT
+$out
+OUT
+  return 0
+}
+
 # NOTE: --remove-orphans is never passed and must not be added. A compose
 # project may be shared, or declare services beyond runServices; with the flag,
 # starting the declared services would delete containers someone else uses.
@@ -291,6 +327,9 @@ dc() {
   fi
   if [ "${DCK_HOST_PROFILES:-0}" = "1" ] && [ -f "$(agents_overlay_path)" ]; then
     args+=(-f "$(agents_overlay_path)")
+  fi
+  if [ "${DCK_SSH_COPY_KEYS:-0}" = "1" ] && [ -f "$(sshkeys_overlay_path)" ]; then
+    args+=(-f "$(sshkeys_overlay_path)")
   fi
   docker compose "${args[@]}" "$@"
 }
@@ -676,12 +715,47 @@ EOF
   fi
   warn_missing_host_binds
   if declare -F dck_host_listener_offer >/dev/null 2>&1; then dck_host_listener_offer; fi
+  ssh_copy_keys_offer
   # dck agents / dck ask need herdr-peers on the host: install the verified copy.
   if command -v herdr >/dev/null 2>&1 && ! command -v herdr-peers >/dev/null 2>&1 \
      && declare -F dck_host_peers_install >/dev/null 2>&1 && ! dck_host_peers_bin >/dev/null 2>&1; then
     dck_host_peers_install || warn "setup: herdr-peers was not installed (dck agents and dck ask need it; retry: dck host peers install)"
   fi
   if [ "$changed" -eq 0 ]; then note "setup: everything was already in place"; else note "setup: done"; fi
+}
+
+# [ssh] copy_keys is a host decision with a real trade-off (your private keys
+# at rest in each container's state volume), so setup asks once while it is
+# unset and records the answer in the host profile; the default stays off.
+ssh_copy_keys_offer() {
+  local state ans args=(config copy-keys) f has=0
+  [ -n "${DCK_PROFILE_NAME:-}" ] && args+=(--profile "$DCK_PROFILE_NAME")
+  state="$(dckpy "${args[@]}" 2>/dev/null)" || return 0
+  [ "$state" = unset ] || return 0
+  for f in "$HOME"/.ssh/id_*; do [ -f "$f" ] && has=1 && break; done
+  [ "$has" = 1 ] || return 0
+  ans="$(dck_hook DCK_COPY_KEYS_ANSWER "")"
+  if [ -z "$ans" ]; then
+    if [ -t 0 ] && [ "${DCK_NONINTERACTIVE:-0}" != "1" ] && { : </dev/tty; } 2>/dev/null; then
+      printf '%s\n' \
+        "dck: copy your SSH keys (~/.ssh/id_*) into your dck containers at every start?" \
+        "     gh auth login and other tools that only offer key files then use the same keys" \
+        "     as this machine. Your PRIVATE keys rest in each container's state volume, and" \
+        "     code running in a container can read them. Undo: [ssh] copy_keys = false in your" \
+        "     profile, then dck up --recreate (removes the copies); docs/config.md." >&2
+      printf 'dck: copy the host SSH keys into containers? [y/N] ' >&2
+      read -r ans </dev/tty || ans=n
+    else
+      note "setup: to copy your SSH keys into containers (gh auth login): [ssh] copy_keys = true in your host profile (docs/config.md)"
+      return 0
+    fi
+  fi
+  case "$ans" in
+    y|Y|yes|YES) dckpy "${args[@]}" --set true >/dev/null || { warn "setup: could not record [ssh] copy_keys"; return 0; }
+      note "profile: recorded [ssh] copy_keys = true — run dck up --recreate (or dck rebuild) to apply it" ;;
+    *) dckpy "${args[@]}" --set false >/dev/null || { warn "setup: could not record [ssh] copy_keys"; return 0; }
+      note "profile: recorded [ssh] copy_keys = false (only the forwarded agent signs)" ;;
+  esac
 }
 
 cmd_up() {
@@ -719,6 +793,16 @@ cmd_up() {
       note "existing containers were left as they are; use --recreate to apply compose changes"
     fi
   fi
+  after_start
+}
+
+# The steps after any start that may have created the container — `up`,
+# `rebuild`, `start`, `restart`: the developer's SSH aliases, then the Herdr
+# machine (added, or re-added when it was removed; its host key re-pinned, since
+# a fresh state volume means a new one), the mesh with the host-catalog mirror,
+# and the layout. A container built from scratch must reach the host and its
+# peers without a manual `dck herdr mesh`.
+after_start() {
   host_ssh_identities
   if [ "${DCK_HERDR_MACHINE:-0}" = "1" ] && declare -F dck_herdr_after_up >/dev/null 2>&1; then
     dck_herdr_after_up || warn "the container is up, but Herdr registration did not complete — run: dck herdr status"
@@ -740,7 +824,12 @@ cmd_simple() {
   # missing would strand it with no way out but raw compose.
   if [ "$verb" != stop ]; then fast_check; write_overlay; fi
   selected_services "$@"
+  if [ "$verb" = stop ]; then
+    dc "$verb" "${SERVICES[@]}"
+    return
+  fi
   dc "$verb" "${SERVICES[@]}"
+  after_start
 }
 
 cmd_ps() {
@@ -870,7 +959,7 @@ cmd_rebuild() {
     note "recreating ${SERVICES[*]} with the new images"
     dc up -d --force-recreate "${SERVICES[@]}"
   fi
-  host_ssh_identities
+  after_start
   note "rebuild done — named volumes were kept; open a new shell so PATH reloads"
 }
 
@@ -898,6 +987,7 @@ cmd_config() {
     note "ssh              $( [ "$DCK_SSH_PORT" = 0 ] && echo "off" || echo "$DCK_BIND:$DCK_SSH_PORT → 22, alias $DCK_ALIAS")"
     note "herdr machine    $( [ "$DCK_HERDR_MACHINE" = 1 ] && echo "on, label \"$DCK_HERDR_LABEL\"" || echo off)"
     note "ssh identity     $(pretty_path "$DCK_SSH_IDENTITY")"
+    note "ssh keys copy    $( [ "${DCK_SSH_COPY_KEYS:-0}" = 1 ] && echo "on ([ssh] copy_keys: the host's ~/.ssh id_* keys copied at start)" || echo off)"
   else
     note "dck.toml         <none> (run dck init for ssh, Herdr and ports)"
   fi

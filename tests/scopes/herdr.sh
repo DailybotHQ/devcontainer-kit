@@ -717,3 +717,39 @@ test_host_self_is_registered_once_when_missing() {
   run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" sshconf aliases --file "$HOME/.ssh/config.d/dck"
   assert_not_contains "$RUN_OUT" "dck-host" "the host's entry is never refreshed as a container"
 }
+
+# A container built from scratch (`dck rebuild` after its volumes were removed,
+# or a first `start`) gets the same post-start steps as `dck up`: the machine
+# (re-added when it was removed), the mesh with the catalog mirror, the layout.
+test_rebuild_runs_the_post_start_steps() {
+  mk_repo
+  d up
+  assert_contains "$(fake_calls herdr)" "machine add --label proj dck-proj" "fixture: up registers the machine"
+  echo "[]" > "$DCK_FAKE_STATE/herdr_machines"
+  : > "$DCK_FAKE_LOG"
+  DCK_HOST_OS=Darwin d rebuild
+  assert_rc 0 "rebuild succeeds"
+  local log; log="$(fake_calls | grep -nE 'compose .* up -d --force-recreate|machine add' | cut -d: -f1 | tr '\n' ' ')"
+  assert_contains "$(fake_calls herdr)" "machine add --label proj dck-proj" "rebuild re-adds a removed machine"
+  assert_match "$log" '^[0-9]+ [0-9]+ $' "after the container is recreated"
+  assert_contains "$(fake_calls docker)" "dck_mesh_apply" "rebuild pushes the mesh (peers, host-key pins, catalog)"
+  assert_contains "$(fake_calls docker)" "dck-herdr-layout --keep" "rebuild creates the layout"
+  assert_contains "$RUN_OUT" "rebuild done" "and still finishes"
+}
+
+test_start_and_restart_run_the_post_start_steps() {
+  mk_repo
+  local verb
+  for verb in start restart; do
+    echo "[]" > "$DCK_FAKE_STATE/herdr_machines"
+    : > "$DCK_FAKE_LOG"
+    DCK_HOST_OS=Darwin d "$verb"
+    assert_rc 0 "$verb succeeds"
+    assert_contains "$(fake_calls herdr)" "machine add --label proj dck-proj" "$verb registers the machine"
+    assert_contains "$(fake_calls docker)" "dck_mesh_apply" "$verb pushes the mesh"
+  done
+  : > "$DCK_FAKE_LOG"
+  d stop
+  assert_rc 0 "stop succeeds"
+  assert_eq "$(fake_calls herdr)" "" "stop registers nothing"
+}

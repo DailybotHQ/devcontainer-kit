@@ -84,6 +84,10 @@ PROFILE_RULES = {
     # Extra PUBLIC keys authorized in every container's dck block (for example
     # the keys non-dck containers log in with). Host profile only.
     "ssh.authorized_extra": ("pubkey_list", [], None),
+    # Copy the host's ~/.ssh/id_* keys (private ones too) into every container's
+    # ~/.ssh at each start, for tools that only offer key files (gh auth login).
+    # Private keys at rest in the state volume: off by default, host profile only.
+    "ssh.copy_keys": ("bool", False, None),
     # The host as a mesh peer (docs/herdr.md). [host] machine wins over the
     # older top-level host_machine, which stays as its alias.
     "host.machine": ("bool", None, None),
@@ -101,9 +105,10 @@ PROFILE_RULES = {
     "agents.host_env_keys": ("env_name_list", [], ("pattern", RE_ENV_NAME)),
     "agents.host_profile_names": ("profile_ref_list", [], ("pattern", RE_PROFILE_REF)),
 }
-TABLES = {"repo": ("layers", "agents", "herdr"), "profile": ("labels", "ssh", "host", "mesh", "agents")}
+TABLES = {"repo": ("layers", "agents", "herdr", "ssh"), "profile": ("labels", "ssh", "host", "mesh", "agents")}
 # Keys only the host profile may set; in a repository's dck.toml they are ignored.
-HOST_ONLY_REPO_KEYS = ("agents.host_profiles", "agents.host_env_keys", "agents.host_profile_names")
+HOST_ONLY_REPO_KEYS = ("agents.host_profiles", "agents.host_env_keys", "agents.host_profile_names",
+                       "ssh.copy_keys")
 
 # Where each listener kind listens and which public host key pins it.
 LISTENER_DEFAULT_PORT = {"dck": 22033, "remote-login": 22, "external": 0}
@@ -366,6 +371,64 @@ def load_profile(name=None, env=None):
     return effective, warnings
 
 
+def profile_copy_keys(name=None, env=None):
+    """[ssh] copy_keys as the profile spells it: "true", "false" or "unset"."""
+    path, _ = profile_path(name, env)
+    if not os.path.exists(path):
+        return "unset"
+    raw = parse_file(path)
+    effective, _ = validate(raw, "profile", path)
+    if "copy_keys" not in (raw.get("ssh") or {}):
+        return "unset"
+    return "true" if effective["ssh.copy_keys"] else "false"
+
+
+def record_copy_keys(value, name=None, env=None):
+    """Write `copy_keys = <value>` into the profile's [ssh] table (appending the
+    table when there is none). Never changes a value already set. The new text
+    is parsed and validated before it replaces the file."""
+    path, _ = profile_path(name, env)
+    if profile_copy_keys(name, env) != "unset":
+        return False
+    text = ""
+    if os.path.exists(path):
+        if os.path.islink(path):
+            raise ConfigError(path, ["refusing a symlinked profile"])
+        with open(path) as fh:
+            text = fh.read()
+    line = "copy_keys = %s  # added by dck setup; see docs/config.md\n" % ("true" if value else "false")
+    lines = text.splitlines(True)
+    for i, ln in enumerate(lines):
+        if re.match(r"^\s*\[ssh\]\s*(#.*)?$", ln):
+            if not ln.endswith("\n"):
+                lines[i] = ln + "\n"
+            lines.insert(i + 1, line)
+            break
+    else:
+        if text and not text.endswith("\n"):
+            lines.append("\n")
+        lines.append(("\n" if text.strip() else "") + "[ssh]\n" + line)
+    new = "".join(lines)
+    if tomllib is None:
+        raise ConfigError(path, ["python 3.11+ is required to write TOML"])
+    try:
+        validate(tomllib.loads(new), "profile", path)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(path, ["could not record copy_keys: %s" % exc])
+    d = os.path.dirname(path)
+    old = os.umask(0o077)
+    try:
+        os.makedirs(d, 0o700, exist_ok=True)
+        tmp = "%s.tmp-%d" % (path, os.getpid())
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(new)
+        os.replace(tmp, path)
+    finally:
+        os.umask(old)
+    return True
+
+
 def expand_home(path, env):
     if path == "~" or path.startswith("~/"):
         return env.get("HOME", "") + path[1:]
@@ -405,6 +468,7 @@ def effective(repo, default_tag, profile_name=None, env=None):
         "host_profiles": bool(prof["agents.host_profiles"]),
         "host_env_keys": list(prof["agents.host_env_keys"]),
         "host_profile_names": list(prof["agents.host_profile_names"]),
+        "ssh_copy_keys": bool(prof["ssh.copy_keys"]),
     })
     merged.update(host_settings(prof, env))
     merged["herdr.label"] = expand_label(label_fmt, {
