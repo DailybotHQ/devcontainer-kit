@@ -70,6 +70,11 @@ test_node_fixture_end_to_end() {
   echo '{"name":"fixture","engines":{"node":">=24"}}' > "$IT_REPO/package.json"
   run_cmd "$DCK" init --repo "$IT_REPO" --ssh-port "$port" --no-herdr --agents --clis "codex pi" --yes
   assert_rc 0 "dck init renders the node fixture with the agents layer"
+  # A new render writes presets = [] (off); this fixture turns both on to test them.
+  python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read(); open(p, "w").write(s.replace("presets = []", "presets = [\"classic\", \"providers\"]"))' "$IT_REPO/.devcontainer/dck.toml"
+  run_cmd "$DCK" init --repo "$IT_REPO" --yes
+  assert_rc 0 "dck init renders the presets the fixture asks for"
+  assert_contains "$(cat "$IT_REPO/docker/local/app/Dockerfile")" 'DCK_AGENT_PRESETS="classic providers"' "and passes them to the agents layer"
   # 1. Layout
   local f
   for f in .devcontainer/devcontainer.json .devcontainer/dck.toml docker/local/docker-compose.yaml docker/local/app/Dockerfile docker/local/app/dck/VERSION dev.sh; do
