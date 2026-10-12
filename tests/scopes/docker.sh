@@ -299,8 +299,8 @@ test_python_fixture() {
   new_fixture dckpy
   trap it_cleanup EXIT
   printf '[project]\nname = "fixture"\nversion = "0.0.0"\n' > "$IT_REPO/pyproject.toml"
-  run_cmd "$DCK" init --repo "$IT_REPO" --ssh-port 0 --no-herdr --yes
-  assert_rc 0 "dck init renders the python fixture"
+  run_cmd "$DCK" init --repo "$IT_REPO" --ssh-port 0 --no-herdr --state-volume state-py --yes
+  assert_rc 0 "dck init renders the python fixture (its own state volume)"
   assert_contains "$(cat "$IT_REPO/.devcontainer/dck.toml")" 'flavour = "python-3.13"' "the runtime is detected from pyproject.toml"
   with_lock dev up
   assert_rc 0 "dev.sh up builds and starts the python fixture"
@@ -311,6 +311,11 @@ test_python_fixture() {
   assert_contains "$RUN_OUT" "$dtag" "nvim is DeepWorkPlan Vim $dtag"
   assert_contains "$RUN_OUT" "peers-ok" "herdr-peers runs inside"
   assert_contains "$RUN_OUT" "no-ak" "without the agents layer, no coding-agent kit is installed"
+  run_cmd docker volume ls -q --filter "label=com.docker.compose.project=$IT_PROJECT"
+  assert_contains "$RUN_OUT" "${IT_PROJECT}_state-py" "[compose] state_volume names the state volume"
+  assert_no_match "$RUN_OUT" "^${IT_PROJECT}_state\$" "the shared default name is not created"
+  dev shell -c 'test -L ~/.ssh && readlink ~/.ssh'
+  assert_contains "$RUN_OUT" "/.dck/volumes/state/ssh" "~/.ssh still lives at the same mount point"
   dev down
   assert_rc 0 "dev.sh down succeeds"
 }

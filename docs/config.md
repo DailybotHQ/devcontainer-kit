@@ -48,6 +48,8 @@ machine = true                 # register as a Herdr machine on `dck up`
 label = "{repo}"
 layout = "standard"            # the sidebar dck up creates inside: standard | none
 mesh = true                    # dck up runs `dck herdr mesh` (Docker Desktop only; docs/SECURITY.md)
+[compose]
+state_volume = "state"         # this service's state volume; one per repository in a shared project
 ```
 
 | Key | Type | Default | Rule |
@@ -71,6 +73,7 @@ mesh = true                    # dck up runs `dck herdr mesh` (Docker Desktop on
 | `herdr.machine` | boolean | `false` | requires a non-zero `ssh_port` |
 | `herdr.label` | string | `{repo}` | 1–64 chars; placeholders `{repo}` `{service}` `{project}` `{user}` |
 | `herdr.layout` | string | `standard` | `standard` (App · Editor · Development · Agents, created by `dck up`) or `none` ([herdr.md](herdr.md)) |
+| `compose.state_volume` | string | `state` | `^[a-z0-9][a-z0-9_.-]{0,62}$`, not an agents-layer volume name (`agentkit`, `claude`, `codex`, …). The named volume of this service's state — sshd host key, `~/.ssh` (`authorized_keys`, `known_hosts`, copied keys), gh auth, Herdr client state and config, shell history — mounted at `~/.dck/volumes/state` (only the compose volume's name changes). Compose prefixes it with the project name, so repositories that share one compose project (one `COMPOSE_PROJECT_NAME`) and keep the default would share **one** state volume: give each its own, e.g. `state-<service>` (`dck init --state-volume NAME`). The default keeps the volume existing installs already have; changing it starts the service with a fresh state volume (re-pinned host key, new gh login) and leaves the old one in place. `dck doctor` flags a shared project whose state volume is not per service |
 | `herdr.mesh` | boolean | `true` | `dck up` runs `dck herdr mesh`: agents inside reach the other dck containers (and the host, with `host_machine`). Docker Desktop only; widens trust between containers ([SECURITY.md](SECURITY.md)) |
 
 ## Host profile

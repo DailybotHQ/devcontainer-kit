@@ -92,6 +92,8 @@ is written and dck exits 5.
   --user NAME          remoteUser (default dev)
   --workspace PATH     workspaceFolder (default /app): every Herdr workspace and pane opens there
   --ssh-port N         loopback sshd port, 0 = none (default: derived from the repo name)
+  --state-volume NAME  this service's state volume (default state; one per repository
+                       when several share a compose project)
   --port NAME=N        a named loopback port (repeatable)
   --agents | --no-agents       the agents layer (coding-agents-kit)
   --clis "claude codex"        kinds for `ak install` when agents is on

@@ -128,8 +128,8 @@ def repo_info(repo, dck_tag, profile, rt, problems):
         d = devc.read(repo)
         info["devcontainer"] = os.path.relpath(d["file"], repo)
         info["service"] = d["service"]
-        info["project"] = d["compose_name"] or None
         compose_dir = os.path.dirname(d["compose_files"][0])
+        info["project"] = compose_project(compose_dir, d["compose_name"])
         svc_dir = os.path.join(compose_dir, d["service"] or "")
         dockerfile = os.path.join(svc_dir, "Dockerfile")
         if os.path.isfile(dockerfile) and not os.path.islink(dockerfile):
@@ -366,6 +366,53 @@ def ssh_keys_info(merged, container_name):
             "host_keys": p["host_keys"], "copied": copied}
 
 
+def compose_project(compose_dir, compose_name):
+    """The compose project as the launcher resolves it (resolve_project):
+    COMPOSE_PROJECT_NAME in the environment, then in the compose directory's
+    .env (never through a symlink), then the compose file's top-level name."""
+    if os.environ.get("COMPOSE_PROJECT_NAME"):
+        return os.environ["COMPOSE_PROJECT_NAME"]
+    env = os.path.join(compose_dir, ".env")
+    if os.path.isfile(env) and not os.path.islink(env):
+        v = read_env_file(env).get("COMPOSE_PROJECT_NAME", "").strip().strip('"')
+        if v:
+            return v
+    return compose_name or None
+
+
+def compose_info(project, service, state_volume, problems):
+    """The compose project's other services, and whether this service's state
+    volume is per service. Several repositories sharing one project (one
+    COMPOSE_PROJECT_NAME) and the default name would share one state volume:
+    one sshd host key, ~/.ssh, gh auth and Herdr state for all of them."""
+    vol = "%s_%s" % (project, state_volume)
+    out = {"project": project, "state_volume": vol, "services": [], "shared_with": []}
+    rc, text = run(["docker", "ps", "-a", "--filter", "label=com.docker.compose.project=%s" % project,
+                    "--format", '{{.Label "com.docker.compose.service"}}\t{{.Mounts}}'])
+    if rc != 0:
+        return out
+    for line in (text or "").splitlines():
+        svc, _, mounts = line.partition("\t")
+        svc = svc.strip()
+        if not svc or svc == service:
+            continue
+        if svc not in out["services"]:
+            out["services"].append(svc)
+        if vol in [m.strip() for m in mounts.split(",")] and svc not in out["shared_with"]:
+            out["shared_with"].append(svc)
+    fix = ('set [compose] state_volume = "state-%s" in .devcontainer/dck.toml, then dck init '
+           "and dck up --recreate" % service)
+    if out["shared_with"]:
+        problems.append("compose: the state volume %s is shared with %s — one sshd host key, ~/.ssh, "
+                        "gh auth and Herdr state for all of them; %s"
+                        % (vol, ", ".join(sorted(out["shared_with"])), fix))
+    elif out["services"] and state_volume == "state":
+        problems.append("compose: project %s is shared with other services (%s) and the state volume "
+                        "is not per service (%s); another repository in this project would share it; %s"
+                        % (project, ", ".join(sorted(out["services"])), vol, fix))
+    return out
+
+
 def collect(start, profile=None):
     problems = []
     version = config_version()
@@ -390,7 +437,7 @@ def collect(start, profile=None):
         "runtime": rt,
         "profile": prof_out,
         "repo": None, "layers": None, "ssh": None, "herdr": None, "drift": [], "host_profiles": None,
-        "ssh_keys": None,
+        "ssh_keys": None, "compose": None,
         "problems": problems,
     }
     merged = None
@@ -417,6 +464,9 @@ def collect(start, profile=None):
                     problems.append("sshd does not answer on %s:%s" % (host, merged["ssh_port"]))
             report["ssh"] = ssh
             report["host_profiles"] = host_profiles_info(merged, problems)
+            if rt["docker"]["daemon"] and info["project"]:
+                report["compose"] = compose_info(info["project"], merged["service"],
+                                                 merged["compose.state_volume"], problems)
             report["ssh_keys"] = ssh_keys_info(
                 merged, report["repo"]["container"]["name"] if container_running else None)
     h = herdr_info(merged, problems)
@@ -468,6 +518,11 @@ def text(report):
     if s:
         out.append("ssh              %s" % ("off" if not s["enabled"] else "%s:%s, key %s, answering %s" % (
             s["bind"], s["port"], "present" if s["identity_present"] else "missing", yes(s["answering"]))))
+    c = report.get("compose")
+    if c:
+        out.append("compose          project %s, state volume %s%s" % (
+            c["project"], c["state_volume"],
+            ("; other services: " + ", ".join(sorted(c["services"]))) if c["services"] else ""))
     k = report.get("ssh_keys")
     if k:
         if not k["enabled"]:

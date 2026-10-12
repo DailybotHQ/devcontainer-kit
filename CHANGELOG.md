@@ -42,6 +42,18 @@ Interface stays **2**.
 
 ### Fixed
 
+- **`[compose] state_volume`** in `dck.toml` (and `dck init --state-volume NAME`): the
+  name of the service's state volume (sshd host key, `~/.ssh`, gh auth, Herdr client
+  state, history). It was hardcoded as `state`, so repositories sharing one compose
+  project (one `COMPOSE_PROJECT_NAME`) all mounted one `<project>_state` volume. The
+  default stays `state`, so no existing install loses its volume; only the compose
+  volume's name changes, the mount point (`~/.dck/volumes/state`) does not. The agents
+  layer's volumes stay shared by name.
+- `dck doctor` flags a compose project shared with other services whose state volume is
+  not per service (or another service mounting the same state volume), with the fix;
+  `doctor --json` gains an optional `compose` object. The doctor now resolves the compose
+  project like the launcher and compose (`COMPOSE_PROJECT_NAME` from the environment or
+  the compose directory's `.env` before the file's `name:`).
 - `dck doctor` says when Claude's default account will not be logged in inside (its
   host login is the macOS keychain, never shared, and `CLAUDE_CODE_OAUTH_TOKEN` is not in
   ak's env file), with both fixes, instead of a bare "not copied" line.
@@ -54,6 +66,8 @@ Interface stays **2**.
 
 ### Changed
 
+- **Pins:** coding-agents-kit **v0.5.1** (`AGENTKIT_TAG`; tag commit `48c38f8`, tarball
+  sha256 `62cde0e8…`, `SHA256SUMS` sha256 `400e8fd6…`).
 - Agent tooling: the vendored `deepworkplan` skill moves to v7.6.1 (`skills-lock.json`,
   AGENTS.md provenance), through the pack's own addon planner; the AI Diff Reviewer
   stays at v3.3.9, the pack's pin.

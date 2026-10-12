@@ -3,6 +3,7 @@
 #   daemon_down          `docker info` fails
 #   digest               printed as the manifest digest by `buildx imagetools inspect`
 #   ps                   stdout of `docker ps ...` and `docker compose ... ps ...`
+#   ps_mounts            stdout of `docker ps ... --format '<service>\t<mounts>'` (the doctor)
 #   exec_out / exec_rc   stdout / status of `docker compose ... exec ...`
 #   compose_rc           status of every other `docker compose ...` call
 #   net_<name>           an existing network
@@ -42,7 +43,10 @@ case "$1" in
       exit 0
     fi
     exit 0 ;;
-  ps) cat "$st/ps" 2>/dev/null; exit 0 ;;
+  ps)
+    # The doctor's shared-project check asks for services and mounts.
+    case "$*" in *".Mounts"*) cat "$st/ps_mounts" 2>/dev/null; exit 0 ;; esac
+    cat "$st/ps" 2>/dev/null; exit 0 ;;
   inspect) cat "$st/inspect_out" 2>/dev/null; [ -f "$st/inspect_out" ]; exit $? ;;
   volume) cat "$st/volumes" 2>/dev/null; exit 0 ;;
   network)

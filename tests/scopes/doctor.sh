@@ -253,3 +253,32 @@ test_doctor_reports_the_catalog() {
   run_cmd "$DCK_REPO/bin/dck" doctor
   assert_contains "$RUN_OUT" "herdr catalog    1 entry" "doctor reports the host's Herdr catalog"
 }
+
+# The shared-project check: several repositories in one compose project with the
+# default state volume would share one sshd host key, ~/.ssh, gh auth and Herdr state.
+test_doctor_warns_about_a_shared_state_volume() {
+  mk_repo || return 0
+  local repo="$REPO" proj
+  proj="$(sed -n 's/^name: //p' "$repo/docker/local/docker-compose.yaml")"
+  printf 'postgres\t%s_pgdata\n' "$proj" > "$DCK_FAKE_STATE/ps_mounts"
+  run_cmd bash -c 'cd "$1" && "$2" doctor --json' _ "$repo" "$DCK"
+  assert_contains "$(j 'd["problems"]')" "is shared with other services (postgres) and the state volume is not per service" "a shared project with the default state volume is a problem"
+  assert_contains "$(j 'd["problems"]')" 'state_volume = \"state-app\"' "with the fix"
+  assert_eq "$(j 'd["compose"]["state_volume"]')" "\"${proj}_state\"" "the volume is named"
+  run_cmd bash -c 'printf "%s" "$1" | python3 "$2" "$3"' _ "$RUN_OUT" "$TESTS_DIR/py/minischema.py" "$DCK_REPO/docs/schema/dck-doctor-v2.json"
+  assert_eq "$RUN_OUT$RUN_ERR" "" "doctor --json with compose matches its schema"
+  printf 'cli\t%s_state,%s_claude\npostgres\t%s_pgdata\n' "$proj" "$proj" "$proj" > "$DCK_FAKE_STATE/ps_mounts"
+  run_cmd bash -c 'cd "$1" && "$2" doctor' _ "$repo" "$DCK"
+  assert_contains "$RUN_OUT" "the state volume ${proj}_state is shared with cli" "another service mounting the same volume is named"
+  sed -i.orig 's/^state_volume = "state"$/state_volume = "state-app"/' "$repo/.devcontainer/dck.toml" && rm -f "$repo/.devcontainer/dck.toml.orig"
+  run_cmd bash -c 'cd "$1" && "$2" doctor' _ "$repo" "$DCK"
+  assert_not_contains "$RUN_OUT" "compose: " "a per-service state volume is not a problem"
+  assert_contains "$RUN_OUT" "state volume ${proj}_state-app; other services: cli, postgres" "the report names it and the other services"
+}
+
+test_doctor_resolves_the_project_like_the_launcher() {
+  mk_repo || return 0
+  printf 'COMPOSE_PROJECT_NAME=sharedproj\n' >> "$REPO/docker/local/.env"
+  run_cmd bash -c 'cd "$1" && "$2" doctor --json' _ "$REPO" "$DCK"
+  assert_eq "$(j 'd["compose"]["project"]')" '"sharedproj"' "COMPOSE_PROJECT_NAME in the compose directory's .env wins, as in compose"
+}

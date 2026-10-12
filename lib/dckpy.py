@@ -150,7 +150,7 @@ def cmd_init(args):
     opts = {"repo": opt(args, "--repo"), "profile": opt(args, "--profile")}
     for name, key, conv in (("--flavour", "flavour", str), ("--service", "service", str),
                             ("--user", "user", str), ("--workspace", "workspace", str),
-                            ("--ssh-port", "ssh_port", int)):
+                            ("--ssh-port", "ssh_port", int), ("--state-volume", "state_volume", str)):
         value = opt(args, name)
         if value is not None:
             try:

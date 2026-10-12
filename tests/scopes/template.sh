@@ -536,3 +536,33 @@ test_devsh_fallback_env_files_are_safe() {
   run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" bash "$r/dev.sh" ps
   assert_eq "$(cat "$r/docker/local/app/.env")" "MINE=1" "an existing .env is never overwritten"
 }
+
+# [compose] state_volume: the default keeps the volume every existing install has;
+# a per-service name changes only the compose volume, never the mount point.
+test_state_volume_default_and_per_service() {
+  local r c
+  r="$(new_repo sv)"
+  init_repo "$r" --flavour debian --ssh-port 22050 --agents --clis "claude codex" --yes
+  assert_rc 0 "dck init succeeds"
+  c="$(cat "$r/docker/local/docker-compose.yaml")"
+  assert_contains "$c" "      - state:/home/dev/.dck/volumes/state" "the default state volume keeps its name"
+  assert_contains "$c" "  state: {}" "and its declaration"
+  assert_contains "$c" "      - claude:/home/dev/.dck/volumes/claude" "the CLI volumes are unchanged"
+  assert_contains "$(cat "$r/.devcontainer/dck.toml")" 'state_volume = "state"' "dck.toml states the default"
+  # An existing dck.toml without [compose] renders exactly as before.
+  python3 -I -c 'import re, sys; p = sys.argv[1]; s = open(p).read(); open(p, "w").write(re.sub(r"\n\[compose\][\s\S]*$", "\n", s))' "$r/.devcontainer/dck.toml"
+  init_repo "$r" --dry-run
+  assert_contains "$RUN_OUT" "unchanged docker/local/docker-compose.yaml" "a dck.toml without [compose] keeps today's volume"
+  init_repo "$r" --state-volume state-sv --yes
+  assert_rc 0 "--state-volume is accepted"
+  c="$(cat "$r/docker/local/docker-compose.yaml")"
+  assert_contains "$c" "      - state-sv:/home/dev/.dck/volumes/state" "the named volume mounts at the same place"
+  assert_contains "$c" "  state-sv: {}" "and is declared"
+  assert_not_contains "$c" "  state: {}" "the shared name is gone"
+  assert_contains "$(cat "$r/.devcontainer/dck.toml")" 'state_volume = "state-sv"' "the flag is written into dck.toml"
+  init_repo "$r" --state-volume claude --yes
+  assert_rc 3 "an agents-layer volume name is refused"
+  assert_contains "$RUN_ERR" "compose.state_volume: 'claude' is an agents-layer volume" "and named"
+  init_repo "$r" --state-volume "Bad Name" --yes
+  assert_rc 3 "an invalid volume name is refused"
+}

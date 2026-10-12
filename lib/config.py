@@ -39,6 +39,10 @@ RE_PROFILE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$"
 RE_PREFIX = r"^([a-z0-9][a-z0-9_-]{0,31})?$"
 RE_NETWORK = r"^([A-Za-z0-9][A-Za-z0-9_.-]{0,62})?$"
 RE_ALIAS_PREFIX = r"^[a-z0-9][a-z0-9._-]{0,31}$"
+# A compose volume key (compose prefixes it with the project name).
+RE_VOLUME = r"^[a-z0-9][a-z0-9_.-]{0,62}$"
+# The agents layer's volume names: a state volume must not take one of them.
+AGENT_VOLUME_NAMES = ("agentkit", "claude", "codex", "cursor", "opencode", "pi", "cline", "grok")
 # An environment variable name (exact: no prefix or wildcard, no implicit secret).
 RE_ENV_NAME = r"^[A-Z_][A-Z0-9_]{0,127}$"
 # A host ak profile: <cli>@<name>, the CLIs whose profiles are file-portable.
@@ -67,6 +71,10 @@ REPO_RULES = {
     "herdr.layout": ("str", "standard", ("enum", ("standard", "none"))),
     "herdr.mesh": ("bool", True, None),
     "herdr.label": ("label", "{repo}", ("placeholders", LABEL_PLACEHOLDERS)),
+    # The named volume of this service's state (sshd host key, ~/.ssh, gh auth,
+    # Herdr client state, history). "state" keeps every existing install's volume;
+    # repositories sharing one compose project each need their own name.
+    "compose.state_volume": ("str", "state", ("pattern", RE_VOLUME)),
 }
 PROFILE_RULES = {
     "interface": ("int", INTERFACE, ("interface", INTERFACES)),
@@ -105,7 +113,7 @@ PROFILE_RULES = {
     "agents.host_env_keys": ("env_name_list", [], ("pattern", RE_ENV_NAME)),
     "agents.host_profile_names": ("profile_ref_list", [], ("pattern", RE_PROFILE_REF)),
 }
-TABLES = {"repo": ("layers", "agents", "herdr", "ssh"), "profile": ("labels", "ssh", "host", "mesh", "agents")}
+TABLES = {"repo": ("layers", "agents", "herdr", "ssh", "compose"), "profile": ("labels", "ssh", "host", "mesh", "agents")}
 # Keys only the host profile may set; in a repository's dck.toml they are ignored.
 HOST_ONLY_REPO_KEYS = ("agents.host_profiles", "agents.host_env_keys", "agents.host_profile_names",
                        "ssh.copy_keys")
@@ -267,6 +275,9 @@ def validate(data, kind="repo", path="dck.toml"):
         for name, port in effective["ports"].items():
             if ssh and port == ssh:
                 problems.append("ports.%s: port %s is already the ssh_port" % (name, port))
+        if effective["compose.state_volume"] in AGENT_VOLUME_NAMES:
+            problems.append("compose.state_volume: %r is an agents-layer volume; choose another name "
+                            "(for example \"state-%s\")" % (effective["compose.state_volume"], effective["service"]))
         if effective["herdr.machine"] and not ssh:
             problems.append("herdr.machine: a Herdr machine needs sshd; set ssh_port to a port in 1024-65535")
         if effective["interface"] == 1:

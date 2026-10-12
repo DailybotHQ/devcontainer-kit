@@ -49,3 +49,10 @@ layout = "{{herdr_layout}}"
 # `dck up` makes the other dck containers (and the host, with host_machine)
 # reachable from inside (Docker Desktop only; see docs/SECURITY.md).
 mesh = {{herdr_mesh}}
+
+[compose]
+# The named volume holding this service's state (sshd host key, SSH files, gh auth,
+# Herdr client state, shell history), mounted at ~/.dck/volumes/state; compose
+# prefixes it with the project name. When several repositories share one compose
+# project (COMPOSE_PROJECT_NAME), give each its own, e.g. "state-{{service}}".
+state_volume = "{{state_volume}}"

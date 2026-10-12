@@ -121,6 +121,17 @@
         }
       }
     },
+    "compose": {
+      "type": "object",
+      "properties": {
+        "state_volume": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_.-]{0,62}$",
+          "default": "state",
+          "description": "the named volume of this service's state (sshd host key, ~/.ssh, gh auth, Herdr client state, history), mounted at ~/.dck/volumes/state; give each repository its own when several share one compose project; not an agents-layer volume name"
+        }
+      }
+    },
     "herdr": {
       "type": "object",
       "properties": {
