@@ -702,7 +702,9 @@ print(changed)
 # --------------------------------------------------------------------------
 # dck_codex_config — Codex inside a container never checks for an update at
 # startup (check_for_update_on_startup = false): dck pins every CLI version, and
-# an update offered there would be lost on the next rebuild. Written in the
+# an update offered there would be lost on the next rebuild. Nor does it start
+# an app-server daemon by itself ([features] daemon_auto_start = false): a plain
+# `codex` that Herdr's session restore relaunches then runs in-process. Written in the
 # container's OWN Codex configs only — ~/.codex on its volume and the ak codex
 # profiles on the container's volume — never in the host's Codex home or a
 # host-shared profile (host_profiles). A value the developer set is kept.
@@ -743,12 +745,25 @@ for d in sys.stdin.read().splitlines():
             lines = open(path).read().splitlines()
         except OSError:
             continue
+    before = list(lines)
     first_table = next((i for i, l in enumerate(lines) if l.lstrip().startswith("[")), len(lines))
-    if any(re.match(r"^\s*check_for_update_on_startup\s*=", l) for l in lines[:first_table]):
-        continue  # the developer chose; keep it
-    lines.insert(first_table, "check_for_update_on_startup = false")
-    if first_table < len(lines) - 1 and lines[first_table + 1].strip():
-        lines.insert(first_table + 1, "")
+    if not any(re.match(r"^\s*check_for_update_on_startup\s*=", l) for l in lines[:first_table]):
+        lines.insert(first_table, "check_for_update_on_startup = false")
+        if first_table < len(lines) - 1 and lines[first_table + 1].strip():
+            lines.insert(first_table + 1, "")
+    # [features] daemon_auto_start = false: a plain `codex` (a pane Herdr restores
+    # without ak) runs in-process instead of waiting on an app-server daemon.
+    feat = next((i for i, l in enumerate(lines) if l.strip() == "[features]"), None)
+    if feat is None:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines += ["[features]", "daemon_auto_start = false"]
+    else:
+        end = next((i for i in range(feat + 1, len(lines)) if lines[i].lstrip().startswith("[")), len(lines))
+        if not any(re.match(r"^\s*daemon_auto_start\s*=", lines[i]) for i in range(feat + 1, end)):
+            lines.insert(feat + 1, "daemon_auto_start = false")
+    if lines == before:
+        continue  # the developer chose both; keep them
     tmp = "%s.dck-tmp-%d" % (path, os.getpid())
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
     with os.fdopen(fd, "w") as fh:
@@ -757,7 +772,7 @@ for d in sys.stdin.read().splitlines():
     n += 1
 print(n)
 ' "$DCK_PERSIST_ROOT" 2>/dev/null)" || { dck_log "codex: could not write the update-check setting"; return 0; }
-  [ "${n:-0}" = "0" ] || dck_log "codex: startup update check off in ${n} config(s) (dck pins the CLI version)"
+  [ "${n:-0}" = "0" ] || dck_log "codex: startup update check and daemon auto-start off in ${n} config(s) (dck pins the CLI version)"
   return 0
 }
 

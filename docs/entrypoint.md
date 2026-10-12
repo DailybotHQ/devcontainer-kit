@@ -133,6 +133,8 @@ logged (`ssh keys copied: …`), never a key's contents.
 ### `dck_codex_config`
 
 With codex in `DCK_AGENTS`, writes the top-level `check_for_update_on_startup = false`
+and `[features] daemon_auto_start = false` (a plain `codex`, such as a pane Herdr
+restores without ak, then runs in-process instead of waiting on an app-server daemon)
 into the container's **own** Codex configs at every start: `~/.codex/config.toml` on the
 codex volume and each ak codex profile on the container's volume. dck pins every CLI
 version, and an update offered inside would be lost on the next rebuild. The host's

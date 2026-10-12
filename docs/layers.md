@@ -22,7 +22,7 @@ After changing the file, run `dck init` (it shows the diff and asks), then
 ## agents
 
 Installs [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit)
-at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v0.5.2**) into the
+at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v0.5.3**) into the
 dev user's home, following the kit's install contract: the release tarball, verified
 against the pinned `AGENTKIT_SHA256` before it is unpacked, then `install.sh --no-rc`, then `ak install <kind>…` for the
 kinds in `agents.clis`, each through its vendor's official channel.
@@ -46,10 +46,11 @@ RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}
       AGENTKIT_PROFILES_DIR: /home/dev/.dck/volumes/agentkit/profiles
 ```
 
-- **Codex skips its startup update check** inside containers
-  (`check_for_update_on_startup = false` in the container's own Codex configs, written
-  by the entrypoint; never in the host's Codex home or a host-shared profile): dck pins
-  every CLI version. Codex's hook trust screen is left to the developer.
+- **Codex skips its startup update check and the daemon's auto-start** inside containers
+  (`check_for_update_on_startup = false` and `[features] daemon_auto_start = false` in
+  the container's own Codex configs, written by the entrypoint; never in the host's Codex
+  home or a host-shared profile): dck pins every CLI version, and a plain `codex` that
+  Herdr restores runs in-process. Codex's hook trust screen is left to the developer.
 - **The kit's agent skills.** `agentkit`, `agentkit-setup` and `agentkit-orchestrate`
   come from the same verified release tarball into the image's shared skills directory
   (`/usr/local/share/dck/skills`); at every start the entrypoint links them, with the
@@ -211,7 +212,7 @@ with the dispatcher `/usr/local/bin/dck-layer`. They run only during the
 
 ## Status in v0.3.x
 
-The `agents` layer is verified end to end with coding-agents-kit `v0.5.2`
+The `agents` layer is verified end to end with coding-agents-kit `v0.5.3`
 (installed from its sha256-verified release tarball; `ak` interface 1, permissions
 `auto` by default; `ak install codex pi`, the `classic` and `providers` presets; the
 `docker` test scope builds a rendered node fixture with the layer on every CI run). Each

@@ -288,6 +288,17 @@ Place satellites after `# <<< dck:service <<<`, still inside `services:`. `exten
 with `!reset` needs **Docker Compose 2.24** or newer; `dck doctor` checks the version
 and names the minimum.
 
+## When `dck up` refuses (exit 5)
+
+A user block, a satellite or any hand-written part of the file that reaches the host —
+a bind mount outside the repository, `privileged`, `cap_add`, the Docker socket — makes
+`dck up`, `build` and `rebuild` stop with exit status 5 until you review it and pass
+`--trust` (or `DCK_TRUST=1`). The reasons are printed on stderr; `bash dev.sh` also says
+so on **stdout** (`dev.sh: dck refused to up (exit 5) …`), so a script or tool that
+discards stderr still sees why nothing started. After reviewing:
+`DCK_TRUST=1 bash dev.sh up`. Exit 5 is also how dck refuses a compose file whose
+markers need a fix (see *Markers are all-or-nothing*).
+
 ## Moving a root-run stack to the `dev` user
 
 dck containers run as `dev` (uid 1000). Named volumes created by an older container

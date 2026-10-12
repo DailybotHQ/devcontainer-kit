@@ -13,12 +13,25 @@ Interface stays **2**.
 
 ### Changed
 
-- **Codex skips its startup update check inside containers.** The entrypoint
-  (`dck_codex_config`) writes `check_for_update_on_startup = false` into the container's
-  own Codex configs (`~/.codex` on its volume, ak codex profiles on the container's
+- **Pins:** coding-agents-kit **v0.5.3** (`AGENTKIT_TAG`; tag commit `5124f93`, tarball
+  sha256 `f0903bf6…`, `SHA256SUMS` sha256 `0ab8e810…`): Codex launched with `--no-daemon`
+  when the app-server daemon is missing.
+
+- **Panes Herdr restores no longer land on a login screen.** Herdr's session restore
+  relaunches a plain `claude --resume <id>` or `codex resume`, without ak. With
+  `[agents] default_profile` set (and shared), the container's login profile now exports
+  `CLAUDE_CONFIG_DIR` / `CODEX_HOME` as that profile's home, so a plain CLI uses the
+  default account; a value already set (ak's own) wins. `dck doctor` shows it.
+- **Codex skips its startup update check and the app-server daemon's auto-start inside
+  containers.** The entrypoint (`dck_codex_config`) writes `check_for_update_on_startup
+  = false` and `[features] daemon_auto_start = false` into the container's own Codex
+  configs (`~/.codex` on its volume, ak codex profiles on the container's
   volume) at every start, since dck pins every CLI version. Never in the host's Codex
   home or a host-shared profile; a value the developer set is kept. Codex's hooks are
   not pre-trusted: that consent stays the developer's.
+- `dev.sh` surfaces dck's refusals (exit 5: a container configuration that reaches the
+  host and needs `--trust`, or markers to fix) on stdout too, so a caller that discards
+  stderr still sees why `up`, `build` or `rebuild` stopped.
 
 ## [0.3.3] — 2026-10-12
 
