@@ -23,7 +23,7 @@ INTERFACE = 2
 INTERFACES = (1, 2)  # 1 is read for migration only
 
 FLAVOURS = ("python-3.13", "node-24", "debian")
-AGENT_KINDS = ("claude", "codex", "cursor", "opencode", "pi", "cline", "grok")
+AGENT_KINDS = ("claude", "codex", "cursor", "opencode", "pi", "cline", "grok", "antigravity")
 LABEL_PLACEHOLDERS = ("repo", "service", "project", "user")
 HOST_LISTENERS = ("dck", "external", "remote-login")
 
@@ -52,7 +52,7 @@ DEFAULT_PROFILE_CLIS = ("claude", "codex", "pi", "cline", "grok", "opencode")
 # A compose volume key (compose prefixes it with the project name).
 RE_VOLUME = r"^[a-z0-9][a-z0-9_.-]{0,62}$"
 # The agents layer's volume names: a state volume must not take one of them.
-AGENT_VOLUME_NAMES = ("agentkit", "claude", "codex", "cursor", "opencode", "pi", "cline", "grok")
+AGENT_VOLUME_NAMES = ("agentkit", "claude", "codex", "cursor", "opencode", "pi", "cline", "grok", "antigravity")
 # An environment variable name (exact: no prefix or wildcard, no implicit secret).
 RE_ENV_NAME = r"^[A-Z_][A-Z0-9_]{0,127}$"
 # A host ak profile: <cli>@<name>, the CLIs whose profiles are file-portable.

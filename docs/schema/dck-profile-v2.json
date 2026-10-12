@@ -193,7 +193,8 @@
               "opencode",
               "pi",
               "cline",
-              "grok"
+              "grok",
+              "antigravity"
             ]
           },
           "description": "the coding-agent CLIs YOU want in every repository's image: replaces the repository's [agents] clis (unset: the repository's list; [] installs none). dck up / rebuild export the effective list as DCK_AGENT_CLIS; DCK_AGENT_CLIS in the environment or docker/local/.env wins. Needs `dck rebuild` after a change"
@@ -210,7 +211,8 @@
               "opencode",
               "pi",
               "cline",
-              "grok"
+              "grok",
+              "antigravity"
             ]
           },
           "description": "CLIs added to the repository's [agents] clis (or to your clis) in every repository's image; host profile only"

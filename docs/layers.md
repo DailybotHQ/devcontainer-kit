@@ -107,6 +107,7 @@ RUN DCK_USER=dev DCK_AGENT_SUPPORTED="claude codex" DCK_AGENT_PRESETS="" dck-lay
   | pi | `~/.pi` |
   | cline | `~/.cline` |
   | grok | `~/.grok` |
+  | antigravity | `~/.gemini` (the Antigravity CLI `agy`: its state, and inside a container its Google login, which `agy` keeps in `~/.gemini/antigravity-cli/antigravity-oauth-token` when no OS keyring is reachable) |
 
   `~/.config/agentkit` (ak's env file, mode 600) is on the `agentkit` volume
   and `AGENTKIT_PROFILES_DIR` points ak's profiles there, so logins survive

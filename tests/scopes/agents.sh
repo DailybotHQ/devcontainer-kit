@@ -598,7 +598,8 @@ test_developer_clis_reach_the_build() {
   assert_not_file "$(clis_overlay)" "no CLI overlay when the list is the repository's"
   local c; c="$(cat "$REPO/docker/local/docker-compose.yaml")"
   assert_contains "$c" "- grok:/home/dev/.dck/volumes/grok" "every supported CLI is wired (grok, not installed)"
-  assert_contains "$c" 'DCK_AGENTS: "claude codex cursor opencode pi cline grok"' "the entrypoint persists every supported CLI's home"
+  assert_contains "$c" "- antigravity:/home/dev/.dck/volumes/antigravity" "every supported CLI is wired (antigravity, not installed)"
+  assert_contains "$c" 'DCK_AGENTS: "claude codex cursor opencode pi cline grok antigravity"' "the entrypoint persists every supported CLI's home"
   profile 'clis_extra = ["grok"]'
   : > "$DCK_FAKE_LOG"
   up

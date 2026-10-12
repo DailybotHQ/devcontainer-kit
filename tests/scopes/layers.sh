@@ -67,12 +67,12 @@ test_agents_layer_advanced_mode() {
   assert_rc 0 "init --supported all renders"
   local d c v
   d="$(dockerfile)"; c="$(compose)"
-  assert_contains "$d" 'DCK_AGENT_SUPPORTED="claude codex cursor opencode pi cline grok"' "the layer accepts every kind"
+  assert_contains "$d" 'DCK_AGENT_SUPPORTED="claude codex cursor opencode pi cline grok antigravity"' "the layer accepts every kind"
   assert_contains "$d" 'ARG INSTALL_GROK_CLI=false' "every INSTALL_<CLI>_CLI reaches the build"
-  assert_contains "$c" 'DCK_AGENTS: "claude codex cursor opencode pi cline grok"' "the entrypoint wires every kind"
+  assert_contains "$c" 'DCK_AGENTS: "claude codex cursor opencode pi cline grok antigravity"' "the entrypoint wires every kind"
   assert_contains "$c" 'DCK_AGENT_CLIS: "${DCK_AGENT_CLIS:-}"' "nothing installed by default (clis = [])"
   assert_contains "$c" 'INSTALL_CURSOR_CLI: "${INSTALL_CURSOR_CLI:-false}"' "a developer turns one on in docker/local/.env"
-  for v in claude codex cursor opencode pi cline grok; do
+  for v in claude codex cursor opencode pi cline grok antigravity; do
     assert_contains "$c" "      - $v:/home/dev/.dck/volumes/$v" "volume $v is mounted (installed or not)"
   done
   assert_contains "$(cat "$REPO/docker/local/.env.example")" "# INSTALL_OPENCODE_CLI=false" "docker/local/.env.example lists each developer's options"

@@ -13,7 +13,7 @@ render_all() {
     i=$((i + 1))
     mkdir -p "$SANDBOX/r$i"; git -C "$SANDBOX/r$i" init -q
     "$DCK" init --repo "$SANDBOX/r$i" --flavour "$f" --ssh-port "2204$i" --port web=4321 --port api=8000 \
-      --agents --clis "claude codex cursor opencode pi cline grok" --yes >/dev/null 2>&1 || fail "fixture: init $f"
+      --agents --clis "claude codex cursor opencode pi cline grok antigravity" --yes >/dev/null 2>&1 || fail "fixture: init $f"
   done
   mkdir -p "$SANDBOX/r0"; git -C "$SANDBOX/r0" init -q
   "$DCK" init --repo "$SANDBOX/r0" --ssh-port 0 --yes >/dev/null 2>&1 || fail "fixture: init without ssh"

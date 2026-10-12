@@ -7,6 +7,17 @@ and the interface number).
 
 ## [Unreleased]
 
+### Added
+
+- **`antigravity` as a coding-agent CLI kind** (`[agents] clis`, `supported`, the host
+  profile's `clis` / `clis_extra`, `DCK_AGENT_CLIS`, `INSTALL_ANTIGRAVITY_CLI`): the agents
+  layer installs the Antigravity CLI (`agy`) through `ak install antigravity`, and the
+  entrypoint persists `~/.gemini` on an `antigravity` volume. Inside a container `agy`
+  reaches no OS keyring, so it keeps each Google login in a file under that home —
+  one login per ak profile (`ak antigravity @name`), several accounts side by side,
+  which the macOS Keychain's single slot never allowed. Its profiles stay unshareable
+  from the host (`[agents] host_profiles` skips them, as before).
+
 ### Changed
 
 - Agent tooling: the vendored `deepworkplan` skill moves to v7.6.3 and the AI Diff Reviewer

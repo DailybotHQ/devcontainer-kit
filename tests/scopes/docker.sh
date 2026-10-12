@@ -165,13 +165,13 @@ test_node_fixture_end_to_end() {
   assert_match "$RUN_OUT" '/codex$' "codex is installed through ak"
   assert_match "$RUN_OUT" '/pi$' "pi is installed through ak (the host profile's clis_extra)"
   assert_contains "$RUN_OUT" "function" "the wrapper names are shell functions"
-  dev shell -c 'cat /opt/dck/agent-clis; for c in claude cursor-agent opencode cline grok; do command -v "$c" >/dev/null && echo "unexpected:$c"; done; echo "agents=$DCK_AGENTS"'
+  dev shell -c 'cat /opt/dck/agent-clis; for c in claude cursor-agent opencode cline grok agy; do command -v "$c" >/dev/null && echo "unexpected:$c"; done; echo "agents=$DCK_AGENTS"'
   assert_contains "$RUN_OUT" "codex pi" "the image records the two CLIs it installed"
   assert_not_contains "$RUN_OUT" "unexpected:" "no other CLI is installed"
-  assert_contains "$RUN_OUT" "agents=claude codex cursor opencode pi cline grok" "the entrypoint wires every supported CLI"
+  assert_contains "$RUN_OUT" "agents=claude codex cursor opencode pi cline grok antigravity" "the entrypoint wires every supported CLI"
   run_cmd docker inspect -f '{{range .Mounts}}{{.Name}} {{end}}' "${IT_PROJECT}-app-1"
   local k
-  for k in claude codex cursor opencode pi cline grok; do
+  for k in claude codex cursor opencode pi cline grok antigravity; do
     assert_contains "$RUN_OUT" "${IT_PROJECT}_$k " "the $k home volume is mounted (installed or not)"
   done
   dev shell -c 'head -1 ~/.codex/config.toml; codex features list 2>/dev/null | grep "^daemon_auto_start "'

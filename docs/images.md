@@ -60,7 +60,7 @@ identical otherwise.
 
 ## No flavour contains
 
-Coding-agent CLIs (claude, codex, cursor `agent`, opencode, pi, cline, grok),
+Coding-agent CLIs (claude, codex, cursor `agent`, opencode, pi, cline, grok, antigravity `agy`),
 the Dailybot CLI, Engram, Graphify, provider wrappers, or any secret. Agents
 are an opt-in **layer** of the repository's own image ([layers.md](layers.md)).
 The `images` test scope and the release gate fail if any of those installers

@@ -741,7 +741,7 @@ def layers_block(values):
     return "\n".join(lines)
 
 
-AGENT_VOLUMES = ("claude", "codex", "cursor", "opencode", "pi", "cline", "grok")
+AGENT_VOLUMES = ("claude", "codex", "cursor", "opencode", "pi", "cline", "grok", "antigravity")
 
 
 def release_sums_sha256(dck_tag):

@@ -59,7 +59,7 @@ CMD ["sleep", "infinity"]
 # (pinned, verified) and the classic + providers presets. Autonomy is ak's default.
 # The CLIs installed: DCK_AGENT_CLIS plus each INSTALL_<CLI>_CLI=true (compose
 # passes both from the developer's environment or docker/local/.env).
-ARG DCK_AGENT_CLIS="claude codex cursor opencode pi cline grok"
+ARG DCK_AGENT_CLIS="claude codex cursor opencode pi cline grok antigravity"
 ARG INSTALL_CLAUDE_CLI=false
 ARG INSTALL_CODEX_CLI=false
 ARG INSTALL_CURSOR_CLI=false
@@ -67,7 +67,8 @@ ARG INSTALL_OPENCODE_CLI=false
 ARG INSTALL_PI_CLI=false
 ARG INSTALL_CLINE_CLI=false
 ARG INSTALL_GROK_CLI=false
-RUN DCK_USER=dev DCK_AGENT_SUPPORTED="claude codex cursor opencode pi cline grok" dck-layer agents ${DCK_AGENT_CLIS}
+ARG INSTALL_ANTIGRAVITY_CLI=false
+RUN DCK_USER=dev DCK_AGENT_SUPPORTED="claude codex cursor opencode pi cline grok antigravity" dck-layer agents ${DCK_AGENT_CLIS}
 # <<< dck:layers <<<
 
 # Project-specific layers go here (apt packages, language tooling, ...).

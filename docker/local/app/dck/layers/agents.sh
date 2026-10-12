@@ -16,7 +16,7 @@
 # shellcheck source=lib/layers/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-KINDS="claude codex cursor opencode pi cline grok"
+KINDS="claude codex cursor opencode pi cline grok antigravity"
 # The CLIs to install: the arguments (DCK_AGENT_CLIS, which may come from a
 # developer's .env as "grok,opencode": commas count as separators) plus every kind
 # whose INSTALL_<CLI>_CLI build arg is exactly "true". A kind is installed once.

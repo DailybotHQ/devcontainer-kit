@@ -80,7 +80,7 @@ other services' volumes and networks, port strings and satellites:
 | `layers.agents` | boolean | `false` | see [layers.md](layers.md) |
 | `layers.dailybot` | boolean | `false` | see [layers.md](layers.md) |
 | `layers.editor` | boolean | `true` | see [layers.md](layers.md) |
-| `agents.clis` | array | `[]` | the CLIs chosen at onboarding: kinds from `claude codex cursor opencode pi cline grok`, no duplicates; a warning when set while `layers.agents` is false. Without `agents.supported` (the default) they are both **wired** (home volume, host-profile sharing, `default_profile`) and **installed** for everyone; with it, they are the default install set, within `supported` ([Each developer's CLIs](#each-developers-coding-agent-clis)) |
+| `agents.clis` | array | `[]` | the CLIs chosen at onboarding: kinds from `claude codex cursor opencode pi cline grok antigravity`, no duplicates; a warning when set while `layers.agents` is false. Without `agents.supported` (the default) they are both **wired** (home volume, host-profile sharing, `default_profile`) and **installed** for everyone; with it, they are the default install set, within `supported` ([Each developer's CLIs](#each-developers-coding-agent-clis)) |
 | `agents.supported` | `"all"` or array | unset (= `clis`) | **advanced** opt-in: the CLIs every image is wired for, installed or not; each developer chooses what to install within them. `"all"` = every kind ak knows. A volume for a CLI nobody installed stays empty, so a CLI a developer installs later just works. `dck init --supported all` writes it; an interactive `dck init` offers it ([Each developer's CLIs](#each-developers-coding-agent-clis)) |
 | `herdr.machine` | boolean | `false` | requires a non-zero `ssh_port` |
 | `herdr.label` | string | `{repo}` | 1–64 chars; placeholders `{repo}` `{service}` `{project}` `{user}` |
@@ -194,7 +194,7 @@ different CLIs:
 ```toml
 # .devcontainer/dck.toml
 [agents]
-supported = "all"   # wired: claude codex cursor opencode pi cline grok
+supported = "all"   # wired: claude codex cursor opencode pi cline grok antigravity
 clis = []           # installed for nobody by default
 ```
 

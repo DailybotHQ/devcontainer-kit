@@ -43,7 +43,7 @@ Read the repository and propose these values:
 | another runtime version | `engines.node`, `.nvmrc`, `.python-version` that the flavour does not match | ask for an official image **pinned by digest** (`base_image = "node:22…@sha256:…"`); never a floating tag |
 | ports | the existing compose, framework config (`astro.config.*`, `vite.config.*`, `next.config.*`), dev-script flags (`--port`) | none |
 | ssh / Herdr | — | `ssh_port` derived from the repository name; Herdr machine on when Herdr is installed |
-| agents | — | **none**, unless the user names them (`claude`, `codex`, `cursor`, `opencode`, `pi`, `cline`, `grok`) |
+| agents | — | **none**, unless the user names them (`claude`, `codex`, `cursor`, `opencode`, `pi`, `cline`, `grok`, `antigravity`) |
 | extras | `lighthouse`, `playwright`, `puppeteer` in `package.json` → chromium | none |
 
 Show the values once, and ask for confirmation before writing anything.

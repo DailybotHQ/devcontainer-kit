@@ -454,6 +454,7 @@ dck_agent_homes() {
     pi)       printf '%s\n' ".pi dir" ;;
     cline)    printf '%s\n' ".cline dir" ;;
     grok)     printf '%s\n' ".grok dir" ;;
+    antigravity) printf '%s\n' ".gemini dir" ;;
     *) return 1 ;;
   esac
 }

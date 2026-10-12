@@ -328,7 +328,7 @@ test_doctor_reports_agent_clis() {
   printf 'claude codex\n' > "$DCK_FAKE_STATE/image_agent_clis"
   doc
   valid "doctor --json with the agent CLIs matches its schema"
-  assert_eq "$(j 'd["layers"]["clis_supported"]')" '["claude", "codex", "cursor", "opencode", "pi", "cline", "grok"]' "supported: every kind (advanced mode)"
+  assert_eq "$(j 'd["layers"]["clis_supported"]')" '["claude", "codex", "cursor", "opencode", "pi", "cline", "grok", "antigravity"]' "supported: every kind (advanced mode)"
   assert_eq "$(j 'd["layers"]["clis_mode"]')" '"advanced"' "the mode is reported"
   assert_eq "$(j 'd["layers"]["clis_effective"]')" '["claude", "codex", "grok"]' "requested: dck.toml's plus the profile's extra"
   assert_eq "$(j 'd["layers"]["clis_source"]')" '"repo + profile"' "and where that comes from"
