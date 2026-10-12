@@ -7,6 +7,12 @@ and the interface number).
 
 ## [Unreleased]
 
+### Changed
+
+- Agent tooling: the vendored `deepworkplan` skill moves to v7.6.1 (`skills-lock.json`,
+  AGENTS.md provenance), through the pack's own addon planner; the AI Diff Reviewer
+  stays at v3.3.9, the pack's pin.
+
 ## [0.3.1] — 2026-10-11
 
 Interface stays **2**.
