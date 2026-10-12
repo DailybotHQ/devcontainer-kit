@@ -753,3 +753,21 @@ test_start_and_restart_run_the_post_start_steps() {
   assert_rc 0 "stop succeeds"
   assert_eq "$(fake_calls herdr)" "" "stop registers nothing"
 }
+
+# HERDR_PEERS_SELF: every add (and the mesh) tells the container its id in the
+# host's catalog; a removed machine clears it.
+test_add_and_mesh_push_the_machine_id() {
+  mk_repo
+  d herdr add
+  assert_rc 0 "herdr add succeeds"
+  local id
+  id="$(python3 -I -c 'import json, sys; print([m["id"] for m in json.load(open(sys.argv[1])) if m["target"] == "dck-proj"][0])' "$DCK_FAKE_STATE/herdr_machines")"
+  assert_contains "$(fake_calls docker)" "dck_herdr_self \"\$1\" _ $id" "herdr add pushes the registered id into the container"
+  assert_contains "$RUN_OUT" "HERDR_PEERS_SELF=$id inside app" "and says so"
+  : > "$DCK_FAKE_LOG"
+  DCK_HOST_OS=Darwin d herdr mesh
+  assert_contains "$(fake_calls docker)" "dck_herdr_self \"\$1\" _ $id" "the mesh pushes it too"
+  : > "$DCK_FAKE_LOG"
+  d herdr remove
+  assert_contains "$(fake_calls docker)" "dck_herdr_self \"\$1\" _ -" "a removed machine clears it inside"
+}

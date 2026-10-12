@@ -130,6 +130,16 @@ not followed. The copied names go to `~/.ssh/.dck-copied-keys`; without
 `DCK_SSH_COPY_KEYS=1` the next start removes exactly those files. Names only are
 logged (`ssh keys copied: …`), never a key's contents.
 
+### `dck_herdr_self <id|->`
+
+Records this container's machine id in the **host's** Herdr catalog (32 hex characters)
+on the state volume (`~/.dck/volumes/state/herdr-self`, 0644, public data); the login
+profile exports it as `HERDR_PEERS_SELF`, herdr-peers' reply route — a Codex pane cannot
+discover it by itself, so asks from one failed with "no reply route". `dck up`,
+`dck herdr add` (after every registration: a re-added machine has a new id) and
+`dck herdr mesh` push it through `docker exec`; `dck herdr remove` clears it (`-`).
+A malformed id is refused; a value already set in the environment wins.
+
 ### `dck_start`
 
 The standard sequence:

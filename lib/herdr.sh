@@ -93,6 +93,22 @@ herdr_lookup() {
   HERDR_ENABLED="$(printf '%s' "$line" | cut -f3)"
 }
 
+# herdr_push_self — tell the container its machine id in this host's Herdr
+# catalog (dck_herdr_self), so the login profile exports HERDR_PEERS_SELF. Run
+# after every add (a re-added machine gets a new id) and by the mesh.
+herdr_push_self() {
+  container_running || return 0
+  herdr_lookup
+  local id="${HERDR_ID:--}"
+  case "$id" in -) ;; *[!0-9a-f]*) return 0 ;; esac
+  if dc exec -T --user root "$DC_SERVICE" bash -c '. /usr/local/lib/dck/entrypoint.sh && type dck_herdr_self >/dev/null 2>&1 && dck_herdr_self "$1"' _ "$id" \
+      </dev/null >/dev/null 2>&1; then
+    [ "$id" = - ] || note "herdr: HERDR_PEERS_SELF=$id inside $DC_SERVICE (new shells and panes)"
+  else
+    [ "$id" = - ] || note "herdr: could not record the machine id inside $DC_SERVICE (an image older than devcontainer-kit v0.3.3?); set HERDR_PEERS_SELF=$id there by hand"
+  fi
+}
+
 herdr_prepare() {
   herdr_require_config
   herdr_require_cli
@@ -158,6 +174,7 @@ herdr_mesh() {
     bash -c '. /usr/local/lib/dck/entrypoint.sh && dck_mesh_apply' >/dev/null 2>&1 \
     || die "could not apply the mesh inside $DC_SERVICE (rendered by devcontainer-kit v0.2+?)"
   note "mesh: $n peer(s) reachable from inside $DC_SERVICE"
+  herdr_push_self
   # The containers started before this one learn about it too: re-apply the
   # mesh to every other running dck container, over its own alias.
   for alias in $(dckpy sshconf aliases --file "$HERDR_INCLUDE" 2>/dev/null || true); do
@@ -253,6 +270,7 @@ herdr_add() {
     herdr machine add --label "$DCK_HERDR_LABEL" "$DCK_ALIAS" || die "herdr machine add failed — run: dck herdr status"
     note "herdr: registered $DCK_ALIAS as \"$DCK_HERDR_LABEL\""
   fi
+  herdr_push_self
   if herdr_wait_for "server" herdr_server_ok; then
     note "herdr: the remote server answers"
   else
@@ -309,6 +327,7 @@ herdr_remove() {
     if [ -n "$HERDR_ID" ]; then
       herdr machine remove "$HERDR_ID" >/dev/null || die "herdr machine remove failed"
       note "herdr: removed machine $DCK_ALIAS (its sessions keep running in the container)"
+      if command -v docker >/dev/null 2>&1; then herdr_push_self; fi
     else
       note "herdr: $DCK_ALIAS was not registered"
     fi

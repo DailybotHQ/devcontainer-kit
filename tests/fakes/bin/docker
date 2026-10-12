@@ -13,6 +13,7 @@
 #   image_inspect_out    stdout of `docker image inspect` (RepoDigests JSON)
 #   container_image_env  /etc/dck/image.env as `docker exec` would print it
 #   container_ssh_manifest  ~/.ssh/.dck-copied-keys as `docker exec` would print it
+#   container_herdr_self    ~/.dck/volumes/state/herdr-self as `docker exec` would print it
 st="${DCK_FAKE_STATE:-/nonexistent}"
 printf 'docker %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
 # Record stdin for exec calls that pipe data in (e.g. authorized keys).
@@ -32,6 +33,8 @@ case "$1" in
     case "${*: -1}" in
       */.ssh/.dck-copied-keys) [ -f "$st/container_ssh_manifest" ] || exit 1
         cat "$st/container_ssh_manifest"; exit 0 ;;
+      */.dck/volumes/state/herdr-self) [ -f "$st/container_herdr_self" ] || exit 1
+        cat "$st/container_herdr_self"; exit 0 ;;
     esac
     # docker exec <container> cat /etc/dck/image.env -> $st/container_image_env
     [ -f "$st/container_image_env" ] || exit 1
@@ -67,7 +70,8 @@ case "$1" in
         exec)
           # The host key read by ssh_pin_host_key: $st/host_key_pub (nothing when absent).
           case " $* " in *dck_host_key_pub*) cat "$st/host_key_pub" 2>/dev/null; exit 0 ;; esac
-          [ -t 0 ] || cat > "$st/exec_stdin"
+          # dck_herdr_self takes its id as an argument: its empty stdin is not a payload.
+          case "$*" in *dck_herdr_self*) ;; *) [ -t 0 ] || cat > "$st/exec_stdin" ;; esac
           cat "$st/exec_out" 2>/dev/null; exit "$(cat "$st/exec_rc" 2>/dev/null || echo 0)" ;;
         *) break ;;
       esac

@@ -385,6 +385,20 @@
         "server_answering"
       ],
       "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "this container's machine id in the host's Herdr catalog (null when not registered)"
+        },
+        "self_inside": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "the id the running container exports as HERDR_PEERS_SELF (null when unset); absent without a running container"
+        },
         "installed": {
           "type": "boolean"
         },

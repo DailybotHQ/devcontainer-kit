@@ -7,6 +7,15 @@ and the interface number).
 
 ## [Unreleased]
 
+### Added
+
+- **`HERDR_PEERS_SELF` inside containers.** Asks from a Codex pane failed with "no reply
+  route" until `HERDR_PEERS_SELF` named the container's machine id in the host's Herdr
+  catalog. `dck up`, `dck herdr add` (after every registration) and `dck herdr mesh` now
+  record that id on the state volume (new entrypoint function `dck_herdr_self`) and the
+  login profile exports it; `dck herdr remove` clears it. `dck doctor` shows both ids
+  (`herdr self`; `herdr.id` / `herdr.self_inside` in `--json`) and flags a mismatch.
+
 ## [0.3.2] — 2026-10-11
 
 Interface stays **2**.

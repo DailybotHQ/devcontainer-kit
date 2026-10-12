@@ -25,6 +25,7 @@
 #   dck_agent_trust                          the workspace trusted by Claude and Codex (autonomy on)
 #   dck_ssh_agent_access                     the mounted host SSH agent socket usable by the user
 #   dck_ssh_copy_keys                        [ssh] copy_keys: the host's ~/.ssh/id_* keys into ~/.ssh
+#   dck_herdr_self <id|->                    this container's host-catalog machine id (HERDR_PEERS_SELF)
 #   dck_mesh_apply                           peers pushed by `dck` (stdin): ssh config, pinned host
 #                                            keys and Herdr machines; no private key involved
 #   dck_start                                the standard sequence of the above
@@ -1070,6 +1071,31 @@ dck_herdr_agent_link() {
 # is kept. The copied names are listed in ~/.ssh/.dck-copied-keys; with
 # copy_keys off, the next start removes exactly those files. Names only are
 # logged, never a key's contents.
+# dck_herdr_self <id|-> — this container's machine id in the HOST's Herdr catalog,
+# pushed by `dck up` / `dck herdr add|mesh` (as root, through docker exec). The
+# login profile exports it as HERDR_PEERS_SELF: herdr-peers' reply route, which a
+# Codex pane cannot discover by itself. Kept on the state volume, so restarts and
+# rebuilds keep it; "-" removes it (`dck herdr remove`). Public data, 0644.
+dck_herdr_self() {
+  _dck_env
+  local id="${1:-}" f="$DCK_PERSIST_ROOT/state/herdr-self" tmp
+  if [ "$id" = "-" ]; then
+    rm -f "$f"
+    dck_log "herdr: this container's machine id was cleared"
+    return 0
+  fi
+  case "$id" in
+    *[!0-9a-f]*|"") dck_log "herdr: refusing a machine id that is not 32 hex characters"; return 1 ;;
+  esac
+  [ "${#id}" -eq 32 ] || { dck_log "herdr: refusing a machine id that is not 32 hex characters"; return 1; }
+  mkdir -p "$DCK_PERSIST_ROOT/state" || return 1
+  [ -L "$f" ] && rm -f "$f"
+  tmp="$(mktemp "$DCK_PERSIST_ROOT/state/.herdr-self.XXXXXX")" || return 1
+  printf '%s\n' "$id" > "$tmp" && chmod 0644 "$tmp" && mv -f "$tmp" "$f" || { rm -f "$tmp"; return 1; }
+  _dck_chown "$DCK_USER:$(_dck_group)" "$f"
+  dck_log "herdr: this container is machine $id in the host's catalog (HERDR_PEERS_SELF)"
+}
+
 _dck_key_listed() { case " $2 " in *" $1 "*) return 0 ;; esac; return 1; }
 
 dck_ssh_copy_keys() {

@@ -282,3 +282,21 @@ test_doctor_resolves_the_project_like_the_launcher() {
   run_cmd bash -c 'cd "$1" && "$2" doctor --json' _ "$REPO" "$DCK"
   assert_eq "$(j 'd["compose"]["project"]')" '"sharedproj"' "COMPOSE_PROJECT_NAME in the compose directory's .env wins, as in compose"
 }
+
+test_doctor_checks_herdr_peers_self() {
+  mk_repo || return 0
+  local proj id
+  proj="$(sed -n 's/^name: //p' "$REPO/docker/local/docker-compose.yaml")"
+  id=0123456789abcdef0123456789abcdef
+  printf '[{"id": "%s", "label": "proj", "target": "dck-proj", "enabled": true}]\n' "$id" > "$DCK_FAKE_STATE/herdr_machines"
+  printf '%s-app-1\trunning\n' "$proj" > "$DCK_FAKE_STATE/ps"
+  printf '%s\n' "$id" > "$DCK_FAKE_STATE/container_herdr_self"
+  run_cmd env PATH="$TESTS_DIR/fakes/bin:$PATH" bash -c 'cd "$1" && "$2" doctor' _ "$REPO" "$DCK"
+  assert_contains "$RUN_OUT" "herdr self       $id in the host's catalog; HERDR_PEERS_SELF inside: $id" "the doctor shows both ids"
+  assert_not_contains "$RUN_OUT" "find no reply route" "matching ids are fine"
+  rm -f "$DCK_FAKE_STATE/container_herdr_self"
+  run_cmd env PATH="$TESTS_DIR/fakes/bin:$PATH" bash -c 'cd "$1" && "$2" doctor --json' _ "$REPO" "$DCK"
+  assert_contains "$(j 'd["problems"]')" "HERDR_PEERS_SELF inside is unset" "an unset id inside is a problem"
+  assert_eq "$(j 'd["herdr"]["id"]')" "\"$id\"" "doctor --json has the registered id"
+  valid "doctor --json with the herdr id matches its schema"
+}

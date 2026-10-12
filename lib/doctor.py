@@ -281,6 +281,7 @@ def herdr_info(merged, problems):
                 found = [m for m in data if isinstance(m, dict) and m.get("target") == merged["alias"]]
                 h["registered"] = bool(found)
                 h["enabled"] = bool(found[0].get("enabled", True)) if found else None
+                h["id"] = str(found[0].get("id") or "") or None if found else None
             except ValueError:
                 pass
     c = h.get("catalog")
@@ -470,6 +471,16 @@ def collect(start, profile=None):
             report["ssh_keys"] = ssh_keys_info(
                 merged, report["repo"]["container"]["name"] if container_running else None)
     h = herdr_info(merged, problems)
+    if merged and container_running and h.get("id"):
+        # The id the container exports as HERDR_PEERS_SELF (herdr-peers' reply route).
+        rc, out = run(["docker", "exec", report["repo"]["container"]["name"], "cat",
+                       "/home/%s/.dck/volumes/state/herdr-self" % merged["user"]])
+        inside = (out or "").strip() if rc == 0 else ""
+        h["self_inside"] = inside if re.match(r"^[0-9a-f]{32}$", inside) else None
+        if h["self_inside"] != h["id"]:
+            problems.append("herdr: HERDR_PEERS_SELF inside is %s, but the host's catalog has this container as %s; "
+                            "asks from Codex panes find no reply route (run: dck herdr add)"
+                            % (h["self_inside"] or "unset", h["id"]))
     if h["registered"] and report["ssh"] and report["ssh"]["answering"]:
         rc, _ = run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=3", h["alias"],
                      "herdr", "status", "server"], timeout=10)
@@ -545,6 +556,9 @@ def text(report):
     out.append("herdr            %s%s" % (h["version"] or "not installed",
                                           "" if h["machine"] is None else ", machine %s, alias %s, registered %s, server %s" % (
                                               yes(h["machine"]), h["alias"], yes(h["registered"]), yes(h["server_answering"]))))
+    if h.get("id"):
+        out.append("herdr self       %s in the host's catalog; HERDR_PEERS_SELF inside: %s" % (
+            h["id"], h.get("self_inside") or ("unset" if "self_inside" in h else "- (container not running)")))
     for d in report["drift"]:
         out.append("drift            %-10s pinned %s, installed %s (%s)" % (d["name"], d["pinned"], d["installed"] or "-", d["status"]))
     if report["problems"]:
