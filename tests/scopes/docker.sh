@@ -225,6 +225,16 @@ test_node_fixture_end_to_end() {
   d "${prim[@]}" doctor
   assert_contains "$RUN_OUT" "docker/local/docker-compose.primary-backend.yaml (--compose-file)" "the doctor shows the compose files in use"
   assert_contains "$RUN_OUT" "installed codex pi" "and the CLIs the image installed"
+  # v0.3.6: with host profiles shared (codex), a CLI the host does not share keeps its
+  # profiles on the agentkit volume: a login made inside (the token file agy writes)
+  # survives a recreate, and is the same profile with host_profiles off (below).
+  dev shell -c 'p=~/.dck/host/agentkit/profiles; mkdir -p "$p/antigravity/it1" && echo it-login > "$p/antigravity/it1/token"; readlink "$p/antigravity"; test -L "$p/codex" || echo codex-real'
+  assert_contains "$RUN_OUT" "/home/dev/.dck/volumes/agentkit/profiles/antigravity" "a non-shared CLI's profiles directory links to the agentkit volume"
+  assert_contains "$RUN_OUT" "codex-real" "a shared CLI's directory (the host's mounts) is not linked"
+  with_lock d "${prim[@]}" up --recreate app
+  assert_rc 0 "a recreate with host accounts on"
+  dev shell -c 'cat ~/.dck/host/agentkit/profiles/antigravity/it1/token'
+  assert_eq "$RUN_OUT" "it-login" "the non-shared profile's login survives the recreate"
   printf 'interface = 2\n[agents]\nclis_extra = ["pi"]\n' > "$HOME/.config/dck/profile.toml"
 
   # 8. Persistence across rebuild: the state and agent volumes survive.
@@ -237,6 +247,8 @@ test_node_fixture_end_to_end() {
 kept
 kept
 Fixture Dev" "gh, a CLI home, agentkit and the git identity survive a rebuild"
+  dev shell -c 'cat "$AGENTKIT_PROFILES_DIR/antigravity/it1/token"'
+  assert_eq "$RUN_OUT" "it-login" "with host_profiles off, ak finds the same profile on the volume after a rebuild"
   d ssh true
   assert_rc 0 "after a rebuild the same host key is accepted (strict checking)"
 

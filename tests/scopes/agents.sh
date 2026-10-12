@@ -434,6 +434,83 @@ print("ok")' "$SANDBOX/h"
   assert_contains "$RUN_ERR" "(0 file(s) updated)" "and says so"
 }
 
+# ---------------------------------------------------------------------------
+# Entrypoint: non-shared CLI profiles on the agentkit volume (host_profiles on)
+# ---------------------------------------------------------------------------
+
+hvp() {  # hvp [VAR=value...] — dck_host_volume_profiles with shared claude profiles
+  EP_FUNCS=dck_host_volume_profiles ep DCK_AGENTS="claude codex antigravity pi" DCK_HOST_PROFILES="claude" \
+    AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/host/agentkit/profiles" "$@"
+}
+
+test_non_shared_profiles_live_on_the_volume() {
+  mk_container_home
+  local root="$SANDBOX/h/.dck/host/agentkit/profiles" vol="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  hvp
+  assert_rc 0 "the step succeeds"
+  local k
+  for k in codex antigravity pi; do
+    assert_eq "$(readlink "$root/$k")" "$vol/$k" "$k (not shared) is a link to its directory on the agentkit volume"
+    assert_mode "$vol/$k" 700 "the $k volume directory is created 0700"
+  done
+  if [ -L "$root/claude" ]; then fail "a shared CLI's directory (the host's bind mounts) is never linked" "linked"
+  else pass "a shared CLI's directory (the host's bind mounts) is never linked"; fi
+  assert_eq "$(ls "$root/claude")" "work1" "nor changed"
+  mkdir "$root/antigravity/g1"
+  assert_dir "$vol/antigravity/g1" "a profile ak creates there lands on the volume"
+  hvp
+  assert_eq "$(readlink "$root/antigravity")" "$vol/antigravity" "a second start keeps the link"
+  assert_eq "$(ls -a "$root" | grep -c dck-pre-volume)" "0" "and moves nothing aside (idempotent)"
+  assert_not_contains "$RUN_ERR" "refusing" "nor refuses its own link"
+}
+
+test_non_shared_profiles_off_without_host_profiles() {
+  mk_container_home
+  EP_FUNCS=dck_host_volume_profiles ep DCK_AGENTS="antigravity" AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  assert_absent "$SANDBOX/h/.dck/host/agentkit/profiles/antigravity" "without host_profiles ak already uses the volume: nothing is linked"
+}
+
+test_non_shared_profiles_migrate_without_overwriting() {
+  mk_container_home
+  local root="$SANDBOX/h/.dck/host/agentkit/profiles" vol="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  # A container started by an older dck: profiles in the layer; the volume has one of the same name.
+  mkdir -p "$root/antigravity/g1" "$root/antigravity/g2" "$root/pi/p1" "$vol/antigravity/g2" "$vol/pi"
+  printf 'layer-g1\n' > "$root/antigravity/g1/token"
+  printf 'layer-g2\n' > "$root/antigravity/g2/token"
+  printf 'volume-g2\n' > "$vol/antigravity/g2/token"
+  printf 'layer-p1\n' > "$root/pi/p1/token"
+  printf 'layer-state\n' > "$root/pi/.state"
+  printf 'volume-state\n' > "$vol/pi/.state"
+  hvp
+  assert_eq "$(cat "$vol/antigravity/g1/token")" "layer-g1" "a layer-only profile moves onto the volume"
+  assert_eq "$(cat "$vol/antigravity/g2/token")" "volume-g2" "the volume's copy is never overwritten"
+  assert_eq "$(cat "$vol/pi/p1/token")" "layer-p1" "every non-shared CLI is migrated"
+  assert_eq "$(cat "$vol/pi/.state")" "volume-state" "a file of the same name is not overwritten either"
+  local bak; bak="$(ls -a "$root" | grep '^\.antigravity\.dck-pre-volume-[0-9]\{8\}T[0-9]\{6\}Z$')"
+  assert_ne "$bak" "" "the layer's conflicting copy is kept aside, timestamped"
+  assert_eq "$(cat "$root/$bak/g2/token")" "layer-g2" "with its content intact"
+  assert_eq "$(cat "$root"/.pi.dck-pre-volume-*/.state)" "layer-state" "the layer's conflicting file is kept aside too"
+  assert_contains "$RUN_ERR" "stay in $root/$bak" "the backup is logged by path"
+  assert_not_contains "$RUN_ERR" "layer-g2" "never by content"
+  assert_eq "$(readlink "$root/antigravity")" "$vol/antigravity" "then the link is made"
+  hvp
+  assert_eq "$(ls -a "$root" | grep -c dck-pre-volume)" "2" "a second start migrates nothing again"
+}
+
+test_non_shared_profiles_refuse_foreign_links() {
+  mk_container_home
+  local root="$SANDBOX/h/.dck/host/agentkit/profiles" vol="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  mkdir -p "$SANDBOX/elsewhere" "$SANDBOX/elsewhere2"
+  ln -s "$SANDBOX/elsewhere" "$root/antigravity"
+  ln -s "$SANDBOX/elsewhere2" "$vol/pi"
+  hvp
+  assert_eq "$(readlink "$root/antigravity")" "$SANDBOX/elsewhere" "a link outside the agentkit volume is refused, left as is"
+  assert_contains "$RUN_ERR" "refusing $root/antigravity" "and logged"
+  assert_absent "$root/pi" "a volume path that is a symlink is refused"
+  assert_contains "$RUN_ERR" "$vol/pi is not a directory" "and logged"
+  assert_eq "$(readlink "$root/codex")" "$vol/codex" "the other CLIs are still linked"
+}
+
 test_own_profiles_get_the_acknowledgement() {
   mk_container_home
   ep DCK_AGENTS="claude" AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/volumes/agentkit/profiles"

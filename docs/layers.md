@@ -159,6 +159,21 @@ Each read-write mount and its reason is listed in
   (and antigravity) profiles hold absolute host symlinks and are skipped. The whole
   `AGENTKIT_HOME` is never mounted (it would shadow the ak the image pins), nor a whole
   CLI directory: profiles are bound one by one.
+- **The CLIs not shared keep their profiles on the volume.** With the option on,
+  `AGENTKIT_PROFILES_DIR` is `~/.dck/host/agentkit/profiles`, so a profile created inside
+  for a CLI the host does not share (antigravity, cursor, or a CLI with no host profile)
+  would land in the container layer. At every start the entrypoint links
+  `~/.dck/host/agentkit/profiles/<cli>` to that CLI's directory on the `agentkit` volume
+  (created 0700) — the directory ak uses with the option off, so both modes see the same
+  profiles. `ak antigravity @g1`, its login inside, then `dck rebuild` (or `dck up
+  --recreate`): the login is still there. A shared CLI's directory holds the host's mounts
+  and is never linked — create a new profile of a shared CLI on the host. A container
+  started by v0.3.5 or earlier and restarted (not recreated) is migrated at its next start:
+  each profile the volume lacks is moved there; for a name the volume already has, the
+  volume's copy is kept and the layer's directory is set aside as
+  `~/.dck/host/agentkit/profiles/.<cli>.dck-pre-volume-<UTC>`, logged by path only.
+  A link there that points outside the volume, or a volume directory that is a symlink,
+  is refused and left as is.
 - **Claude:** a profile logged in through the macOS keychain cannot reach a container.
   Give each such account a long-lived token — `claude setup-token`, then store it in
   ak's env file (`~/.config/agentkit/env`, mode 600; `ak env import <file>` copies
