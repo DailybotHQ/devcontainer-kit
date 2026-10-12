@@ -80,6 +80,9 @@ byte-identically to v0.3.2.
 
 ### Changed
 
+- **Pins:** herdr-peers **v0.2.3** (`HERDR_PEERS_TAG`, verified by the sha256 of its
+  `SHA256SUMS`, `dad7faff…`; tag commit `ff7b7aa`): state kept per machine, so a
+  checkout bind-mounted into a container no longer shares the host's `self.json`.
 - **Pins:** coding-agents-kit **v0.5.2** (`AGENTKIT_TAG`; tag commit `af25837`, tarball
   sha256 `12cbf6e2…`, `SHA256SUMS` sha256 `2bedc980…`): reads
   `AGENTKIT_DEFAULT_PROFILE_<CLI>` (`[agents] default_profile`).
