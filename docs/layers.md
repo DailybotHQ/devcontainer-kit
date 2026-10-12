@@ -22,7 +22,7 @@ After changing the file, run `dck init` (it shows the diff and asks), then
 ## agents
 
 Installs [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit)
-at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v0.5.1**) into the
+at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v0.5.2**) into the
 dev user's home, following the kit's install contract: the release tarball, verified
 against the pinned `AGENTKIT_SHA256` before it is unpacked, then `install.sh --no-rc`, then `ak install <kind>…` for the
 kinds in `agents.clis`, each through its vendor's official channel.
@@ -205,7 +205,7 @@ with the dispatcher `/usr/local/bin/dck-layer`. They run only during the
 
 ## Status in v0.3.x
 
-The `agents` layer is verified end to end with coding-agents-kit `v0.5.1`
+The `agents` layer is verified end to end with coding-agents-kit `v0.5.2`
 (installed from its sha256-verified release tarball; `ak` interface 1, permissions
 `auto` by default; `ak install codex pi`, the `classic` and `providers` presets; the
 `docker` test scope builds a rendered node fixture with the layer on every CI run). Each

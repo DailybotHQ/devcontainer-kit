@@ -73,6 +73,9 @@ and the interface number).
 
 ### Changed
 
+- **Pins:** coding-agents-kit **v0.5.2** (`AGENTKIT_TAG`; tag commit `af25837`, tarball
+  sha256 `12cbf6e2…`, `SHA256SUMS` sha256 `2bedc980…`): reads
+  `AGENTKIT_DEFAULT_PROFILE_<CLI>` (`[agents] default_profile`).
 - **Markers are all-or-nothing.** A compose file or Dockerfile with some of dck's markers
   but not all, or with unbalanced markers, is refused with the fix instead of being
   replaced or appended to (a block appended at the end could land inside another
