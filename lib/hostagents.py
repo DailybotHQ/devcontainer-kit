@@ -155,7 +155,8 @@ def plan(merged, env=None):
            "ak_env": ak_env_path(env), "container_profiles": base + "/agentkit/profiles",
            "container_env_dir": base + "/agentkit/hostenv",
            "container_env": base + "/agentkit/hostenv/env", "container_codex": base + "/codex",
-           "selected": list(merged.get("host_profile_names") or [])}
+           "selected": list(merged.get("host_profile_names") or []),
+           "defaults": [], "defaults_skipped": []}
     if not merged.get("host_profiles"):
         out["reason"] = "off ([agents] host_profiles in the host profile); nothing is shared or copied"
         return out
@@ -213,6 +214,16 @@ def plan(merged, env=None):
         else:
             out["values"][name] = source[name]
             out["env_names"].append(name)
+    # [agents] default_profile: only a profile actually shared can be a container's default.
+    shared = set("%s%s" % (x["cli"], x["profile"]) for x in out["shared"])
+    for cli, prof in sorted((merged.get("default_profile") or {}).items()):
+        if prof == "@default" or ("%s%s" % (cli, prof)) in shared:
+            out["defaults"].append((cli, prof))
+        elif cli not in clis:
+            out["defaults_skipped"].append((cli, prof, "this repository does not install %s" % cli))
+        else:
+            out["defaults_skipped"].append((cli, prof, "%s %s is not shared (host_profile_names, or no such "
+                                            "ak profile on the host)" % (cli, prof)))
     return out
 
 
@@ -285,6 +296,8 @@ def write(merged, service, project, out_path, env=None):
         environment.append(("DCK_HOST_PROFILES", " ".join(shared_clis(p))))
         for s in p["shared"]:
             volumes += _bind(s["source"], s["target"], s["mode"] == "ro")
+    for cli, prof in p["defaults"]:
+        environment.append(("AGENTKIT_DEFAULT_PROFILE_%s" % cli.upper(), prof))
     if p["codex"]:
         environment.append(("DCK_HOST_CODEX", p["codex"]["target"]))
         volumes += _bind(p["codex"]["source"], p["codex"]["target"], p["codex"]["mode"] == "ro")
@@ -358,6 +371,11 @@ def report(merged, env=None, profiles=None):
         return out, p
     if p["selected"]:
         out.append(("info", "host profiles: limited to host_profile_names: %s" % ", ".join(p["selected"])))
+    if p["defaults"]:
+        out.append(("info", "host profiles: default profile inside (AGENTKIT_DEFAULT_PROFILE_<CLI>, ak v0.5.2+): %s"
+                    % ", ".join("%s %s" % d for d in p["defaults"])))
+    for cli, prof, why in p["defaults_skipped"]:
+        out.append(("warn", "host profiles: default_profile %s = %s not applied — %s" % (cli, prof, why)))
     out.append(("info", "host profiles: shared: %s" % (", ".join(profile_refs(p)) or "none")))
     for s in p["shared"]:
         out.append(("info", "host profiles: %s@%s %s — %s" % (s["cli"], s["profile"][1:], s["mode"], s["why"])))
@@ -371,6 +389,12 @@ def report(merged, env=None, profiles=None):
     out.append(("info", "host profiles: env file (%s) names: %s"
                 % (MOUNT_MODES["env"][0], ", ".join(p["env_names"]) or "none")))
     for name, why in p["env_skipped"]:
+        if name == "CLAUDE_CODE_OAUTH_TOKEN" and why == "not set on the host" and \
+                any(c == "claude" for c, _ in p["defaults"]):
+            out.append(("info", "host profiles: claude @default is not portable (macOS keychain); a bare "
+                        "`ak claude` inside uses default_profile claude = %s"
+                        % dict(p["defaults"]).get("claude")))
+            continue
         if name == "CLAUDE_CODE_OAUTH_TOKEN" and why == "not set on the host":
             # Claude's own home is never shared: on macOS its login lives in the
             # keychain, so this token is the only way the default account gets in.
@@ -379,7 +403,8 @@ def report(merged, env=None, profiles=None):
                         "is not set on the host. Run `claude setup-token` for that account and store it in "
                         "ak's env file (~/.config/agentkit/env, or `ak env import <file>`) as "
                         "CLAUDE_CODE_OAUTH_TOKEN, then dck up; or log in once inside (`ak claude`), which "
-                        "the container's claude volume keeps across recreates"))
+                        "the container's claude volume keeps across recreates; or set [agents] default_profile = { claude = "
+                        "\"@<a shared profile>\" } in the host profile"))
             continue
         out.append(("warn" if why != "not set on the host" else "info",
                     "host profiles: %s not copied — %s" % (name, why)))

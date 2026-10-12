@@ -47,6 +47,8 @@ RE_COMPOSE_PROJECT = r"^[a-z0-9][a-z0-9_-]{0,62}$"
 RE_BUILD_CONTEXT = r"^(\.|\.\.|\./[A-Za-z0-9._/-]*|\.\./[A-Za-z0-9._/-]*|[A-Za-z0-9._-][A-Za-z0-9._/-]*)$"
 RE_NETWORK_NAME = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$"
 AK_PRESETS = ("classic", "providers")
+RE_DEFAULT_PROFILE = r"^@?[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+DEFAULT_PROFILE_CLIS = ("claude", "codex", "pi", "cline", "grok", "opencode")
 # A compose volume key (compose prefixes it with the project name).
 RE_VOLUME = r"^[a-z0-9][a-z0-9_.-]{0,62}$"
 # The agents layer's volume names: a state volume must not take one of them.
@@ -133,10 +135,14 @@ PROFILE_RULES = {
     "agents.host_profiles": ("bool", False, None),
     "agents.host_env_keys": ("env_name_list", [], ("pattern", RE_ENV_NAME)),
     "agents.host_profile_names": ("profile_ref_list", [], ("pattern", RE_PROFILE_REF)),
+    # The account a bare `ak <cli>` uses inside: { claude = "@work3" }, exported as
+    # AGENTKIT_DEFAULT_PROFILE_<CLI> (coding-agents-kit v0.5.2+). Host profile only.
+    "agents.default_profile": ("default_profile_map", {}, ("pattern", RE_DEFAULT_PROFILE)),
 }
 TABLES = {"repo": ("layers", "agents", "herdr", "ssh", "compose", "build"), "profile": ("labels", "ssh", "host", "mesh", "agents")}
 # Keys only the host profile may set; in a repository's dck.toml they are ignored.
 HOST_ONLY_REPO_KEYS = ("agents.host_profiles", "agents.host_env_keys", "agents.host_profile_names",
+                       "agents.default_profile",
                        "ssh.copy_keys")
 
 # Where each listener kind listens and which public host key pins it.
@@ -217,6 +223,14 @@ def _check(key, value, rule, problems):
             bad("duplicate entries")
         if len(value) > 64:
             bad("at most 64 volumes")
+    elif kind == "default_profile_map":
+        if not isinstance(value, dict):
+            return bad("expected a table of cli = \"@profile\", got %s" % _type_name(value))
+        for cli, prof in value.items():
+            if cli not in DEFAULT_PROFILE_CLIS:
+                bad("unknown cli %r (one of: %s)" % (cli, ", ".join(DEFAULT_PROFILE_CLIS)))
+            elif not isinstance(prof, str) or not re.match(carg, prof):
+                bad("%s: invalid profile %r (\"@<name>\", e.g. \"@work3\")" % (cli, prof))
     elif kind == "preset_list":
         if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
             return bad("expected an array of preset names, got %s" % _type_name(value))
@@ -574,6 +588,7 @@ def effective(repo, default_tag, profile_name=None, env=None):
         "host_profiles": bool(prof["agents.host_profiles"]),
         "host_env_keys": list(prof["agents.host_env_keys"]),
         "host_profile_names": list(prof["agents.host_profile_names"]),
+        "default_profile": dict((k, "@" + v.lstrip("@")) for k, v in prof["agents.default_profile"].items()),
         "ssh_copy_keys": bool(prof["ssh.copy_keys"]),
     })
     merged.update(host_settings(prof, env))

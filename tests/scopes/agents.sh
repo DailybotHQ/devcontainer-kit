@@ -498,3 +498,26 @@ test_doctor_explains_the_default_claude_login() {
   assert_contains "$RUN_OUT" "log in once inside" "or a login the claude volume keeps"
   assert_not_contains "$RUN_OUT" "CLAUDE_CODE_OAUTH_TOKEN not copied" "instead of the bare not-copied line"
 }
+
+# #11: [agents] default_profile — the account a bare `ak <cli>` uses inside.
+test_default_profile_is_exported_for_shared_profiles() {
+  mk_repo || return 0
+  mk_host
+  profile 'host_profiles = true
+default_profile = { claude = "@work1", codex = "nope" }'
+  up
+  assert_rc 0 "dck up succeeds with default_profile"
+  local o; o="$(cat "$(overlay)")"
+  assert_contains "$o" 'AGENTKIT_DEFAULT_PROFILE_CLAUDE: "@work1"' "a shared profile becomes the CLI's default inside"
+  assert_not_contains "$o" "AGENTKIT_DEFAULT_PROFILE_CODEX" "a profile that is not shared is not exported"
+  fake_ak
+  run_cmd bash -c 'cd "$1" && PATH="$2:$PATH" "$3" doctor' _ "$REPO" "$SANDBOX/akbin" "$DCK"
+  assert_contains "$RUN_OUT" "default profile inside (AGENTKIT_DEFAULT_PROFILE_<CLI>, ak v0.5.2+): claude @work1" "the doctor shows the mapping"
+  assert_contains "$RUN_OUT" "default_profile codex = @nope not applied — codex @nope is not shared" "and flags one it cannot apply"
+  printf 'interface = 2\n[agents]\ndefault_profile = { cursor = "@x" }\n' > "$SANDBOX/p.toml"
+  run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" config validate --kind profile "$SANDBOX/p.toml"
+  assert_rc 3 "a CLI without portable profiles is refused"
+  python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read(); open(p, "w").write(s.replace("[agents]\n", "[agents]\ndefault_profile = { claude = \"@work1\" }\n", 1))' "$REPO/.devcontainer/dck.toml"
+  run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" config show --repo "$REPO" --format json
+  assert_contains "$RUN_ERR" "agents.default_profile is a host-profile setting" "a repository cannot set it"
+}

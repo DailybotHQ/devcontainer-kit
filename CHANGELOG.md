@@ -39,6 +39,11 @@ and the interface number).
     `dck init` neither creates nor touches it.
   - `[agents] presets`: the ak alias presets (`classic`, `providers`). Unset keeps both,
     as before; new renders write `presets = []` (off).
+- **`[agents] default_profile`** (host profile): `{ claude = "@work3" }` exports
+  `AGENTKIT_DEFAULT_PROFILE_<CLI>` into containers when that profile is shared, so a
+  bare `ak claude` inside uses that account (coding-agents-kit v0.5.2+); the macOS
+  `@default` Claude login lives in the keychain and cannot be shared. `dck doctor` shows
+  the mapping and flags a mapping it cannot apply.
 - `dck doctor`: Docker Compose >= 2.24 (satellites with `extends` + `!reset`), a compose
   file that does not reflect `dck.toml` or its user block (`dck up` and `dck rebuild`
   warn too), and what the user block overrides (`compose_render` in `--json`).
