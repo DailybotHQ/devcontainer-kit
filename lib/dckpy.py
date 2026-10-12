@@ -209,9 +209,10 @@ def cmd_devc(args):
             return EXIT_OK
         if sub == "overlay":
             repo, project, out = opt(args, "--repo"), opt(args, "--project"), opt(args, "--out")
+            service = opt(args, "--service")
             if not (repo and project and out):
-                return usage("devc overlay --repo DIR --project NAME --out FILE")
-            print("written" if devc.write_overlay(repo, project, out) else "none")
+                return usage("devc overlay --repo DIR --project NAME --out FILE [--service NAME]")
+            print("written" if devc.write_overlay(repo, project, out, service) else "none")
             return EXIT_OK
         if sub == "env-examples":
             for p in devc.env_examples(opt(args, "--dir"), opt(args, "--repo")):
@@ -386,7 +387,7 @@ def cmd_agents(args):
         return usage("agents overlay --repo DIR --project NAME --out FILE")
     try:
         merged, _ = config.effective(repo, default_tag(), profile)
-        p = hostagents.write(merged, devc.read(repo)["service"], project, out)
+        p = hostagents.write(merged, opt(args, "--service") or devc.read(repo)["service"], project, out)
     except (hostagents.HostAgentsError, devc.DevcError, OSError) as exc:
         sys.stderr.write("dck: host profiles: %s\n" % exc)
         return EXIT_REFUSED
@@ -415,7 +416,7 @@ def cmd_sshkeys(args):
         return usage("sshkeys overlay --repo DIR --out FILE")
     try:
         merged, _ = config.effective(repo, default_tag(), profile)
-        p = sshkeys.write(merged, devc.read(repo)["service"], out)
+        p = sshkeys.write(merged, opt(args, "--service") or devc.read(repo)["service"], out)
     except (sshkeys.SshKeysError, devc.DevcError, OSError) as exc:
         sys.stderr.write("dck: ssh keys: %s\n" % exc)
         return EXIT_REFUSED

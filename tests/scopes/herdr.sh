@@ -797,3 +797,67 @@ test_mesh_repins_a_rebuilt_peer() {
   DCK_HOST_OS=Darwin d herdr mesh
   assert_not_contains "$RUN_OUT" "re-pinned" "an unchanged key is left alone"
 }
+
+# v0.3.5: workspace satellites through dck — one service of another compose
+# project, with every host step; down removes only it and its machine.
+sat_files() {
+  printf 'services:\n  appsatellite:\n    extends:\n      file: docker-compose.yaml\n      service: app\n    profiles: [satellite]\n' > "$REPO/docker/local/docker-compose.satellite.yaml"
+}
+test_satellite_arguments() {
+  mk_repo
+  d --service appsatellite up
+  assert_rc 2 "--service without --project is a usage error"
+  assert_contains "$RUN_ERR" "need --project (a satellite runs in its own compose project)" "and says why"
+  d --project sat --compose-file docker/local/docker-compose.yaml up
+  assert_rc 2 "--compose-file without --service is a usage error"
+  d --project sat --service appsatellite doctor
+  assert_rc 2 "a verb that does not take --service is refused"
+  d --project sat --service 'bad name' up
+  assert_rc 2 "an invalid service name is refused"
+  d --project sat --service appsatellite --compose-file docker/local/nope.yaml up
+  assert_ne "$RUN_RC" "0" "a missing compose file is refused"
+}
+
+test_satellite_up_runs_every_host_step() {
+  mk_repo
+  d herdr add
+  sat_files
+  printf '127.0.0.1:22777\n' > "$DCK_FAKE_STATE/compose_port"
+  : > "$DCK_FAKE_LOG"
+  DCK_HOST_OS=Darwin d --project satproj --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.satellite.yaml \
+    --service appsatellite up --label "Workspace A"
+  assert_rc 0 "dck up starts the satellite"
+  local calls; calls="$(fake_calls docker)"
+  assert_contains "$calls" "compose -p satproj -f $REPO/docker/local/docker-compose.yaml -f $REPO/docker/local/docker-compose.satellite.yaml" "its own project and compose files"
+  assert_contains "$calls" "up -d --no-recreate appsatellite" "only that service is started"
+  assert_not_contains "$calls" "-p proj " "the main project is never touched"
+  assert_contains "$calls" "port appsatellite 22" "its sshd port is read from compose"
+  assert_contains "$(fake_calls herdr)" "machine add --label Workspace A dck-satproj-appsatellite" "it registers as its own Herdr machine (label from --label)"
+  assert_contains "$(cat "$HOME/.ssh/config.d/dck")" "Port 22777" "its alias dials the satellite's own port"
+  assert_contains "$calls" "dck_herdr_self" "the reply route (HERDR_PEERS_SELF) is pushed into it"
+  : > "$DCK_FAKE_LOG"
+  d --project satproj --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.satellite.yaml --service appsatellite down
+  assert_rc 0 "dck down removes the satellite"
+  assert_contains "$(fake_calls docker)" "rm -sf appsatellite" "only that service"
+  assert_contains "$(fake_calls herdr)" "machine remove" "and its Herdr machine"
+  assert_not_contains "$(cat "$HOME/.ssh/config.d/dck" 2>/dev/null)" "dck-satproj-appsatellite" "and its SSH alias"
+  assert_contains "$(cat "$HOME/.ssh/config.d/dck")" "Host dck-proj" "the main service's alias stays"
+}
+
+test_satellite_state_seed() {
+  mk_repo
+  sat_files
+  printf 'seeded 2\n' > "$DCK_FAKE_STATE/run_out"
+  : > "$DCK_FAKE_LOG"
+  d --project satproj --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.satellite.yaml \
+    --service appsatellite up --seed-state-from proj_state
+  assert_rc 0 "dck up with a seed succeeds"
+  assert_contains "$(fake_calls docker)" "run --rm --no-deps -T --entrypoint sh -v proj_state:/dck-seed-from:ro appsatellite" "the login state is copied from the named volume, read-only"
+  assert_contains "$RUN_OUT" "seeded the gh / Dailybot login from proj_state (2 directories)" "and reported"
+  printf 'kept\n' > "$DCK_FAKE_STATE/run_out"
+  d --project satproj --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.satellite.yaml \
+    --service appsatellite up --seed-state-from proj_state
+  assert_contains "$RUN_OUT" "already has data; not seeded" "a state volume with data is never overwritten"
+  d --project satproj --service appsatellite up --seed-state-from 'bad;name'
+  assert_rc 2 "an invalid volume name is refused"
+}

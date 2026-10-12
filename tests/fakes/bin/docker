@@ -5,6 +5,8 @@
 #   ps                   stdout of `docker ps ...` and `docker compose ... ps ...`
 #   ps_publish_<port>    stdout of `docker ps --filter publish=<port>` (the container name)
 #   host_key_pub_<name>  that container's sshd public host key (`docker exec … dck_host_key_pub`)
+#   compose_port         stdout of `docker compose ... port <svc> 22` (a satellite's sshd)
+#   run_out / run_rc     stdout / status of `docker compose ... run ...` (the state seed)
 #   ps_mounts            stdout of `docker ps ... --format '<service>\t<mounts>'` (the doctor)
 #   exec_out / exec_rc   stdout / status of `docker compose ... exec ...`
 #   compose_rc           status of every other `docker compose ...` call
@@ -79,6 +81,9 @@ case "$1" in
         -p|-f|--project-name|--file) shift 2 ;;
         version) echo "Docker Compose version v2.99.0-fake"; exit 0 ;;
         ps) cat "$st/ps" 2>/dev/null; exit 0 ;;
+        # No compose_port file: compose's own failure (the service is not running).
+        port) [ -f "$st/compose_port" ] || { echo "no container for service" >&2; exit 1; }; cat "$st/compose_port"; exit 0 ;;
+        run) cat "$st/run_out" 2>/dev/null; exit "$(cat "$st/run_rc" 2>/dev/null || echo 0)" ;;
         exec)
           # The host key read by ssh_pin_host_key: $st/host_key_pub (nothing when absent).
           case " $* " in *dck_host_key_pub*) cat "$st/host_key_pub" 2>/dev/null; exit 0 ;; esac

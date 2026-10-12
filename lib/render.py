@@ -882,6 +882,7 @@ def context(values, repo_name, project, network, base_image, dck_tag, pins=None,
         "ssh_agent": toml_value(values["ssh_agent"]),
         "herdr_label_fmt": raw_label,
         "rename_user": user != "dev",
+        "workspace_in_home": user != "dev" and values["workspace"].startswith("/home/%s/" % user),
         "layers_block": layers_block(values),
     }
 

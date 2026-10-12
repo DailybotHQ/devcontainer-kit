@@ -7,6 +7,37 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.3.5] — 2026-10-12
+
+Interface stays **2**.
+
+### Added
+
+- **Workspace satellites through dck.** `dck --project P --compose-file F… --service S
+  up|down|ps|logs|shell|exec|ssh|…` acts on one service of another compose project — a
+  second instance of a dev service (`<svc>satellite`) with its own project, files and
+  ports — with every host step the main service gets: the authorized dck key, `[ssh]
+  copy_keys`, host-profile overlays and `default_profile`, the git identity,
+  `HERDR_PEERS_SELF`, its own Herdr machine (alias `dck-<project>-<service>`, label
+  `<project> · <service>` or `--label`) with the mesh, and the Codex/Claude container
+  config. Its sshd port is read from compose. `down` removes only that service, its Herdr
+  machine and its SSH alias; the main service is never touched.
+- `up --seed-state-from VOLUME` (satellites) copies only the login state (`config_gh`,
+  `config_dailybot`; never history, keys or Herdr state) from another state volume into
+  the satellite's, once, while it is empty.
+- A recipe for repositories that start satellites from their own scripts
+  ([docs/shared-stack.md](docs/shared-stack.md#workspace-satellites)).
+
+### Fixed
+
+- **A workspace under the renamed user's home builds.** With `user` other than `dev`
+  and a workspace inside that user's home (`user = "node"`, `workspace =
+  "/home/node/app"`), the base block ran `WORKDIR <workspace>` before renaming the
+  uid-1000 user: `WORKDIR` created `/home/node` first and `usermod -m` failed (exit 12).
+  The rename and home move now come before `WORKDIR`, and such a workspace is created
+  owned by the user. Every flavour; a repository without a renamed user renders as
+  before.
+
 ## [0.3.4] — 2026-10-12
 
 Interface stays **2**.
@@ -686,7 +717,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.5...HEAD
+[0.3.5]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.5
 [0.3.4]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.4
 [0.3.3]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.3
 [0.3.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.2

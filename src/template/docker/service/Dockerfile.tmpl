@@ -62,18 +62,24 @@ ENV LANG=en_US.UTF-8 \
     GIT_EDITOR=nvim \
     DCK_IMAGE_FLAVOUR={{flavour}} \
     DCK_IMAGE_VERSION={{dck_version}}
-WORKDIR {{workspace}}
-ENTRYPOINT ["/usr/local/bin/dck-entrypoint"]
-CMD ["sleep", "infinity"]
 {% if rename_user %}
 
-# dck.toml asks for user "{{user}}": rename the uid-1000 user.
+# dck.toml asks for user "{{user}}": rename the uid-1000 user. Before WORKDIR: a
+# workspace under /home/{{user}} would otherwise create that home first, and
+# `usermod -m` refuses to move into an existing directory (exit 12).
 RUN usermod -l {{user}} -d /home/{{user}} -m dev \
     && groupmod -n {{user}} dev \
     && printf '%s ALL=(root) NOPASSWD:ALL\n' {{user}} > /etc/sudoers.d/{{user}} \
     && chmod 0440 /etc/sudoers.d/{{user}} \
     && rm -f /etc/sudoers.d/dev
 {% endif %}
+{% if workspace_in_home %}
+# The workspace lives in the user's home: create it as theirs, not root's.
+RUN install -d -o {{user}} -g {{user}} {{workspace}}
+{% endif %}
+WORKDIR {{workspace}}
+ENTRYPOINT ["/usr/local/bin/dck-entrypoint"]
+CMD ["sleep", "infinity"]
 # <<< dck:base <<<
 # >>> dck:layers >>>
 {{layers_block}}
