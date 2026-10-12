@@ -60,8 +60,8 @@ user = \"dev;rm\""
 image_tag = \"latest\""
   invalid_case "a privileged ssh port" "ssh_port: expected 0 (no sshd) or a port in 1024-65535" "$base
 ssh_port = 22"
-  invalid_case "an ssh port given as a string" "ssh_port: expected an integer, got string" "$base
-ssh_port = \"22040\""
+  invalid_case "an ssh port string with a container part" "invalid ssh_port '22040:22'" "$base
+ssh_port = \"22040:22\""
   invalid_case "a port out of range" "ports: web: expected a port number in 1-65535" "$base
 ports = { web = 70000 }"
   invalid_case "a duplicated port" "port 4321 is already used by web" "$base
@@ -244,7 +244,8 @@ for kind, rules, fname in (("repo", c.REPO_RULES, "dck-config-v2.json"),
         elif default is not None and s.get("default", default) != default:
             problems.append("%s.%s default %r != schema %r" % (kind, key, default, s.get("default")))
         if cons and cons[0] == "pattern":
-            pat = s.get("pattern") or (s.get("propertyNames") or {}).get("pattern") or (s.get("items") or {}).get("pattern")
+            pat = s.get("pattern") or (s.get("propertyNames") or {}).get("pattern") or (s.get("items") or {}).get("pattern") \
+                or (s.get("additionalProperties") or {}).get("pattern")
             if pat != cons[1]:
                 problems.append("%s.%s pattern differs" % (kind, key))
         if cons and cons[0] == "interface":

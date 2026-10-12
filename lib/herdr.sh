@@ -93,6 +93,22 @@ herdr_lookup() {
   HERDR_ENABLED="$(printf '%s' "$line" | cut -f3)"
 }
 
+# herdr_push_self — tell the container its machine id in this host's Herdr
+# catalog (dck_herdr_self), so the login profile exports HERDR_PEERS_SELF. Run
+# after every add (a re-added machine gets a new id) and by the mesh.
+herdr_push_self() {
+  container_running || return 0
+  herdr_lookup
+  local id="${HERDR_ID:--}"
+  case "$id" in -) ;; *[!0-9a-f]*) return 0 ;; esac
+  if dc exec -T --user root "$DC_SERVICE" bash -c '. /usr/local/lib/dck/entrypoint.sh && type dck_herdr_self >/dev/null 2>&1 && dck_herdr_self "$1"' _ "$id" \
+      </dev/null >/dev/null 2>&1; then
+    [ "$id" = - ] || note "herdr: HERDR_PEERS_SELF=$id inside $DC_SERVICE (new shells and panes)"
+  else
+    [ "$id" = - ] || note "herdr: could not record the machine id inside $DC_SERVICE (an image older than devcontainer-kit v0.3.3?); set HERDR_PEERS_SELF=$id there by hand"
+  fi
+}
+
 herdr_prepare() {
   herdr_require_config
   herdr_require_cli
@@ -129,6 +145,43 @@ herdr_agent_key() {
   note "ssh-agent: loaded the dck key for the mesh (every dck container with the agent socket can now log in to the others; ssh-add -d removes it — see docs/SECURITY.md)"
 }
 
+# herdr_repin_peers — a peer container rebuilt outside its own `dck up` (the
+# editor's "Rebuild Container", a recreated state volume) has a new sshd host
+# key that the host's dck known_hosts does not have yet: the payloads pushed to
+# the other containers would carry the old one, and the host's own refresh hop
+# would be refused. Read each running peer's key from the container itself
+# (docker exec, the container publishing that alias's port) and re-pin it.
+herdr_repin_peers() {
+  local line alias port name pub ktype kval rest cur tmp
+  (umask 077 && mkdir -p "$(dirname "$HERDR_KNOWN_HOSTS")")
+  while IFS= read -r line; do
+    alias="${line%% *}"; port="${line##* }"
+    [ "$alias" != "$DCK_ALIAS" ] || continue
+    case "$alias" in [A-Za-z0-9]*) ;; *) continue ;; esac
+    case "$port" in ''|*[!0-9]*) continue ;; esac
+    name="$(docker ps --filter "publish=$port" --format '{{.Names}}' 2>/dev/null | head -n 1)"
+    case "$name" in ''|*[!A-Za-z0-9_.-]*) continue ;; esac
+    pub="$(docker exec -u root "$name" bash -c '. /usr/local/lib/dck/entrypoint.sh && type dck_host_key_pub >/dev/null 2>&1 && dck_host_key_pub' 2>/dev/null </dev/null | head -n 1)"
+    read -r ktype kval rest <<KEY
+$pub
+KEY
+    case "$ktype" in ssh-ed25519|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521|ssh-rsa) ;; *) continue ;; esac
+    case "$kval" in ''|*[!A-Za-z0-9+/=]*) continue ;; esac
+    cur="$(awk -v a="$alias" '$1 == a { print $2 " " $3 }' "$HERDR_KNOWN_HOSTS" 2>/dev/null)"
+    [ "$cur" = "$ktype $kval" ] && continue
+    tmp="$HERDR_KNOWN_HOSTS.tmp-$$"
+    { awk -v a="$alias" '$1 != a' "$HERDR_KNOWN_HOSTS" 2>/dev/null; printf '%s %s %s\n' "$alias" "$ktype" "$kval"; } > "$tmp" \
+      && chmod 600 "$tmp" && mv -f "$tmp" "$HERDR_KNOWN_HOSTS" || { rm -f "$tmp"; continue; }
+    if [ -n "$cur" ]; then
+      note "mesh: $alias has a new host key (rebuilt); re-pinned it from the container for the host and every peer"
+    else
+      note "mesh: pinned the host key of $alias from the container"
+    fi
+  done <<ALIASES
+$(dckpy sshconf aliases --file "$HERDR_INCLUDE" --ports 2>/dev/null || true)
+ALIASES
+}
+
 # herdr_mesh — push the peer list (public data only) into this container, where
 # dck_mesh_apply writes the ssh config, the pinned host keys and the Herdr machines.
 herdr_mesh() {
@@ -143,6 +196,7 @@ herdr_mesh() {
     return 0
   fi
   herdr_agent_key
+  herdr_repin_peers
   local catalog payload n alias
   # The host must have its own entry in its Herdr catalog: asks from the host
   # carry that entry's id as their reply address.
@@ -158,6 +212,7 @@ herdr_mesh() {
     bash -c '. /usr/local/lib/dck/entrypoint.sh && dck_mesh_apply' >/dev/null 2>&1 \
     || die "could not apply the mesh inside $DC_SERVICE (rendered by devcontainer-kit v0.2+?)"
   note "mesh: $n peer(s) reachable from inside $DC_SERVICE"
+  herdr_push_self
   # The containers started before this one learn about it too: re-apply the
   # mesh to every other running dck container, over its own alias.
   for alias in $(dckpy sshconf aliases --file "$HERDR_INCLUDE" 2>/dev/null || true); do
@@ -253,6 +308,7 @@ herdr_add() {
     herdr machine add --label "$DCK_HERDR_LABEL" "$DCK_ALIAS" || die "herdr machine add failed — run: dck herdr status"
     note "herdr: registered $DCK_ALIAS as \"$DCK_HERDR_LABEL\""
   fi
+  herdr_push_self
   if herdr_wait_for "server" herdr_server_ok; then
     note "herdr: the remote server answers"
   else
@@ -309,6 +365,7 @@ herdr_remove() {
     if [ -n "$HERDR_ID" ]; then
       herdr machine remove "$HERDR_ID" >/dev/null || die "herdr machine remove failed"
       note "herdr: removed machine $DCK_ALIAS (its sessions keep running in the container)"
+      if command -v docker >/dev/null 2>&1; then herdr_push_self; fi
     else
       note "herdr: $DCK_ALIAS was not registered"
     fi

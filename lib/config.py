@@ -39,6 +39,16 @@ RE_PROFILE_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$"
 RE_PREFIX = r"^([a-z0-9][a-z0-9_-]{0,31})?$"
 RE_NETWORK = r"^([A-Za-z0-9][A-Za-z0-9_.-]{0,62})?$"
 RE_ALIAS_PREFIX = r"^[a-z0-9][a-z0-9._-]{0,31}$"
+# A compose port string (v0.3.3): a host part and an optional container part,
+# each a number or a ${VAR} / ${VAR:-default} expression, optionally after a host IP.
+_PORT_ATOM = r"(\d{1,5}|\$\{[A-Za-z_][A-Za-z0-9_]*(:?-\d{1,5})?\})"
+RE_PORT_SPEC = r"^((\d{1,3}(\.\d{1,3}){3}|\[[0-9A-Fa-f:]+\]):)?%s(:%s)?(/(tcp|udp))?$" % (_PORT_ATOM, _PORT_ATOM)
+RE_COMPOSE_PROJECT = r"^[a-z0-9][a-z0-9_-]{0,62}$"
+RE_BUILD_CONTEXT = r"^(\.|\.\.|\./[A-Za-z0-9._/-]*|\.\./[A-Za-z0-9._/-]*|[A-Za-z0-9._-][A-Za-z0-9._/-]*)$"
+RE_NETWORK_NAME = r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$"
+AK_PRESETS = ("classic", "providers")
+RE_DEFAULT_PROFILE = r"^@?[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+DEFAULT_PROFILE_CLIS = ("claude", "codex", "pi", "cline", "grok", "opencode")
 # A compose volume key (compose prefixes it with the project name).
 RE_VOLUME = r"^[a-z0-9][a-z0-9_.-]{0,62}$"
 # The agents layer's volume names: a state volume must not take one of them.
@@ -58,9 +68,23 @@ REPO_RULES = {
     "flavour": ("str", REQUIRED, ("enum", FLAVOURS)),
     "image_tag": ("str", None, ("pattern", RE_TAG)),  # interface 1 only; ignored since v0.2.0
     "base_image": ("str", None, ("pattern", RE_IMAGE_PIN)),  # None -> the flavour's pinned image
-    "ssh_port": ("int", 0, ("port_or_zero", None)),
+    "ssh_port": ("port_or_spec", 0, ("port_or_zero", None)),
     "bind": ("str", "127.0.0.1", ("pattern", RE_IPV4)),
     "ports": ("port_map", {}, ("pattern", RE_PORT_NAME)),
+    # v0.3.3, all optional and additive (absent: v0.3.2's render).
+    "build.context": ("str", None, ("pattern", RE_BUILD_CONTEXT)),
+    # A Dockerfile shared by several services, relative to the repository root;
+    # dck's managed blocks and its dck/ directory go next to it.
+    "build.dockerfile": ("str", None, ("pattern", r"^(?!.*(^|/)\.\.(/|$))[A-Za-z0-9._-][A-Za-z0-9._/-]*Dockerfile[A-Za-z0-9._-]*$")),
+    "compose.project": ("str", None, ("pattern", RE_COMPOSE_PROJECT)),
+    "compose.networks": ("host_list", [], ("pattern", RE_NETWORK_NAME)),
+    # Extra compose-managed volumes declared with their exact names (other
+    # services' data volumes keep reattaching: <project>_<name>).
+    "compose.volumes": ("volume_list", [], ("pattern", RE_VOLUME)),
+    "agents.presets": ("preset_list", None, ("enum", AK_PRESETS)),
+    # The agents' own Node (/opt/dck/node) first on PATH, for a repository whose
+    # own tooling needs that Node too. Off: the image's node stays first.
+    "agents.node_first": ("bool", False, None),
     "layers.agents": ("bool", False, None),
     "layers.dailybot": ("bool", False, None),
     "layers.editor": ("bool", True, None),
@@ -68,6 +92,8 @@ REPO_RULES = {
     "herdr.machine": ("bool", False, None),
     "ssh_agent": ("bool", True, None),
     "ssh_host_config": ("bool", True, None),
+    # false: `dck init` neither creates nor touches dev.sh (a repository with its own).
+    "dev_sh": ("bool", True, None),
     "herdr.layout": ("str", "standard", ("enum", ("standard", "none"))),
     "herdr.mesh": ("bool", True, None),
     "herdr.label": ("label", "{repo}", ("placeholders", LABEL_PLACEHOLDERS)),
@@ -112,10 +138,14 @@ PROFILE_RULES = {
     "agents.host_profiles": ("bool", False, None),
     "agents.host_env_keys": ("env_name_list", [], ("pattern", RE_ENV_NAME)),
     "agents.host_profile_names": ("profile_ref_list", [], ("pattern", RE_PROFILE_REF)),
+    # The account a bare `ak <cli>` uses inside: { claude = "@work3" }, exported as
+    # AGENTKIT_DEFAULT_PROFILE_<CLI> (coding-agents-kit v0.5.2+). Host profile only.
+    "agents.default_profile": ("default_profile_map", {}, ("pattern", RE_DEFAULT_PROFILE)),
 }
-TABLES = {"repo": ("layers", "agents", "herdr", "ssh", "compose"), "profile": ("labels", "ssh", "host", "mesh", "agents")}
+TABLES = {"repo": ("layers", "agents", "herdr", "ssh", "compose", "build"), "profile": ("labels", "ssh", "host", "mesh", "agents")}
 # Keys only the host profile may set; in a repository's dck.toml they are ignored.
 HOST_ONLY_REPO_KEYS = ("agents.host_profiles", "agents.host_env_keys", "agents.host_profile_names",
+                       "agents.default_profile",
                        "ssh.copy_keys")
 
 # Where each listener kind listens and which public host key pins it.
@@ -176,6 +206,42 @@ def _check(key, value, rule, problems):
                                % (name, ", ".join("{%s}" % p for p in carg)))
         if kind == "path" and not value:
             return bad("must not be empty")
+    elif kind == "port_or_spec":
+        if isinstance(value, str):
+            if not re.match(r"^%s$" % _PORT_ATOM, value) or value == "0":
+                return bad("invalid ssh_port %r (a number, or the host port as a compose expression such as "
+                           "\"${SSH_PORT:-22540}\"; the container port is always 22)" % value)
+            return None
+        if isinstance(value, bool) or not isinstance(value, int):
+            return bad("expected an integer or a compose port expression, got %s" % _type_name(value))
+        if not (value == 0 or 1024 <= value <= 65535):
+            return bad("expected 0 (no sshd) or a port in 1024-65535, got %s" % value)
+    elif kind == "volume_list":
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            return bad("expected an array of volume names, got %s" % _type_name(value))
+        for item in value:
+            if not re.match(carg, item):
+                bad("invalid volume name %r (must match %s)" % (item, carg))
+        if len(set(value)) != len(value):
+            bad("duplicate entries")
+        if len(value) > 64:
+            bad("at most 64 volumes")
+    elif kind == "default_profile_map":
+        if not isinstance(value, dict):
+            return bad("expected a table of cli = \"@profile\", got %s" % _type_name(value))
+        for cli, prof in value.items():
+            if cli not in DEFAULT_PROFILE_CLIS:
+                bad("unknown cli %r (one of: %s)" % (cli, ", ".join(DEFAULT_PROFILE_CLIS)))
+            elif not isinstance(prof, str) or not re.match(carg, prof):
+                bad("%s: invalid profile %r (\"@<name>\", e.g. \"@work3\")" % (cli, prof))
+    elif kind == "preset_list":
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            return bad("expected an array of preset names, got %s" % _type_name(value))
+        for item in value:
+            if item not in carg:
+                bad("unknown preset %r (one of: %s)" % (item, ", ".join(carg)))
+        if len(set(value)) != len(value):
+            bad("duplicate entries")
     elif kind == "port_map":
         if not isinstance(value, dict):
             return bad("expected a table of name = port, got %s" % _type_name(value))
@@ -183,8 +249,18 @@ def _check(key, value, rule, problems):
         for name, port in value.items():
             if not re.match(carg, name):
                 bad("invalid port name %r (must match %s)" % (name, carg))
+            elif isinstance(port, str):
+                if not re.match(RE_PORT_SPEC, port):
+                    bad("%s: invalid port string %r (\"HOST:CONTAINER\", each a number or ${VAR:-default}, "
+                        "optionally after a host IP: \"${WEB_PORT:-8000}:8000\", \"5001:3000\")" % (name, port))
+                elif not re.search(r":%s(/(tcp|udp))?$" % _PORT_ATOM, port) and not re.match(r"^\d{1,5}$", port):
+                    bad("%s: a port string needs its container port (\"HOST:CONTAINER\"), got %r" % (name, port))
+                elif port in seen:
+                    bad("%s: port %s is already used by %s" % (name, port, seen[port]))
+                else:
+                    seen[port] = name
             elif isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
-                bad("%s: expected a port number in 1-65535, got %r" % (name, port))
+                bad("%s: expected a port number in 1-65535 or a port string, got %r" % (name, port))
             elif port in seen:
                 bad("%s: port %s is already used by %s" % (name, port, seen[port]))
             else:
@@ -269,11 +345,14 @@ def validate(data, kind="repo", path="dck.toml"):
             effective[key] = list(default) if isinstance(default, list) else (
                 dict(default) if isinstance(default, dict) else default)
     if kind == "repo" and not problems:
+        if effective["agents.node_first"] and not effective["layers.agents"]:
+            warnings.append("%s: agents.node_first is set but layers.agents is false; there is no agents' "
+                            "Node to put first" % path)
         if effective["agents.clis"] and not effective["layers.agents"]:
             warnings.append("%s: agents.clis is set but layers.agents is false; no CLI will be installed" % path)
         ssh = effective["ssh_port"]
         for name, port in effective["ports"].items():
-            if ssh and port == ssh:
+            if ssh and isinstance(ssh, int) and port == ssh:
                 problems.append("ports.%s: port %s is already the ssh_port" % (name, port))
         if effective["compose.state_volume"] in AGENT_VOLUME_NAMES:
             problems.append("compose.state_volume: %r is an agents-layer volume; choose another name "
@@ -440,6 +519,42 @@ def record_copy_keys(value, name=None, env=None):
     return True
 
 
+def resolve_port(spec, dotenv=None, env=None):
+    """The host port a compose port expression stands for: an integer as is;
+    "${VAR:-default}" / "${VAR}" from the environment, then the compose
+    directory's .env, then the default; a "HOST:CONTAINER" string's host part.
+    0 when it cannot be resolved (no default, variable unset)."""
+    env = os.environ if env is None else env
+    if isinstance(spec, int):
+        return spec
+    s = str(spec or "")
+    s = re.sub(r"^(\d{1,3}(\.\d{1,3}){3}|\[[0-9A-Fa-f:]+\]):", "", s)  # a leading host IP
+    m = re.match(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)(:?-(\d{1,5}))?\}", s)
+    if m:
+        name, default = m.group(1), m.group(3)
+        value = env.get(name) or (dotenv or {}).get(name) or default or ""
+        return int(value) if re.match(r"^\d{1,5}$", str(value)) else 0
+    m = re.match(r"^(\d{1,5})", s)
+    return int(m.group(1)) if m else 0
+
+
+def read_dotenv(path):
+    """KEY=VALUE pairs of a compose .env (quotes stripped); {} when missing or a link."""
+    out = {}
+    if not os.path.isfile(path) or os.path.islink(path):
+        return out
+    try:
+        with open(path) as fh:
+            for line in fh:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    out[k.strip().replace("export ", "", 1).strip()] = v.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return out
+
+
 def expand_home(path, env):
     if path == "~" or path.startswith("~/"):
         return env.get("HOME", "") + path[1:]
@@ -479,9 +594,14 @@ def effective(repo, default_tag, profile_name=None, env=None):
         "host_profiles": bool(prof["agents.host_profiles"]),
         "host_env_keys": list(prof["agents.host_env_keys"]),
         "host_profile_names": list(prof["agents.host_profile_names"]),
+        "default_profile": dict((k, "@" + v.lstrip("@")) for k, v in prof["agents.default_profile"].items()),
         "ssh_copy_keys": bool(prof["ssh.copy_keys"]),
     })
     merged.update(host_settings(prof, env))
+    # Port strings (v0.3.3) resolve to the host port dck dials (dck ssh, Herdr, doctor).
+    dotenv = read_dotenv(os.path.join(repo, "docker", "local", ".env"))
+    merged["ssh_port_spec"] = cfg["ssh_port"]
+    merged["ssh_port"] = resolve_port(cfg["ssh_port"], dotenv, env)
     merged["herdr.label"] = expand_label(label_fmt, {
         "repo": repo_name, "service": cfg["service"], "user": cfg["user"],
         "project": prof["compose_project_prefix"] + rslug})

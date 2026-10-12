@@ -22,7 +22,7 @@ After changing the file, run `dck init` (it shows the diff and asks), then
 ## agents
 
 Installs [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit)
-at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v0.5.1**) into the
+at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v0.5.2**) into the
 dev user's home, following the kit's install contract: the release tarball, verified
 against the pinned `AGENTKIT_SHA256` before it is unpacked, then `install.sh --no-rc`, then `ak install <kind>…` for the
 kinds in `agents.clis`, each through its vendor's official channel.
@@ -56,12 +56,17 @@ RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}
   user's `~/.npmrc` (Node's own prefix is root's), so `ak install` of npm-based
   CLIs (codex, pi, cline …) works at build time and later inside the container;
   `~/.local/bin` is on the login PATH.
-- **Node** is added where the flavour lacks a current one (`python-3.13` and
-  `debian` carry only Debian's older `nodejs`, installed for the editor's
-  plugins): the official nodejs.org tarball at `NODE_VERSION`, checked against
-  its pinned SHA-256 before extraction into `/usr/local`, ahead of `/usr/bin`
-  on PATH. It is installed when `node` is missing or its major is older than
-  the pinned one. `node-24` already has it.
+- **The agents' own Node.** When the image's `node` is missing or older than the
+  pinned major (Debian's `nodejs` on `python-3.13` and `debian`, or a repository that
+  runs an older Node in production), the official nodejs.org tarball at
+  `NODE_VERSION`, checked against its pinned SHA-256, is extracted into its **own
+  prefix**, `/opt/dck/node` — never over `/usr/local`. The repository's `node` stays
+  the shell's `node` and npm trees are never mixed: `ak install` runs with the
+  agents' Node first on PATH, and every npm-installed agent CLI whose entry point is
+  a node script gets a launcher in `~/.local/bin` that runs it on that Node.
+  `node-24` (or any image with a current Node) needs none of this. A repository whose
+  own tooling needs that Node too sets `[agents] node_first = true`: `/opt/dck/node/bin`
+  then comes first on PATH for every process and login shell.
 - **One named volume per CLI home**, per compose project. At start the
   entrypoint (`dck_layer_persist`, [entrypoint.md](entrypoint.md)) links each
   kind's home onto its volume:
@@ -202,7 +207,7 @@ with the dispatcher `/usr/local/bin/dck-layer`. They run only during the
 
 ## Status in v0.3.x
 
-The `agents` layer is verified end to end with coding-agents-kit `v0.5.1`
+The `agents` layer is verified end to end with coding-agents-kit `v0.5.2`
 (installed from its sha256-verified release tarball; `ak` interface 1, permissions
 `auto` by default; `ak install codex pi`, the `classic` and `providers` presets; the
 `docker` test scope builds a rendered node fixture with the layer on every CI run). Each

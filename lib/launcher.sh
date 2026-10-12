@@ -99,6 +99,8 @@ is written and dck exits 5.
   --clis "claude codex"        kinds for `ak install` when agents is on
   --editor | --no-editor       the editor layer
   --herdr | --no-herdr         register as a Herdr machine on `dck up`
+  --no-dev-sh          never create or touch dev.sh (a repository with its own); written
+                       to dck.toml as dev_sh = false (--dev-sh turns it back on)
   --dry-run            show the plan and the diffs, write nothing
   --yes, -y            consent to every change shown
   --repo DIR           the repository to initialise
@@ -141,12 +143,13 @@ load_context() {
   export DCK_SSH_HOST_EXTRA=""  # read by host_ssh_identities
   DCK_HOST_PROFILES="0"  # [agents] host_profiles (host profile) with the agents layer on
   DCK_SSH_COPY_KEYS="0"  # [ssh] copy_keys (host profile)
+  DCK_COMPOSE_PROJECT=""  # [compose] project (dck.toml): wins over COMPOSE_PROJECT_NAME
   while IFS= read -r line; do
     k="${line%%=*}"; v="${line#*=}"
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HOST_LISTENER|DCK_HOST_PORT|DCK_HOST_KEY|DCK_HOST_LABEL|DCK_HOST_CONFIGURED|DCK_MESH_EXTERNAL|DCK_SSH_AUTHORIZED_EXTRA|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_HOST_PROFILES|DCK_SSH_COPY_KEYS|DCK_PORTS|DCK_TOML_USER) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HOST_LISTENER|DCK_HOST_PORT|DCK_HOST_KEY|DCK_HOST_LABEL|DCK_HOST_CONFIGURED|DCK_MESH_EXTERNAL|DCK_SSH_AUTHORIZED_EXTRA|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_HOST_PROFILES|DCK_SSH_COPY_KEYS|DCK_PORTS|DCK_TOML_USER|DCK_COMPOSE_PROJECT) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out
@@ -163,6 +166,10 @@ resolve_project() {
   PROJECT=""; PROJECT_FROM=""
   if [ -n "$DCK_PROJECT_OVERRIDE" ]; then
     PROJECT="$DCK_PROJECT_OVERRIDE"; PROJECT_FROM="--project"
+  elif [ -n "${DCK_COMPOSE_PROJECT:-}" ]; then
+    # dck.toml's choice beats a COMPOSE_PROJECT_NAME in the environment or the
+    # compose .env (compose itself would let those win): dc() always passes -p.
+    PROJECT="$DCK_COMPOSE_PROJECT"; PROJECT_FROM="[compose] project in .devcontainer/dck.toml"
   elif [ -n "${COMPOSE_PROJECT_NAME:-}" ]; then
     PROJECT="$COMPOSE_PROJECT_NAME"; PROJECT_FROM="COMPOSE_PROJECT_NAME in the environment"
   else
@@ -395,6 +402,56 @@ EOF
 # Signing is copied only when it can work inside: gpg.format=ssh with a
 # `key::` literal or a readable public-key file (sent as `key::<contents>`),
 # since the container holds no gpg key and no host path.
+# host_git_signing — sets SIGN_OK=1 and SIGN_KEY (a key:: public key) when the
+# host signs commits with SSH; only that form can work in a container (no gpg
+# key, no host path inside).
+host_git_signing() {
+  SIGN_OK=0; SIGN_KEY=""
+  if [ "$(git config --global --get gpg.format 2>/dev/null || true)" = "ssh" ]; then
+    SIGN_KEY="$(git config --global --get user.signingkey 2>/dev/null || true)"
+    case "$SIGN_KEY" in
+      key::*) SIGN_OK=1 ;;
+      '') ;;
+      *) case "$SIGN_KEY" in \~/*) SIGN_KEY="$HOME/${SIGN_KEY#\~/}" ;; esac
+         if [ -f "$SIGN_KEY" ] && [ ! -L "$SIGN_KEY" ] && [ "${SIGN_KEY%.pub}" != "$SIGN_KEY" ]; then
+           SIGN_KEY="key::$(head -n 1 "$SIGN_KEY" | tr -d '\r')"; SIGN_OK=1
+         else
+           SIGN_KEY=""
+         fi ;;
+    esac
+  fi
+}
+
+# push_git_identity — the host's git identity into the running container after
+# every start (dck_git_identity_host): no ~/.gitconfig mount, no dependency on
+# DCK_GIT_* in the repository's .env (which still wins for its keys).
+push_git_identity() {
+  command -v git >/dev/null 2>&1 || return 0
+  container_running 2>/dev/null || return 0
+  local payload="" key value
+  host_git_signing
+  for key in user.name user.email; do
+    value="$(git config --global --get "$key" 2>/dev/null || true)"
+    case "$value" in ''|*"
+"*) continue ;; esac
+    payload="$payload$key=$value
+"
+  done
+  if [ "$SIGN_OK" -eq 1 ]; then
+    payload="${payload}gpg.format=ssh
+user.signingkey=$SIGN_KEY
+"
+    value="$(git config --global --get commit.gpgsign 2>/dev/null || true)"
+    [ -n "$value" ] && payload="${payload}commit.gpgsign=$value
+"
+  fi
+  [ -n "$payload" ] || return 0
+  printf '%s' "$payload" | dc exec -T --user root "$DC_SERVICE" bash -c \
+    '. /usr/local/lib/dck/entrypoint.sh && type dck_git_identity_host >/dev/null 2>&1 && dck_git_identity_host' \
+    >/dev/null 2>&1 || return 0
+  note "git: identity from your git config inside $DC_SERVICE ($(git config --global --get user.name 2>/dev/null || echo "?")$( [ "$SIGN_OK" -eq 1 ] && echo ", SSH signing"))"
+}
+
 ensure_git_identity_env() {
   GIT_ID_SET=0
   command -v git >/dev/null 2>&1 || return 0
@@ -773,6 +830,7 @@ cmd_up() {
   done
   require_docker
   fast_check
+  warn_stale_compose
   export_host_ssh_agent
   resolve_backend
   selected_services ${args[@]+"${args[@]}"}
@@ -799,6 +857,23 @@ cmd_up() {
   after_start
 }
 
+# A compose file that no longer reflects dck.toml or its user block (edited
+# since the last `dck init`) starts what was rendered, not what was asked for.
+warn_stale_compose() {
+  [ "${DCK_HAS_TOML:-0}" = "1" ] || return 0
+  local args=(compose status --repo "$DC_REPO") out line
+  [ -n "${DCK_PROFILE_NAME:-}" ] && args+=(--profile "$DCK_PROFILE_NAME")
+  out="$(dckpy "${args[@]}" 2>/dev/null)" || return 0
+  while IFS= read -r line; do
+    case "$line" in
+      stale=1) warn "docker/local/docker-compose.yaml does not reflect dck.toml or its user block — run: dck init" ;;
+      error=?*) warn "compose: ${line#error=}" ;;
+    esac
+  done <<STATUS
+$out
+STATUS
+}
+
 # The steps after any start that may have created the container — `up`,
 # `rebuild`, `start`, `restart`: the developer's SSH aliases, then the Herdr
 # machine (added, or re-added when it was removed; its host key re-pinned, since
@@ -807,6 +882,7 @@ cmd_up() {
 # peers without a manual `dck herdr mesh`.
 after_start() {
   host_ssh_identities
+  push_git_identity
   if [ "${DCK_HERDR_MACHINE:-0}" = "1" ] && declare -F dck_herdr_after_up >/dev/null 2>&1; then
     dck_herdr_after_up || warn "the container is up, but Herdr registration did not complete — run: dck herdr status"
   fi
@@ -939,6 +1015,7 @@ cmd_build() {
 cmd_rebuild() {
   parse_build_flags "$@"
   fast_check
+  warn_stale_compose
   export_host_ssh_agent
   resolve_backend
   selected_services ${BUILD_SERVICES[@]+"${BUILD_SERVICES[@]}"}

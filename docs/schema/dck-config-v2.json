@@ -47,18 +47,23 @@
       "description": "interface 1 only: ignored since v0.2.0 (no shared base image); dck init removes it"
     },
     "ssh_port": {
-      "type": "integer",
       "anyOf": [
         {
+          "type": "integer",
           "const": 0
         },
         {
+          "type": "integer",
           "minimum": 1024,
           "maximum": 65535
+        },
+        {
+          "type": "string",
+          "pattern": "^(\\d{1,5}|\\$\\{[A-Za-z_][A-Za-z0-9_]*(:?-\\d{1,5})?\\})$"
         }
       ],
       "default": 0,
-      "description": "Loopback-only host port for the container sshd (Herdr); 0 = no sshd"
+      "description": "Loopback-only host port for the container sshd (Herdr); 0 = no sshd. A string is the host port as a compose expression (\"${SSH_PORT:-22540}\"); the container port is always 22"
     },
     "bind": {
       "type": "string",
@@ -73,11 +78,19 @@
         "pattern": "^[a-z][a-z0-9_-]{0,31}$"
       },
       "additionalProperties": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 65535
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          {
+            "type": "string",
+            "pattern": "^((\\d{1,3}(\\.\\d{1,3}){3}|\\[[0-9A-Fa-f:]+\\]):)?(\\d{1,5}|\\$\\{[A-Za-z_][A-Za-z0-9_]*(:?-\\d{1,5})?\\})(:\\d{1,5})?(/(tcp|udp))?$"
+          }
+        ]
       },
-      "description": "Named ports published as <bind>:<port>:<port>"
+      "description": "Named ports: an integer is published as <bind>:<port>:<port>; a string (\"HOST:CONTAINER\", each a number or ${VAR:-default}) verbatim after <bind>: unless it names a host IP"
     },
     "layers": {
       "type": "object",
@@ -118,6 +131,22 @@
             ]
           },
           "description": "Kinds passed to `ak install` when layers.agents is true"
+        },
+        "presets": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "classic",
+              "providers"
+            ]
+          },
+          "uniqueItems": true,
+          "description": "ak alias presets turned on; absent = classic and providers (as before v0.3.3); new renders write []"
+        },
+        "node_first": {
+          "type": "boolean",
+          "default": false,
+          "description": "put the agents' own Node (/opt/dck/node, installed when the image's node is older than the pinned major) first on PATH for every process and login shell, for a repository whose own tooling needs it; off: the image's node stays first"
         }
       }
     },
@@ -129,6 +158,32 @@
           "pattern": "^[a-z0-9][a-z0-9_.-]{0,62}$",
           "default": "state",
           "description": "the named volume of this service's state (sshd host key, ~/.ssh, gh auth, Herdr client state, history), mounted at ~/.dck/volumes/state; give each repository its own when several share one compose project; not an agents-layer volume name"
+        },
+        "project": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,62}$",
+          "description": "the rendered top-level compose project name (default <compose_project_prefix><repo-slug>); wins over COMPOSE_PROJECT_NAME in the environment or the compose .env (dck passes -p)"
+        },
+        "networks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$"
+          },
+          "maxItems": 64,
+          "default": [],
+          "description": "existing external networks; merged with the host profile's network and x-dck-merge.networks into one top-level networks: (external: true)"
+        },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,62}$"
+          },
+          "maxItems": 64,
+          "uniqueItems": true,
+          "default": [],
+          "description": "extra compose-managed volumes declared with their exact names (<project>_<name>, so the data volumes of the file's other services keep reattaching); or declare them in the user:volumes sub-block"
         }
       }
     },
@@ -176,6 +231,26 @@
       "type": "boolean",
       "default": true,
       "description": "dck up makes the host's ~/.ssh/config aliases (public keys only) usable inside; needs ssh_agent"
+    },
+    "build": {
+      "type": "object",
+      "properties": {
+        "context": {
+          "type": "string",
+          "pattern": "^(\\.|\\.\\.|\\./[A-Za-z0-9._/-]*|\\.\\./[A-Za-z0-9._/-]*|[A-Za-z0-9._-][A-Za-z0-9._/-]*)$",
+          "description": "build context relative to the compose file's directory (default ./<service>); the Dockerfile and dck/ paths are computed relative to it"
+        },
+        "dockerfile": {
+          "type": "string",
+          "pattern": "^(?!.*(^|/)\\.\\.(/|$))[A-Za-z0-9._-][A-Za-z0-9._/-]*Dockerfile[A-Za-z0-9._-]*$",
+          "description": "a Dockerfile shared by several services, relative to the repository (default docker/local/<service>/Dockerfile); dck's managed blocks and its dck/ directory go next to it"
+        }
+      }
+    },
+    "dev_sh": {
+      "type": "boolean",
+      "default": true,
+      "description": "false: dck init neither creates nor touches dev.sh (a repository that keeps its own); dck init --no-dev-sh writes it"
     }
   }
 }

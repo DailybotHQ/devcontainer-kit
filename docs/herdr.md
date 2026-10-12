@@ -124,6 +124,12 @@ own skill, matching the pinned binary, is installed next to it. At every
 start the entrypoint links both skills into each agent's skill directory
 (`~/.agents/skills`, `~/.claude/skills`, and the others that exist).
 
+**Reply route for every pane.** After registering the container (and on every mesh),
+dck writes the container's id in this host's Herdr catalog into it, and its login profile
+exports it as `HERDR_PEERS_SELF`: asks from Codex panes, which cannot discover that id
+themselves, then get their reply routed. `dck doctor` shows both ids (`herdr self`) and
+flags a mismatch; a removed machine clears it.
+
 `dck up` runs `dck herdr mesh` after `dck herdr add` (unless `[herdr] mesh =
 false`) — and so do `dck rebuild`, `dck start` and `dck restart`, so a container built
 from scratch (its volumes removed) knows the host and its peers without a manual

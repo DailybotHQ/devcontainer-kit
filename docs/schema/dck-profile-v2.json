@@ -162,6 +162,25 @@
           "maxItems": 64,
           "default": [],
           "description": "only these host profiles (\"cli@name\", \"cli@default\" for the CLI's own home) are shared and get their token; [] = every profile of the repository's CLIs"
+        },
+        "default_profile": {
+          "type": "object",
+          "default": {},
+          "propertyNames": {
+            "enum": [
+              "claude",
+              "codex",
+              "pi",
+              "cline",
+              "grok",
+              "opencode"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^@?[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+          },
+          "description": "the account a bare `ak <cli>` uses inside containers, e.g. { claude = \"@work3\" }: exported as AGENTKIT_DEFAULT_PROFILE_<CLI> (coding-agents-kit v0.5.2+) when that profile is shared ([agents] host_profiles); host profile only"
         }
       }
     }

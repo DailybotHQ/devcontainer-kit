@@ -141,7 +141,8 @@ def env_lines(repo, dck_tag, profile=None):
                 ("DCK_NETWORK", merged["network"]),
                 ("DCK_FLAVOUR", merged["flavour"]),
                 ("DCK_PORTS", " ".join("%s=%s" % kv for kv in sorted(merged["ports"].items()))),
-                ("DCK_TOML_USER", merged["user"])]
+                ("DCK_TOML_USER", merged["user"]),
+                ("DCK_COMPOSE_PROJECT", merged.get("compose.project") or "")]
     else:
         warnings = []
         prof, warnings = config.load_profile(profile)

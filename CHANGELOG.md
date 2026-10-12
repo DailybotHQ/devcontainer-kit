@@ -7,6 +7,90 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.3.3] — 2026-10-12
+
+Interface stays **2**. Additive: a repository that sets none of the new keys renders
+byte-identically to v0.3.2.
+
+### Added
+
+- **`HERDR_PEERS_SELF` inside containers.** Asks from a Codex pane failed with "no reply
+  route" until `HERDR_PEERS_SELF` named the container's machine id in the host's Herdr
+  catalog. `dck up`, `dck herdr add` (after every registration) and `dck herdr mesh` now
+  record that id on the state volume (new entrypoint function `dck_herdr_self`) and the
+  login profile exports it; `dck herdr remove` clears it. `dck doctor` shows both ids
+  (`herdr self`; `herdr.id` / `herdr.self_inside` in `--json`) and flags a mismatch.
+- **Shared compose stacks** ([docs/shared-stack.md](docs/shared-stack.md)), all additive:
+  a repository that sets none of these renders byte-identically to v0.3.2.
+  - **The user block**: `# >>> user:<svc> >>>` … `# <<< user:<svc> <<<` inside the dck
+    service, kept verbatim. Plain keys for what dck does not render (`depends_on`,
+    `healthcheck`, …); `x-dck-merge:` for keys it does, merged at `dck init` (lists
+    appended, maps merged with the user's entry winning, scalars and replace-only keys
+    such as `command` and `entrypoint` replaced in any YAML form). A plain key dck also
+    renders is refused with the fix.
+  - **Top-level `user:volumes` / `user:networks` sub-blocks** and `[compose] volumes`, so
+    the file's other services (a database, workers) declare their data volumes and
+    networks with their exact names and existing volumes keep reattaching; a name
+    declared twice is refused.
+  - **Port strings**: `ssh_port` and `ports` accept compose expressions
+    (`"${DJANGO_RUNSERVER_HOST_PORT:-8000}:8000"`, `"5001:3000"`), loopback-prefixed
+    unless they name a host IP; the launcher resolves `${VAR:-default}` (environment,
+    then `docker/local/.env`) for `dck ssh`, Herdr and the doctor.
+  - `[build] context` (build from the repository root; dck's `COPY` paths follow it) and
+    `[build] dockerfile` (a Dockerfile shared by several services, where dck's blocks and
+    its `dck/` directory go).
+  - `[compose] project` and `[compose] networks` (one top-level `networks:`, external).
+  - `[agents] node_first = true`: the agents' own Node first on PATH (Dockerfile
+    `ENV` and login shells), for a repository whose tooling needs it; off by default.
+  - `dev_sh = false` (`dck init --no-dev-sh`): a repository that keeps its own `dev.sh`;
+    `dck init` neither creates nor touches it.
+  - `[agents] presets`: the ak alias presets (`classic`, `providers`). Unset keeps both,
+    as before; new renders write `presets = []` (off).
+- **`[agents] default_profile`** (host profile): `{ claude = "@work3" }` exports
+  `AGENTKIT_DEFAULT_PROFILE_<CLI>` into containers when that profile is shared, so a
+  bare `ak claude` inside uses that account (coding-agents-kit v0.5.2+); the macOS
+  `@default` Claude login lives in the keychain and cannot be shared. `dck doctor` shows
+  the mapping and flags a mapping it cannot apply.
+- `dck doctor`: Docker Compose >= 2.24 (satellites with `extends` + `!reset`), a compose
+  file that does not reflect `dck.toml` or its user block (`dck up` and `dck rebuild`
+  warn too), and what the user block overrides (`compose_render` in `--json`).
+
+### Fixed
+
+- **The agents layer no longer replaces the image's Node.** When the image's `node` was
+  missing or older than the pinned major, the pinned Node was extracted over
+  `/usr/local`, replacing a repository's production Node and mixing npm trees (an
+  `ak install codex` could fail silently). It now goes into its own prefix
+  (`/opt/dck/node`); `ak install` runs with it first on PATH and the npm-installed agent
+  CLIs are launched on it, while the repository's `node` stays the shell's.
+- **A rebuilt peer's new host key reaches every container.** `dck herdr mesh` (run from
+  any repository) re-reads each running peer's sshd host key from the container itself
+  and re-pins it before pushing, so the host's hop and every other container follow a
+  peer rebuilt outside its own `dck up`.
+- **The host's git identity in every container.** `dck up`, `rebuild`, `start` and
+  `restart` push `user.name`, `user.email` and, when the host signs with SSH, the signing
+  setup (`key::<public key>`, never a path or a private key) into the container user's
+  git config (`dck_git_identity_host`); no `~/.gitconfig` mount and no `DCK_GIT_*` in the
+  repository's `.env` needed (a `DCK_GIT_*` value still wins for its key). `dck doctor`
+  shows the identity and its source.
+- **The Dailybot CLI login survives rebuilds** whether the dailybot layer or the
+  repository installed the CLI: `~/.config/dailybot` is always on the state volume.
+- `[compose] project` wins over `COMPOSE_PROJECT_NAME` in the environment or the compose
+  `.env` (passed with `-p`); `dck doctor` resolves the project the same way.
+
+### Changed
+
+- **Pins:** herdr-peers **v0.2.3** (`HERDR_PEERS_TAG`, verified by the sha256 of its
+  `SHA256SUMS`, `dad7faff…`; tag commit `ff7b7aa`): state kept per machine, so a
+  checkout bind-mounted into a container no longer shares the host's `self.json`.
+- **Pins:** coding-agents-kit **v0.5.2** (`AGENTKIT_TAG`; tag commit `af25837`, tarball
+  sha256 `12cbf6e2…`, `SHA256SUMS` sha256 `2bedc980…`): reads
+  `AGENTKIT_DEFAULT_PROFILE_<CLI>` (`[agents] default_profile`).
+- **Markers are all-or-nothing.** A compose file or Dockerfile with some of dck's markers
+  but not all, or with unbalanced markers, is refused with the fix instead of being
+  replaced or appended to (a block appended at the end could land inside another
+  mapping). A file without any dck marker is still proposed as a whole-file replacement.
+
 ## [0.3.2] — 2026-10-11
 
 Interface stays **2**.
@@ -576,7 +660,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.3
 [0.3.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.2
 [0.3.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.1
 [0.3.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.0

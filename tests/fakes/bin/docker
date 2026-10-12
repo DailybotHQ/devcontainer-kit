@@ -3,6 +3,8 @@
 #   daemon_down          `docker info` fails
 #   digest               printed as the manifest digest by `buildx imagetools inspect`
 #   ps                   stdout of `docker ps ...` and `docker compose ... ps ...`
+#   ps_publish_<port>    stdout of `docker ps --filter publish=<port>` (the container name)
+#   host_key_pub_<name>  that container's sshd public host key (`docker exec … dck_host_key_pub`)
 #   ps_mounts            stdout of `docker ps ... --format '<service>\t<mounts>'` (the doctor)
 #   exec_out / exec_rc   stdout / status of `docker compose ... exec ...`
 #   compose_rc           status of every other `docker compose ...` call
@@ -13,6 +15,7 @@
 #   image_inspect_out    stdout of `docker image inspect` (RepoDigests JSON)
 #   container_image_env  /etc/dck/image.env as `docker exec` would print it
 #   container_ssh_manifest  ~/.ssh/.dck-copied-keys as `docker exec` would print it
+#   container_herdr_self    ~/.dck/volumes/state/herdr-self as `docker exec` would print it
 st="${DCK_FAKE_STATE:-/nonexistent}"
 printf 'docker %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
 # Record stdin for exec calls that pipe data in (e.g. authorized keys).
@@ -28,10 +31,17 @@ case "$1" in
     [ -f "$st/image_inspect_out" ] || { echo "No such image" >&2; exit 1; }
     cat "$st/image_inspect_out"; exit 0 ;;
   exec)
+    # docker exec -u root <container> ... dck_host_key_pub -> $st/host_key_pub_<container>
+    case "$*" in *dck_host_key_pub*)
+      for a in "$@"; do [ -f "$st/host_key_pub_$a" ] && { cat "$st/host_key_pub_$a"; exit 0; }; done
+      exit 1 ;;
+    esac
     # docker exec <container> cat ~/.ssh/.dck-copied-keys -> $st/container_ssh_manifest
     case "${*: -1}" in
       */.ssh/.dck-copied-keys) [ -f "$st/container_ssh_manifest" ] || exit 1
         cat "$st/container_ssh_manifest"; exit 0 ;;
+      */.dck/volumes/state/herdr-self) [ -f "$st/container_herdr_self" ] || exit 1
+        cat "$st/container_herdr_self"; exit 0 ;;
     esac
     # docker exec <container> cat /etc/dck/image.env -> $st/container_image_env
     [ -f "$st/container_image_env" ] || exit 1
@@ -46,6 +56,11 @@ case "$1" in
   ps)
     # The doctor's shared-project check asks for services and mounts.
     case "$*" in *".Mounts"*) cat "$st/ps_mounts" 2>/dev/null; exit 0 ;; esac
+    # docker ps --filter publish=<port> -> $st/ps_publish_<port> (the peer re-pin)
+    case "$*" in *"publish="*)
+      for a in "$@"; do case "$a" in publish=*) cat "$st/ps_publish_${a#publish=}" 2>/dev/null ;; esac; done
+      exit 0 ;;
+    esac
     cat "$st/ps" 2>/dev/null; exit 0 ;;
   inspect) cat "$st/inspect_out" 2>/dev/null; [ -f "$st/inspect_out" ]; exit $? ;;
   volume) cat "$st/volumes" 2>/dev/null; exit 0 ;;
@@ -67,7 +82,8 @@ case "$1" in
         exec)
           # The host key read by ssh_pin_host_key: $st/host_key_pub (nothing when absent).
           case " $* " in *dck_host_key_pub*) cat "$st/host_key_pub" 2>/dev/null; exit 0 ;; esac
-          [ -t 0 ] || cat > "$st/exec_stdin"
+          # dck_herdr_self takes its id as an argument: its empty stdin is not a payload.
+          case "$*" in *dck_herdr_self*) ;; *) [ -t 0 ] || cat > "$st/exec_stdin" ;; esac
           cat "$st/exec_out" 2>/dev/null; exit "$(cat "$st/exec_rc" 2>/dev/null || echo 0)" ;;
         *) break ;;
       esac

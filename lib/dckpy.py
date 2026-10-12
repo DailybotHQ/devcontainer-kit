@@ -170,7 +170,7 @@ def cmd_init(args):
     if clis is not None:
         opts["clis"] = [c for c in clis.replace(",", " ").split() if c]
     for on, off, key in (("--agents", "--no-agents", "agents"), ("--editor", "--no-editor", "editor"),
-                         ("--herdr", "--no-herdr", "herdr_machine")):
+                         ("--herdr", "--no-herdr", "herdr_machine"), ("--dev-sh", "--no-dev-sh", "dev_sh")):
         if flag(args, on):
             opts[key] = True
         if flag(args, off):
@@ -260,10 +260,19 @@ def cmd_sshconf(args):
             return EXIT_OK
         if sub == "aliases":
             path = opt(args, "--file")
+            ports = flag(args, "--ports")
             if os.path.exists(path):
-                for alias, _s, _e in sshconf._blocks(sshconf._read_owned(path)):
-                    if alias != sshconf.HOST_SELF_ALIAS:  # the host, not a container
+                lines = sshconf._read_owned(path)
+                for alias, s, e in sshconf._blocks(lines):
+                    if alias == sshconf.HOST_SELF_ALIAS:  # the host, not a container
+                        continue
+                    if not ports:
                         print(alias)
+                        continue
+                    port = next((ln.split()[1] for ln in lines[s:e] if len(ln.split()) == 2
+                                 and ln.split()[0].lower() == "port" and ln.split()[1].isdigit()), "")
+                    if port:
+                        print("%s %s" % (alias, port))
             return EXIT_OK
         if sub == "peers":
             labels = {}
@@ -420,12 +429,28 @@ def cmd_sshkeys(args):
     return EXIT_OK
 
 
+def cmd_compose(args):
+    """`compose status --repo DIR [--profile NAME]`: whether `dck init` would
+    change docker/local/docker-compose.yaml (stale=1), and why it cannot."""
+    import render
+    if not args or args[0] != "status":
+        return usage("compose status --repo DIR [--profile NAME]")
+    args = args[1:]
+    repo, profile = opt(args, "--repo"), opt(args, "--profile")
+    if not repo:
+        return usage("compose status --repo DIR")
+    st = render.compose_status(repo, default_tag(), profile)
+    print("stale=%s" % ("1" if st["stale"] else "0"))
+    print("error=%s" % (st["error"] or "").replace("\n", " "))
+    return EXIT_OK
+
+
 def cmd_doctor(args):
     import doctor
     return doctor.main(args)
 
 
-GROUPS = {"agents": cmd_agents, "sshkeys": cmd_sshkeys, "doctor": cmd_doctor, "config": cmd_config, "init": cmd_init, "devc": cmd_devc, "sshconf": cmd_sshconf, "herdr": cmd_herdr}
+GROUPS = {"agents": cmd_agents, "sshkeys": cmd_sshkeys, "compose": cmd_compose, "doctor": cmd_doctor, "config": cmd_config, "init": cmd_init, "devc": cmd_devc, "sshconf": cmd_sshconf, "herdr": cmd_herdr}
 
 
 def main(argv):

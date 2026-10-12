@@ -753,3 +753,47 @@ test_start_and_restart_run_the_post_start_steps() {
   assert_rc 0 "stop succeeds"
   assert_eq "$(fake_calls herdr)" "" "stop registers nothing"
 }
+
+# HERDR_PEERS_SELF: every add (and the mesh) tells the container its id in the
+# host's catalog; a removed machine clears it.
+test_add_and_mesh_push_the_machine_id() {
+  mk_repo
+  d herdr add
+  assert_rc 0 "herdr add succeeds"
+  local id
+  id="$(python3 -I -c 'import json, sys; print([m["id"] for m in json.load(open(sys.argv[1])) if m["target"] == "dck-proj"][0])' "$DCK_FAKE_STATE/herdr_machines")"
+  assert_contains "$(fake_calls docker)" "dck_herdr_self \"\$1\" _ $id" "herdr add pushes the registered id into the container"
+  assert_contains "$RUN_OUT" "HERDR_PEERS_SELF=$id inside app" "and says so"
+  : > "$DCK_FAKE_LOG"
+  DCK_HOST_OS=Darwin d herdr mesh
+  assert_contains "$(fake_calls docker)" "dck_herdr_self \"\$1\" _ $id" "the mesh pushes it too"
+  : > "$DCK_FAKE_LOG"
+  d herdr remove
+  assert_contains "$(fake_calls docker)" "dck_herdr_self \"\$1\" _ -" "a removed machine clears it inside"
+}
+
+# #20: a peer rebuilt outside its own `dck up` has a new host key. The mesh run
+# from ANY repository re-pins it from the container itself, so the host's hop
+# and every other container's pinned key follow.
+test_mesh_repins_a_rebuilt_peer() {
+  mk_repo other 22041
+  DREPO="$SANDBOX/other" d herdr add
+  mk_repo proj 22040
+  d herdr add
+  local kh="$HOME/.config/dck/ssh/known_hosts" newkey
+  newkey="AAAAC3NzaC1lZDI1NTE5AAAAI$(printf 'R%.0s' $(seq 1 43))"
+  printf 'dck-other ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOldPeerHostKeyFakeOnlyForTests00000000000000\n' >> "$kh"
+  printf 'other-app-1\n' > "$DCK_FAKE_STATE/ps_publish_22041"
+  printf 'ssh-ed25519 %s dck-host-key\n' "$newkey" > "$DCK_FAKE_STATE/host_key_pub_other-app-1"
+  rm -f "$DCK_FAKE_STATE"/ssh_stdin_*
+  : > "$DCK_FAKE_STATE/exec_stdin"
+  DCK_HOST_OS=Darwin d herdr mesh
+  assert_rc 0 "herdr mesh succeeds"
+  assert_contains "$RUN_OUT" "dck-other has a new host key (rebuilt); re-pinned it" "the rebuilt peer's key is re-pinned"
+  assert_eq "$(grep -c '^dck-other ' "$kh")" "1" "one entry for it on the host"
+  assert_contains "$(grep '^dck-other ' "$kh")" "$newkey" "with the new key"
+  assert_contains "$(cat "$DCK_FAKE_STATE/exec_stdin")" "hostkey 22041 ssh-ed25519 $newkey" "this container gets the new key for that peer"
+  : > "$DCK_FAKE_LOG"
+  DCK_HOST_OS=Darwin d herdr mesh
+  assert_not_contains "$RUN_OUT" "re-pinned" "an unchanged key is left alone"
+}

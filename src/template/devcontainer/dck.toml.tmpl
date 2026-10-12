@@ -21,6 +21,10 @@ ssh_agent = {{ssh_agent}}
 # offers to ssh-add a missing key. Other hosts: [ssh] host_extra in your host profile.
 ssh_host_config = {{ssh_host_config}}
 
+# Render dev.sh, the per-repository entry point; false for a repository that
+# keeps its own (dck init then never creates or touches it).
+dev_sh = {{dev_sh}}
+
 # Loopback-only host port for the container's sshd (Herdr, `dck ssh`); 0 = no sshd.
 ssh_port = {{ssh_port}}
 
@@ -38,6 +42,9 @@ editor = {{layers_editor}}
 [agents]
 # Kinds passed to `ak install` when layers.agents is true.
 clis = [{{agents_clis_toml}}]
+# ak alias presets: "classic" (claudex, codexx, …) and "providers" (claude-glm, …).
+# [] = none; removing the key turns both on (the behaviour before v0.3.3).
+presets = [{{agents_presets_toml}}]
 
 [herdr]
 # Register the container as a Herdr machine on `dck up` (needs ssh_port).

@@ -475,3 +475,57 @@ test_profile_falls_back_to_the_mounted_agent() {
     assert_eq "$out" "/nonexistent/dangling" "without the mounted agent SSH_AUTH_SOCK is left alone"
   fi
 }
+
+# HERDR_PEERS_SELF: the container's machine id in the host's Herdr catalog.
+test_herdr_self_is_recorded_and_exported() {
+  local id=0123456789abcdef0123456789abcdef f="$DCK_PERSIST_ROOT/state/herdr-self"
+  ep dck_herdr_self "$id"
+  assert_rc 0 "dck_herdr_self records an id"
+  assert_eq "$(cat "$f")" "$id" "on the state volume"
+  assert_mode "$f" 644 "public data, 0644"
+  assert_contains "$RUN_ERR" "machine $id in the host's catalog" "the id is logged (it is public)"
+  run_cmd env HOME="$DCK_HOME" sh -c '. "$1"; printf "%s" "${HERDR_PEERS_SELF:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
+  assert_eq "$RUN_OUT" "$id" "the login profile exports it as HERDR_PEERS_SELF"
+  run_cmd env HOME="$DCK_HOME" HERDR_PEERS_SELF=fedcba9876543210fedcba9876543210 sh -c '. "$1"; printf "%s" "$HERDR_PEERS_SELF"' _ "$DCK_REPO/images/common/profile.sh"
+  assert_eq "$RUN_OUT" "fedcba9876543210fedcba9876543210" "a value already set wins"
+  for bad in "not-an-id" "0123456789ABCDEF0123456789ABCDEF" "0123" "0123456789abcdef0123456789abcdef; rm -rf /"; do
+    ep dck_herdr_self "$bad"
+    assert_rc 1 "a malformed id is refused ($bad)"
+  done
+  assert_eq "$(cat "$f")" "$id" "and the recorded id is kept"
+  printf 'garbage id\n' > "$f"
+  run_cmd env HOME="$DCK_HOME" sh -c '. "$1"; printf "%s" "${HERDR_PEERS_SELF:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
+  assert_eq "$RUN_OUT" "unset" "the profile exports nothing from a malformed file"
+  ep dck_herdr_self -
+  assert_absent "$f" "\"-\" clears it"
+}
+
+# #21: the host's git identity, pushed by dck up; DCK_GIT_* in the env wins.
+test_git_identity_from_the_host() {
+  local gc="$GIT_CONFIG_GLOBAL"
+  run_cmd bash -c '. "$1"; printf "user.name=Host Dev\nuser.email=host@example.invalid\ngpg.format=ssh\nuser.signingkey=key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeSigningKeyOnlyForTests0000000000000000\ncommit.gpgsign=true\nuser.signingkey=~/.ssh/id_ed25519\ncore.editor=evil\n" | dck_git_identity_host' _ "$LIB"
+  assert_rc 0 "the host identity is applied"
+  assert_eq "$(HOME="$DCK_HOME" git config --global user.name)" "Host Dev" "user.name from the host"
+  assert_eq "$(HOME="$DCK_HOME" git config --global user.email)" "host@example.invalid" "user.email from the host"
+  assert_contains "$(HOME="$DCK_HOME" git config --global user.signingkey)" "key::ssh-ed25519" "an SSH signing key as a key:: public key"
+  assert_eq "$(HOME="$DCK_HOME" git config --global commit.gpgsign)" "true" "commit signing on"
+  assert_eq "$(HOME="$DCK_HOME" git config --global core.editor || true)" "" "an unlisted key is never written"
+  assert_not_contains "$(cat "$gc")" "id_ed25519" "a signing key path is never written"
+  assert_eq "$(cat "$DCK_PERSIST_ROOT/state/git-identity-source")" "host" "the source is recorded"
+  run_cmd env DCK_GIT_NAME="Repo Dev" bash -c '. "$1"; printf "user.name=Host Dev\nuser.email=host2@example.invalid\n" | dck_git_identity_host' _ "$LIB"
+  assert_eq "$(HOME="$DCK_HOME" git config --global user.name)" "Host Dev" "DCK_GIT_NAME's key is left to dck_git_identity"
+  assert_eq "$(HOME="$DCK_HOME" git config --global user.email)" "host2@example.invalid" "the other keys still come from the host"
+  assert_eq "$(cat "$DCK_PERSIST_ROOT/state/git-identity-source")" "host+env" "both sources are recorded"
+  assert_contains "$RUN_ERR" "1 kept from DCK_GIT_*" "and logged"
+}
+
+test_profile_node_first() {
+  run_cmd env HOME="$DCK_HOME" PATH="/usr/bin:/bin" DCK_NODE_FIRST=1 sh -c '. "$1"; printf "%s" "$PATH"' _ "$DCK_REPO/images/common/profile.sh"
+  if [ -x /opt/dck/node/bin/node ]; then
+    assert_match "$RUN_OUT" '^/opt/dck/node/bin:' "node_first puts the agents' Node first in login shells"
+  else
+    assert_not_contains "$RUN_OUT" "/opt/dck/node" "only when that Node was installed"
+  fi
+  run_cmd env HOME="$DCK_HOME" PATH="/usr/bin:/bin" sh -c '. "$1"; printf "%s" "$PATH"' _ "$DCK_REPO/images/common/profile.sh"
+  assert_not_contains "$RUN_OUT" "/opt/dck/node" "off by default"
+}

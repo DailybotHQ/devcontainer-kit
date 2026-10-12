@@ -70,6 +70,11 @@ test_node_fixture_end_to_end() {
   echo '{"name":"fixture","engines":{"node":">=24"}}' > "$IT_REPO/package.json"
   run_cmd "$DCK" init --repo "$IT_REPO" --ssh-port "$port" --no-herdr --agents --clis "codex pi" --yes
   assert_rc 0 "dck init renders the node fixture with the agents layer"
+  # A new render writes presets = [] (off); this fixture turns both on to test them.
+  python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read(); open(p, "w").write(s.replace("presets = []", "presets = [\"classic\", \"providers\"]"))' "$IT_REPO/.devcontainer/dck.toml"
+  run_cmd "$DCK" init --repo "$IT_REPO" --yes
+  assert_rc 0 "dck init renders the presets the fixture asks for"
+  assert_contains "$(cat "$IT_REPO/docker/local/app/Dockerfile")" 'DCK_AGENT_PRESETS="classic providers"' "and passes them to the agents layer"
   # 1. Layout
   local f
   for f in .devcontainer/devcontainer.json .devcontainer/dck.toml docker/local/docker-compose.yaml docker/local/app/Dockerfile docker/local/app/dck/VERSION dev.sh; do
@@ -260,6 +265,9 @@ SH
     --known-hosts "$HOME/.config/dck/ssh/known_hosts" >/dev/null
   printf 'dck-itpeer %s\n' "$(cut -d' ' -f1-2 "$SANDBOX/listener.pub")" >> "$HOME/.config/dck/ssh/known_hosts"
   herdr machine add --label "Peer" dck-itpeer >/dev/null
+  # #21: the host's git identity reaches a container built from scratch (no .env key).
+  git config --global user.name "Fixture Host"
+  git config --global user.email "fixture-host@example.invalid"
 
   with_lock d up
   assert_rc 0 "the first dck up"
@@ -290,6 +298,9 @@ SH
   assert_not_contains "$RUN_OUT$RUN_ERR" "$(sed -n 2p "$HOME/.ssh/id_ed25519")" "no key content is printed"
   d doctor
   assert_contains "$RUN_OUT" "ssh keys copied: id_ed25519, id_ed25519.pub" "the doctor names the copied keys"
+  assert_contains "$RUN_OUT" "git identity     Fixture Host <fixture-host@example.invalid> (from the host's git config)" "the host's git identity is inside after a fresh rebuild, and the doctor names its source"
+  d shell -c 'git config --global user.email'
+  assert_eq "$RUN_OUT" "fixture-host@example.invalid" "git inside uses it"
   d down
 }
 
@@ -339,10 +350,247 @@ test_devcontainer_cli_backend() {
   assert_eq "$RUN_OUT" "${IT_PROJECT}-app-1" "the devcontainer CLI used the compose project dck init named"
 }
 
+# A product API repository moved onto dck as one service of a multi-service
+# compose project (v0.3.3): [compose] project/networks/state_volume, a
+# [build] context at the repository root, string port expressions, a user
+# block (plain keys plus x-dck-merge) merged at `dck init`, a backing `db`
+# service and an `extends` satellite outside the markers.
+as_cleanup() {
+  it_cleanup
+  if [ -n "${IT_PROJECT:-}" ]; then docker image rm "${IT_PROJECT}-worker" >/dev/null 2>&1; fi
+  if [ -n "${AS_NET:-}" ]; then docker network rm "$AS_NET" >/dev/null 2>&1; fi
+  return 0
+}
+
+test_api_stack_shape() {
+  require_docker "a multi-service API stack: project, networks, build context, user block, satellites" || return 0
+  export DCK_BACKEND=compose DCK_NONINTERACTIVE=1 DCK_SSH_CONFIG=/dev/null
+  unset DCKAS_WEB_PORT COMPOSE_PROJECT_NAME
+  new_fixture dckas
+  # [compose] project differs from the repository's default name on purpose.
+  IT_PROJECT="${IT_PROJECT}api"
+  AS_NET="${IT_PROJECT}-net"
+  trap as_cleanup EXIT
+  cp -R "$TESTS_DIR/fixtures/api-stack/." "$IT_REPO/"
+  local web node compose="$IT_REPO/docker/local/docker-compose.yaml"
+  web="$(free_port)"; node="$(free_port)"
+  run_cmd "$DCK" init --repo "$IT_REPO" --flavour python-3.13 --ssh-port 0 --no-herdr --no-agents --yes
+  assert_rc 0 "dck init renders the API fixture"
+
+  python3 -I -c '
+import re, sys
+path, project, net, web, node = sys.argv[1:]
+text = open(path).read()
+def sub(pattern, repl, text):
+    new, n = re.subn(pattern, lambda m: repl, text, count=1, flags=re.M)
+    if n != 1:
+        sys.exit("dck.toml: no line matches %s" % pattern)
+    return new
+text = sub(r"^ports = .*$", "ports = { web = \"${DCKAS_WEB_PORT:-%s}:8000\", node = \"%s:3000\" }" % (web, node), text)
+text = sub(r"^state_volume = .*$", "state_volume = \"state-api\"\nproject = \"%s\"\nnetworks = [\"%s\"]" % (project, net), text)
+text = text.rstrip("\n") + "\n\n[build]\ncontext = \"../..\"\n"
+open(path, "w").write(text)
+' "$IT_REPO/.devcontainer/dck.toml" "$IT_PROJECT" "$AS_NET" "$web" "$node" || fail "dck.toml takes the stack keys"
+
+  python3 -I -c '
+import sys
+path, svc, net = sys.argv[1:]
+end = "  # <<< dck:service <<<\n"
+text = open(path).read()
+if text.count(end) != 1:
+    sys.exit("compose: the dck:service end marker is not there exactly once")
+block = """    # >>> user:%(svc)s >>>
+    depends_on:
+      - db
+    x-dck-merge:
+      env_file:
+        - path: ./django/.env
+          required: false
+        - ./postgres/.env
+      environment:
+        DCKAS_MARKER: "from-user-block"
+      volumes:
+        - sqlite_volume:/app/src/databases
+        - ../..:/workspaces-ro:ro
+      networks:
+        - %(net)s
+      command: ["sleep", "infinity"]
+    # <<< user:%(svc)s <<<
+""" % {"svc": svc, "net": net}
+satellites = """  db:
+    image: busybox:1.36.1
+    command: ["sleep", "infinity"]
+  worker:
+    extends: %(svc)s
+    command: ["sleep", "infinity"]
+    ports: !reset []
+    depends_on: !reset []
+    # A worker needs the code, not the dck service state (sshd key, ~/.ssh, gh auth).
+    volumes: !override
+      - ../..:/app:cached
+""" % {"svc": svc}
+open(path, "w").write(text.replace(end, block + end + satellites))
+' "$compose" app "$AS_NET" || fail "the user block and satellites are added to the compose file"
+  # The stack's own setup step: the database env file exists, the API's does not
+  # (required: false keeps compose happy without it).
+  cp "$IT_REPO/docker/local/postgres/.env.example" "$IT_REPO/docker/local/postgres/.env"
+
+  run_cmd "$DCK" init --repo "$IT_REPO" --yes
+  assert_rc 0 "dck init reconciles with the user block and satellites in place"
+  assert_contains "$(cat "$compose")" "    # >>> user:app >>>" "the user block is kept"
+  assert_contains "$(cat "$compose")" "  worker:" "the satellite is kept"
+
+  run_cmd bash -c 'cd "$1" && docker compose -f docker/local/docker-compose.yaml config -q' _ "$IT_REPO"
+  assert_rc 0 "docker compose config -q accepts the merged file"
+  assert_eq "$(grep -c '^networks:' "$compose")" "1" "one top-level networks: block"
+  assert_eq "$(grep -c '^volumes:' "$compose")" "1" "one top-level volumes: block"
+  assert_eq "$(grep -cE '^  sqlite_volume:' "$compose")" "1" "sqlite_volume is declared once"
+
+  run_cmd bash -c 'cd "$1" && docker compose -f docker/local/docker-compose.yaml config --format json' _ "$IT_REPO"
+  assert_rc 0 "docker compose config --format json"
+  local facts
+  facts="$(printf '%s' "$RUN_OUT" | python3 -I -c '
+import json, os, sys
+repo, net = sys.argv[1:]
+c = json.load(sys.stdin)
+app = c["services"]["app"]
+out = ["name=%s" % c.get("name")]
+for k, v in sorted((c.get("networks") or {}).items()):
+    out.append("network=%s external=%s" % (k, bool(v.get("external"))))
+for k, v in sorted((c.get("volumes") or {}).items()):
+    out.append("volume=%s name=%s" % (k, v.get("name")))
+for p in app.get("ports") or []:
+    out.append("port=%s:%s:%s" % (p.get("host_ip"), p.get("published"), p.get("target")))
+out.extend("app_network=%s" % n for n in sorted(app.get("networks") or {}))
+out.append("marker=%s" % (app.get("environment") or {}).get("DCKAS_MARKER"))
+out.append("postgres_db=%s" % (app.get("environment") or {}).get("POSTGRES_DB"))
+out.append("command=%s" % " ".join(app.get("command") or []))
+out.append("depends_on=%s" % ",".join(sorted(app.get("depends_on") or {})))
+for m in app.get("volumes") or []:
+    out.append("mount=%s:%s:%s" % (m.get("source") if m.get("type") == "volume" else "bind", m.get("target"), "ro" if m.get("read_only") else "rw"))
+ctx = (app.get("build") or {}).get("context") or ""
+out.append("context_is_repo=%s" % (os.path.realpath(ctx) == os.path.realpath(repo)))
+w = c["services"].get("worker") or {}
+out.append("worker_ports=%d" % len(w.get("ports") or []))
+out.append("worker_depends_on=%d" % len(w.get("depends_on") or {}))
+out.append("worker_state=%s" % any(m.get("source") == "state-api" for m in w.get("volumes") or []))
+print("\n".join(out))
+' "$IT_REPO" "$AS_NET")"
+  assert_contains "$facts" "name=$IT_PROJECT" "[compose] project names the compose project"
+  assert_contains "$facts" "network=$AS_NET external=True" "the stack network is declared external"
+  assert_eq "$(printf '%s\n' "$facts" | grep -c "^network=$AS_NET ")" "1" "the stack network is declared once"
+  assert_contains "$facts" "app_network=$AS_NET" "the service joins the stack network"
+  assert_contains "$facts" "volume=state-api name=${IT_PROJECT}_state-api" "the state volume is <project>_state-api"
+  assert_not_contains "$facts" "volume=state name=" "the default state volume is not declared"
+  assert_contains "$facts" "volume=sqlite_volume name=${IT_PROJECT}_sqlite_volume" "the user block's named volume is declared"
+  assert_contains "$facts" "port=127.0.0.1:$web:8000" "a port expression is bound to loopback with its default interpolated"
+  assert_contains "$facts" "port=127.0.0.1:$node:3000" "a host:container port string is bound to loopback"
+  assert_contains "$facts" "marker=from-user-block" "x-dck-merge environment is merged into dck's"
+  assert_contains "$facts" "postgres_db=fixture_local" "x-dck-merge env_file is merged (the required file)"
+  assert_contains "$facts" "command=sleep infinity" "the x-dck-merge command is the service's"
+  assert_contains "$facts" "depends_on=db" "a plain user-block key reaches compose"
+  assert_contains "$facts" "mount=sqlite_volume:/app/src/databases:rw" "x-dck-merge volumes are appended (named)"
+  assert_contains "$facts" "mount=bind:/workspaces-ro:ro" "x-dck-merge volumes are appended (read-only bind)"
+  assert_contains "$facts" "mount=state-api:/home/dev/.dck/volumes/state:rw" "dck's own state mount is still there"
+  assert_contains "$facts" "context_is_repo=True" "[build] context is the repository root"
+  assert_contains "$facts" "worker_ports=0" "the satellite resets the ports"
+  assert_contains "$facts" "worker_depends_on=0" "the satellite resets depends_on"
+  assert_contains "$facts" "worker_state=False" "the satellite does not mount the dck state volume"
+
+  docker network create "$AS_NET" >/dev/null
+  with_lock d up
+  assert_rc 0 "dck up builds (repository-root context) and starts the API service"
+  d shell -c 'printf "marker=%s\n" "$DCKAS_MARKER"; printf "pg=%s\n" "$POSTGRES_DB"; printf "django=%s\n" "${DJANGO_DEBUG:-}"
+    test -f /workspaces-ro/src/manage.py && echo ro-has-repo
+    if touch /workspaces-ro/.dckas-probe 2>/dev/null; then echo ro-writable; else echo ro-readonly; fi
+    awk '\''$2=="/workspaces-ro"{split($4,o,","); print "ro-opt=" o[1]} $2=="/app/src/databases"{print "db-mount"}'\'' /proc/mounts
+    python3 /app/src/manage.py; whoami'
+  assert_rc 0 "dck shell runs in the API service"
+  assert_contains "$RUN_OUT" "marker=from-user-block" "the merged environment is seen inside"
+  assert_contains "$RUN_OUT" "pg=fixture_local" "the merged env_file is seen inside"
+  assert_match "$RUN_OUT" '^django=1$' "an extra env_file that dck up created from its .env.example is merged too"
+  assert_contains "$RUN_OUT" "ro-has-repo" "the read-only bind shows the repository"
+  assert_contains "$RUN_OUT" "ro-readonly" "the read-only bind refuses writes"
+  assert_contains "$RUN_OUT" "ro-opt=ro" "the bind is mounted ro"
+  assert_contains "$RUN_OUT" "db-mount" "/app/src/databases is a mount (the named volume)"
+  assert_contains "$RUN_OUT" "fixture api: ok" "the fixture app runs from the workspace"
+  assert_match "$RUN_OUT" '^dev$' "the API service runs as the dev user"
+  run_cmd docker port "${IT_PROJECT}-app-1" 8000
+  assert_eq "$RUN_OUT" "127.0.0.1:$web" "the expression port is published on loopback at its default"
+  run_cmd docker port "${IT_PROJECT}-app-1" 3000
+  assert_eq "$RUN_OUT" "127.0.0.1:$node" "the host:container port is published on loopback"
+  run_cmd docker ps --filter "label=com.docker.compose.project=$IT_PROJECT" --filter "label=com.docker.compose.service=db" --format '{{.State}}'
+  assert_eq "$RUN_OUT" "running" "depends_on started the db service"
+
+  with_lock run_cmd bash -c 'cd "$1" && docker compose -f docker/local/docker-compose.yaml up -d worker' _ "$IT_REPO"
+  assert_rc 0 "the satellite starts"
+  run_cmd docker ps --filter "label=com.docker.compose.project=$IT_PROJECT" --filter "label=com.docker.compose.service=worker" --format '{{.State}}|{{.Ports}}'
+  assert_eq "$RUN_OUT" "running|" "the satellite runs and publishes no port"
+  run_cmd docker volume ls -q --filter "label=com.docker.compose.project=$IT_PROJECT"
+  assert_match "$RUN_OUT" "^${IT_PROJECT}_state-api\$" "the state volume is <project>_state-api"
+  assert_no_match "$RUN_OUT" "^${IT_PROJECT}_state\$" "the shared default state volume is not created"
+  assert_match "$RUN_OUT" "^${IT_PROJECT}_sqlite_volume\$" "the user block's named volume is created"
+
+  d doctor --json
+  printf '%s' "$RUN_OUT" | python3 "$TESTS_DIR/py/minischema.py" "$DCK_REPO/docs/schema/dck-doctor-v2.json" >/dev/null
+  assert_rc 0 "the live doctor report matches the schema"
+  local doc
+  doc="$(printf '%s' "$RUN_OUT" | python3 -I -c '
+import json, sys
+d = json.load(sys.stdin)
+c = d.get("compose") or {}
+print("state=%s" % c.get("state_volume"))
+print("services=%s" % ",".join(sorted(c.get("services") or [])))
+print("shared=%s" % ",".join(sorted(c.get("shared_with") or [])))
+print("compose_problems=%d" % len([p for p in d.get("problems") or [] if p.startswith("compose:")]))
+')"
+  assert_contains "$doc" "state=${IT_PROJECT}_state-api" "doctor names the per-service state volume"
+  assert_contains "$doc" "services=db,worker" "doctor sees the project's other services"
+  assert_match "$doc" '^shared=$' "doctor finds the state volume shared with no other service"
+  assert_contains "$doc" "compose_problems=0" "doctor reports no compose: shared-state problem"
+
+  d down
+  assert_rc 0 "dck down succeeds"
+}
+
+# #13: the other services of a shared compose file keep their data volumes. A
+# pre-existing <project>_local_postgres14_data (with data in it) must be the
+# volume the postgres service mounts after dck init + up, never a new one.
+test_shared_stack_data_volume_reattaches() {
+  require_docker "a shared stack's existing data volume reattaches after dck init + up" || return 0
+  export DCK_BACKEND=compose DCK_NONINTERACTIVE=1 DCK_SSH_CONFIG=/dev/null
+  new_fixture dckdv
+  trap it_cleanup EXIT
+  run_cmd "$DCK" init --repo "$IT_REPO" --flavour debian --ssh-port 0 --no-herdr --no-editor --yes
+  assert_rc 0 "dck init renders the fixture"
+  # The data volume a previous, hand-written compose file created, with data in it.
+  docker volume create --label "com.docker.compose.project=$IT_PROJECT" --label com.docker.compose.volume=local_postgres14_data \
+    "${IT_PROJECT}_local_postgres14_data" >/dev/null
+  docker run --rm -v "${IT_PROJECT}_local_postgres14_data:/data" busybox:1.37 sh -c 'echo kept > /data/marker' >/dev/null 2>&1
+  local id_before; id_before="$(docker volume inspect -f '{{.CreatedAt}}' "${IT_PROJECT}_local_postgres14_data")"
+  python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read()
+s = s.replace("  # <<< dck:service <<<\n", "  # <<< dck:service <<<\n  postgres:\n    image: busybox:1.37\n    command: [\"sleep\", \"infinity\"]\n    volumes:\n      - local_postgres14_data:/var/lib/postgresql/data\n", 1)
+s = s.replace("# <<< dck:volumes <<<\n", "  # >>> user:volumes >>>\n  local_postgres14_data: {}\n  # <<< user:volumes <<<\n# <<< dck:volumes <<<\n", 1)
+open(p, "w").write(s)' "$IT_REPO/docker/local/docker-compose.yaml"
+  run_cmd "$DCK" init --repo "$IT_REPO" --yes
+  assert_rc 0 "dck init keeps the user:volumes block"
+  with_lock d up
+  assert_rc 0 "dck up starts the stack"
+  d up postgres
+  assert_rc 0 "and the database service (not in runServices)"
+  d exec postgres cat /var/lib/postgresql/data/marker
+  assert_eq "$RUN_OUT" "kept" "the postgres service mounts the pre-existing data volume, data intact"
+  run_cmd docker volume inspect -f '{{.CreatedAt}}' "${IT_PROJECT}_local_postgres14_data"
+  assert_eq "$RUN_OUT" "$id_before" "the very same volume (never recreated)"
+  run_cmd docker volume ls -q --filter "label=com.docker.compose.project=$IT_PROJECT"
+  assert_eq "$(printf '%s\n' "$RUN_OUT" | grep -c 'local_postgres14_data')" "1" "no second data volume was created"
+  d down postgres app
+}
+
 test_zz_nothing_left_behind() {
   # Runs last in the scope: every container, volume and network a test created is gone.
   require_docker "the docker scope leaves no container, volume or network behind" || return 0
   local left
-  left="$( { docker ps -a --format '{{.Names}}'; docker volume ls --format '{{.Name}}'; docker network ls --format '{{.Name}}'; } | grep -E '^(dckit|dckpy|dckdc|dckfr)[0-9a-f]{8}' || true)"
+  left="$( { docker ps -a --format '{{.Names}}'; docker volume ls --format '{{.Name}}'; docker network ls --format '{{.Name}}'; } | grep -E '^(dckit|dckpy|dckdc|dckfr|dckas|dckdv)[0-9a-f]{8}' || true)"
   assert_eq "$left" "" "the docker scope leaves no container, volume or network behind"
 }

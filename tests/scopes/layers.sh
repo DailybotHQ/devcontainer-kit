@@ -33,7 +33,7 @@ test_agents_layer_enabled() {
   local d c
   d="$(dockerfile)"; c="$(compose)"
   assert_contains "$d" 'ARG DCK_AGENT_CLIS="claude codex"' "the requested kinds reach the build"
-  assert_contains "$d" 'RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}' "the Dockerfile runs the agents layer installer"
+  assert_contains "$d" 'RUN DCK_USER=dev DCK_AGENT_PRESETS="" dck-layer agents ${DCK_AGENT_CLIS}' "the Dockerfile runs the agents layer installer (a new render: no ak preset)"
   assert_contains "$c" 'DCK_AGENTS: "claude codex"' "the entrypoint learns the kinds"
   assert_contains "$c" "AGENTKIT_PROFILES_DIR: /home/dev/.dck/volumes/agentkit/profiles" "ak profiles live on the agentkit volume"
   local v
@@ -203,8 +203,8 @@ test_runtime_persistence_per_cli() {
   assert_eq "$(readlink "$DCK_HOME/.config/agentkit")" "$DCK_PERSIST_ROOT/agentkit/config_agentkit" "the ak config lives on the agentkit volume"
   assert_dir "$DCK_PERSIST_ROOT/agentkit/profiles" "the ak profiles directory exists on its volume"
   assert_contains "$RUN_ERR" "unknown kind 'bogus' skipped" "an unknown kind is skipped, loudly"
-  run_cmd env DCK_AGENTS="" DCK_DAILYBOT=1 bash -c '. "$1"; dck_layer_persist' _ "$LIB"
-  assert_eq "$(readlink "$DCK_HOME/.config/dailybot")" "$DCK_PERSIST_ROOT/state/config_dailybot" "the Dailybot CLI config lives on the state volume"
+  run_cmd env DCK_AGENTS="" DCK_DAILYBOT=0 bash -c '. "$1"; dck_start' _ "$LIB"
+  assert_eq "$(readlink "$DCK_HOME/.config/dailybot")" "$DCK_PERSIST_ROOT/state/config_dailybot" "the Dailybot CLI config lives on the state volume, with or without the dailybot layer"
 }
 
 test_runtime_nothing_without_layers() {
@@ -232,4 +232,69 @@ test_layers_are_scripts_not_clis_in_the_base() {
     assert_not_contains "$(cat "$DCK_REPO/images/$f/Dockerfile")" "dck-layer agents" "$f never runs the agents layer itself"
   done
   assert_no_match "$(cat "$DCK_REPO/lib/layers/"*.sh)" '(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh' "no layer pipes a download into a shell"
+}
+
+test_agents_installer_presets() {
+  EXTRA_PATH="$LFIX/nodebin:"
+  agentkit_fixture
+  local run=(env DCK_VERSIONS="$SANDBOX/akrel/versions.env" DCK_USER="$(id -un)" FAKE_CURL_FILE="$SANDBOX/akrel/agentkit.tar.gz"
+    DCK_SKILLS_DIR="$SANDBOX/skills" DCK_LAYER_PREFIX="$SANDBOX/prefix" PATH="$LFIX/bin:$EXTRA_PATH$PATH")
+  run_cmd "${run[@]}" DCK_AGENT_PRESETS="" bash "$DCK_REPO/lib/layers/agents.sh" claude
+  assert_rc 0 "the installer runs with no preset"
+  assert_not_contains "$(fake_calls ak)" "alias preset" "DCK_AGENT_PRESETS=\"\" turns no preset on"
+  assert_not_contains "$(cat "$HOME/.bashrc" 2>/dev/null)" "agentkit/aliases.sh" "and bash does not load the presets"
+  : > "$DCK_FAKE_LOG"
+  run_cmd "${run[@]}" DCK_AGENT_PRESETS="classic" bash "$DCK_REPO/lib/layers/agents.sh" claude
+  assert_contains "$(fake_calls ak)" "ak alias preset classic --on" "a listed preset is turned on"
+  assert_not_contains "$(fake_calls ak)" "preset providers" "only that one"
+  run_cmd "${run[@]}" DCK_AGENT_PRESETS="bogus" bash "$DCK_REPO/lib/layers/agents.sh" claude
+  assert_rc 2 "an unknown preset fails the build"
+}
+
+# #16: an older Node in the image (a repository's production Node, or Debian's)
+# is never replaced: the pinned Node goes into the agents' own prefix, and the
+# npm-installed agent CLIs are launched on it.
+test_agents_get_their_own_node() {
+  local tag nv arch rel ak
+  tag="$(sed -n 's/^AGENTKIT_TAG=//p' "$DCK_REPO/images/versions.env")"
+  nv="$(sed -n 's/^NODE_VERSION=//p' "$DCK_REPO/images/versions.env")"
+  case "$(uname -m)" in arm64|aarch64) arch=arm64 ;; *) arch=x64 ;; esac
+  mkdir -p "$SANDBOX/dl" "$SANDBOX/noderel/node-v$nv-linux-$arch/bin"
+  printf '#!/usr/bin/env bash\necho v%s\n' "$nv" > "$SANDBOX/noderel/node-v$nv-linux-$arch/bin/node"
+  chmod +x "$SANDBOX/noderel/node-v$nv-linux-$arch/bin/node"
+  tar -cJf "$SANDBOX/dl/node-v$nv-linux-$arch.tar.xz" -C "$SANDBOX/noderel" "node-v$nv-linux-$arch"
+  # A kit whose ak installs one npm CLI (a node-script entry point behind a symlink).
+  rel="$SANDBOX/akrel/coding-agents-kit-$tag"
+  mkdir -p "$rel/skills/agentkit" "$rel/skills/agentkit-setup" "$rel/skills/agentkit-orchestrate"
+  for s in agentkit agentkit-setup agentkit-orchestrate; do printf -- '---\nname: %s\n---\n' "$s" > "$rel/skills/$s/SKILL.md"; done
+  cat > "$rel/install.sh" <<'SH'
+#!/usr/bin/env bash
+mkdir -p "$HOME/.local/share/agentkit/bin"
+cat > "$HOME/.local/share/agentkit/bin/ak" <<'AK'
+#!/usr/bin/env bash
+printf 'ak %s path=%s\n' "$*" "$PATH" >> "${DCK_FAKE_LOG:-/dev/null}"
+if [ "$1" = install ]; then
+  mkdir -p "$HOME/.local/lib/node_modules/fakecli/bin" "$HOME/.local/bin"
+  printf '#!/usr/bin/env node\nconsole.log("fake")\n' > "$HOME/.local/lib/node_modules/fakecli/bin/cli.js"
+  ln -sfn ../lib/node_modules/fakecli/bin/cli.js "$HOME/.local/bin/fakecli"
+fi
+AK
+chmod +x "$HOME/.local/share/agentkit/bin/ak"
+SH
+  tar -czf "$SANDBOX/dl/coding-agents-kit-$tag.tar.gz" -C "$SANDBOX/akrel" "coding-agents-kit-$tag"
+  sed -e "s/^AGENTKIT_SHA256=.*/AGENTKIT_SHA256=$(shasum -a 256 "$SANDBOX/dl/coding-agents-kit-$tag.tar.gz" | cut -d' ' -f1)/" \
+      -e "s/^NODE_SHA256_AMD64=.*/NODE_SHA256_AMD64=$(shasum -a 256 "$SANDBOX/dl/node-v$nv-linux-$arch.tar.xz" | cut -d' ' -f1)/" \
+      -e "s/^NODE_SHA256_ARM64=.*/NODE_SHA256_ARM64=$(shasum -a 256 "$SANDBOX/dl/node-v$nv-linux-$arch.tar.xz" | cut -d' ' -f1)/" \
+      "$DCK_REPO/images/versions.env" > "$SANDBOX/versions.env"
+  local old_node; old_node="$(cat "$LFIX/nodebin-old/node")"
+  run_cmd env DCK_VERSIONS="$SANDBOX/versions.env" DCK_USER="$(id -un)" FAKE_CURL_DIR="$SANDBOX/dl" \
+    DCK_SKILLS_DIR="$SANDBOX/skills" DCK_LAYER_PREFIX="$SANDBOX/opt" DCK_AGENT_PRESETS="" \
+    PATH="$LFIX/bin:$LFIX/nodebin-old:$PATH" bash "$DCK_REPO/lib/layers/agents.sh" claude
+  assert_rc 0 "the agents layer runs over an older Node"
+  assert_file "$SANDBOX/opt/node/bin/node" "the pinned Node goes into the agents' own prefix"
+  assert_eq "$(cat "$LFIX/nodebin-old/node")" "$old_node" "the image's node is left as it is"
+  assert_contains "$RUN_ERR" "for the agents in $SANDBOX/opt/node (the image's node v20 is left as it is)" "and the log says so"
+  assert_contains "$(fake_calls ak | grep '^ak install')" "path=$SANDBOX/opt/node/bin:" "ak install runs with the agents' Node first on PATH"
+  assert_contains "$(head -3 "$HOME/.local/bin/fakecli")" "exec $SANDBOX/opt/node/bin/node $HOME/.local/lib/node_modules/fakecli/bin/cli.js" "an npm CLI is launched on the agents' Node"
+  assert_contains "$RUN_ERR" "1 agent CLI(s) run on the agents' own Node" "counted in the log"
 }

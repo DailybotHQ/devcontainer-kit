@@ -129,7 +129,7 @@ def repo_info(repo, dck_tag, profile, rt, problems):
         info["devcontainer"] = os.path.relpath(d["file"], repo)
         info["service"] = d["service"]
         compose_dir = os.path.dirname(d["compose_files"][0])
-        info["project"] = compose_project(compose_dir, d["compose_name"])
+        info["project"] = compose_project(compose_dir, d["compose_name"], toml_project(repo))
         svc_dir = os.path.join(compose_dir, d["service"] or "")
         dockerfile = os.path.join(svc_dir, "Dockerfile")
         if os.path.isfile(dockerfile) and not os.path.islink(dockerfile):
@@ -281,6 +281,7 @@ def herdr_info(merged, problems):
                 found = [m for m in data if isinstance(m, dict) and m.get("target") == merged["alias"]]
                 h["registered"] = bool(found)
                 h["enabled"] = bool(found[0].get("enabled", True)) if found else None
+                h["id"] = str(found[0].get("id") or "") or None if found else None
             except ValueError:
                 pass
     c = h.get("catalog")
@@ -366,10 +367,28 @@ def ssh_keys_info(merged, container_name):
             "host_keys": p["host_keys"], "copied": copied}
 
 
-def compose_project(compose_dir, compose_name):
+def _version_tuple(v):
+    m = re.match(r"^v?(\d+)\.(\d+)", str(v))
+    return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+
+
+def toml_project(repo):
+    """[compose] project from dck.toml, or None (an invalid file says nothing here)."""
+    try:
+        raw = config.parse_file(config.repo_config_path(repo))
+    except config.ConfigError:
+        return None
+    v = (raw.get("compose") or {}).get("project") if isinstance(raw.get("compose"), dict) else None
+    return v if isinstance(v, str) and re.match(config.RE_COMPOSE_PROJECT, v) else None
+
+
+def compose_project(compose_dir, compose_name, toml_name=None):
     """The compose project as the launcher resolves it (resolve_project):
-    COMPOSE_PROJECT_NAME in the environment, then in the compose directory's
-    .env (never through a symlink), then the compose file's top-level name."""
+    [compose] project in dck.toml, then COMPOSE_PROJECT_NAME in the environment,
+    then in the compose directory's .env (never through a symlink), then the
+    compose file's top-level name."""
+    if toml_name:
+        return toml_name
     if os.environ.get("COMPOSE_PROJECT_NAME"):
         return os.environ["COMPOSE_PROJECT_NAME"]
     env = os.path.join(compose_dir, ".env")
@@ -378,6 +397,20 @@ def compose_project(compose_dir, compose_name):
         if v:
             return v
     return compose_name or None
+
+
+def git_identity_info(container, user):
+    """The container user's git identity and where it came from (names only of
+    the signing setup: the format and whether commits are signed)."""
+    out = {"name": None, "email": None, "signing": None, "source": None}
+    for key, field in (("user.name", "name"), ("user.email", "email"), ("gpg.format", "signing")):
+        rc, text = run(["docker", "exec", "-u", user, container, "git", "config", "--global", "--get", key])
+        out[field] = (text or "").strip() or None if rc == 0 else None
+    rc, text = run(["docker", "exec", container, "cat", "/home/%s/.dck/volumes/state/git-identity-source" % user])
+    src = (text or "").strip() if rc == 0 else ""
+    out["source"] = {"host": "the host's git config", "env": "DCK_GIT_* in the service .env",
+                     "host+env": "the host's git config and DCK_GIT_*"}.get(src)
+    return out
 
 
 def compose_info(project, service, state_volume, problems):
@@ -418,6 +451,10 @@ def collect(start, profile=None):
     version = config_version()
     py_ok = sys.version_info >= (3, 11)
     rt = runtime_info()
+    cv = rt["compose"]["version"]
+    if cv and _version_tuple(cv) < (2, 24):
+        problems.append("Docker Compose %s is older than 2.24, which dck needs for satellites "
+                        "(extends with !reset/!override) and port strings; update Docker" % cv)
     if not rt["docker"]["cli"]:
         problems.append("docker is not installed")
     elif not rt["docker"]["daemon"]:
@@ -437,7 +474,7 @@ def collect(start, profile=None):
         "runtime": rt,
         "profile": prof_out,
         "repo": None, "layers": None, "ssh": None, "herdr": None, "drift": [], "host_profiles": None,
-        "ssh_keys": None, "compose": None,
+        "ssh_keys": None, "compose": None, "git": None,
         "problems": problems,
     }
     merged = None
@@ -464,12 +501,32 @@ def collect(start, profile=None):
                     problems.append("sshd does not answer on %s:%s" % (host, merged["ssh_port"]))
             report["ssh"] = ssh
             report["host_profiles"] = host_profiles_info(merged, problems)
+            import render
+            st = render.compose_status(repo, "v" + version, profile)
+            report["compose_render"] = st
+            if st["error"]:
+                problems.append("compose: %s" % st["error"])
+            elif st["stale"]:
+                problems.append("compose: docker/local/docker-compose.yaml does not reflect dck.toml or its user "
+                                "block; run dck init")
             if rt["docker"]["daemon"] and info["project"]:
                 report["compose"] = compose_info(info["project"], merged["service"],
                                                  merged["compose.state_volume"], problems)
             report["ssh_keys"] = ssh_keys_info(
                 merged, report["repo"]["container"]["name"] if container_running else None)
+    if merged and container_running:
+        report["git"] = git_identity_info(report["repo"]["container"]["name"], merged["user"])
     h = herdr_info(merged, problems)
+    if merged and container_running and h.get("id"):
+        # The id the container exports as HERDR_PEERS_SELF (herdr-peers' reply route).
+        rc, out = run(["docker", "exec", report["repo"]["container"]["name"], "cat",
+                       "/home/%s/.dck/volumes/state/herdr-self" % merged["user"]])
+        inside = (out or "").strip() if rc == 0 else ""
+        h["self_inside"] = inside if re.match(r"^[0-9a-f]{32}$", inside) else None
+        if h["self_inside"] != h["id"]:
+            problems.append("herdr: HERDR_PEERS_SELF inside is %s, but the host's catalog has this container as %s; "
+                            "asks from Codex panes find no reply route (run: dck herdr add)"
+                            % (h["self_inside"] or "unset", h["id"]))
     if h["registered"] and report["ssh"] and report["ssh"]["answering"]:
         rc, _ = run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=3", h["alias"],
                      "herdr", "status", "server"], timeout=10)
@@ -518,6 +575,14 @@ def text(report):
     if s:
         out.append("ssh              %s" % ("off" if not s["enabled"] else "%s:%s, key %s, answering %s" % (
             s["bind"], s["port"], "present" if s["identity_present"] else "missing", yes(s["answering"]))))
+    g = report.get("git")
+    if g:
+        out.append("git identity     %s%s (from %s)" % (
+            g["name"] or "unset", (" <%s>" % g["email"]) if g["email"] else "",
+            g["source"] or ("nowhere: run dck up" if not g["name"] else "the image or a manual git config")))
+    cr = report.get("compose_render")
+    if cr and cr["overrides"]:
+        out.append("user block       overrides dck's %s (x-dck-merge)" % ", ".join(cr["overrides"]))
     c = report.get("compose")
     if c:
         out.append("compose          project %s, state volume %s%s" % (
@@ -545,6 +610,9 @@ def text(report):
     out.append("herdr            %s%s" % (h["version"] or "not installed",
                                           "" if h["machine"] is None else ", machine %s, alias %s, registered %s, server %s" % (
                                               yes(h["machine"]), h["alias"], yes(h["registered"]), yes(h["server_answering"]))))
+    if h.get("id"):
+        out.append("herdr self       %s in the host's catalog; HERDR_PEERS_SELF inside: %s" % (
+            h["id"], h.get("self_inside") or ("unset" if "self_inside" in h else "- (container not running)")))
     for d in report["drift"]:
         out.append("drift            %-10s pinned %s, installed %s (%s)" % (d["name"], d["pinned"], d["installed"] or "-", d["status"]))
     if report["problems"]:
