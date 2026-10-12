@@ -60,8 +60,8 @@ user = \"dev;rm\""
 image_tag = \"latest\""
   invalid_case "a privileged ssh port" "ssh_port: expected 0 (no sshd) or a port in 1024-65535" "$base
 ssh_port = 22"
-  invalid_case "an ssh port given as a string" "ssh_port: expected an integer, got string" "$base
-ssh_port = \"22040\""
+  invalid_case "an ssh port string with a container part" "invalid ssh_port '22040:22'" "$base
+ssh_port = \"22040:22\""
   invalid_case "a port out of range" "ports: web: expected a port number in 1-65535" "$base
 ports = { web = 70000 }"
   invalid_case "a duplicated port" "port 4321 is already used by web" "$base

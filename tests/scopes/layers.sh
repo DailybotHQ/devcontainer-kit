@@ -33,7 +33,7 @@ test_agents_layer_enabled() {
   local d c
   d="$(dockerfile)"; c="$(compose)"
   assert_contains "$d" 'ARG DCK_AGENT_CLIS="claude codex"' "the requested kinds reach the build"
-  assert_contains "$d" 'RUN DCK_USER=dev dck-layer agents ${DCK_AGENT_CLIS}' "the Dockerfile runs the agents layer installer"
+  assert_contains "$d" 'RUN DCK_USER=dev DCK_AGENT_PRESETS="" dck-layer agents ${DCK_AGENT_CLIS}' "the Dockerfile runs the agents layer installer (a new render: no ak preset)"
   assert_contains "$c" 'DCK_AGENTS: "claude codex"' "the entrypoint learns the kinds"
   assert_contains "$c" "AGENTKIT_PROFILES_DIR: /home/dev/.dck/volumes/agentkit/profiles" "ak profiles live on the agentkit volume"
   local v
@@ -232,4 +232,21 @@ test_layers_are_scripts_not_clis_in_the_base() {
     assert_not_contains "$(cat "$DCK_REPO/images/$f/Dockerfile")" "dck-layer agents" "$f never runs the agents layer itself"
   done
   assert_no_match "$(cat "$DCK_REPO/lib/layers/"*.sh)" '(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh' "no layer pipes a download into a shell"
+}
+
+test_agents_installer_presets() {
+  EXTRA_PATH="$LFIX/nodebin:"
+  agentkit_fixture
+  local run=(env DCK_VERSIONS="$SANDBOX/akrel/versions.env" DCK_USER="$(id -un)" FAKE_CURL_FILE="$SANDBOX/akrel/agentkit.tar.gz"
+    DCK_SKILLS_DIR="$SANDBOX/skills" DCK_LAYER_PREFIX="$SANDBOX/prefix" PATH="$LFIX/bin:$EXTRA_PATH$PATH")
+  run_cmd "${run[@]}" DCK_AGENT_PRESETS="" bash "$DCK_REPO/lib/layers/agents.sh" claude
+  assert_rc 0 "the installer runs with no preset"
+  assert_not_contains "$(fake_calls ak)" "alias preset" "DCK_AGENT_PRESETS=\"\" turns no preset on"
+  assert_not_contains "$(cat "$HOME/.bashrc" 2>/dev/null)" "agentkit/aliases.sh" "and bash does not load the presets"
+  : > "$DCK_FAKE_LOG"
+  run_cmd "${run[@]}" DCK_AGENT_PRESETS="classic" bash "$DCK_REPO/lib/layers/agents.sh" claude
+  assert_contains "$(fake_calls ak)" "ak alias preset classic --on" "a listed preset is turned on"
+  assert_not_contains "$(fake_calls ak)" "preset providers" "only that one"
+  run_cmd "${run[@]}" DCK_AGENT_PRESETS="bogus" bash "$DCK_REPO/lib/layers/agents.sh" claude
+  assert_rc 2 "an unknown preset fails the build"
 }

@@ -90,10 +90,24 @@ fi
 
 # 5. The wrapper names developers type: the classic preset (claudex, codexx, …)
 #    and the providers preset (claude-glm, codex-glm, …), loaded by every bash
-#    the dev user starts (interactive, login, Herdr panes, ssh).
-as_user "$ak_bin" alias preset classic --on >/dev/null
-as_user "$ak_bin" alias preset providers --on >/dev/null
-# shellcheck disable=SC2016  # expanded by the dev user's shell, not here
-as_user bash -c 'line="[ -r \"\$HOME/.local/share/agentkit/aliases.sh\" ] && . \"\$HOME/.local/share/agentkit/aliases.sh\""
-  grep -qxF "$line" "$HOME/.bashrc" 2>/dev/null || printf "%s\n" "$line" >> "$HOME/.bashrc"'
-layer_log "presets classic and providers on"
+#    the dev user starts (interactive, login, Herdr panes, ssh). [agents] presets
+#    in dck.toml chooses them (DCK_AGENT_PRESETS); unset keeps both, as before.
+presets="${DCK_AGENT_PRESETS-classic providers}"
+for p in $presets; do
+  case "$p" in
+    classic|providers) as_user "$ak_bin" alias preset "$p" --on >/dev/null ;;
+    *) layer_log "unknown preset '$p' (classic, providers)"; exit 2 ;;
+  esac
+done
+if [ -n "$presets" ]; then
+  # shellcheck disable=SC2016  # expanded by the dev user's shell, not here
+  as_user bash -c 'line="[ -r \"\$HOME/.local/share/agentkit/aliases.sh\" ] && . \"\$HOME/.local/share/agentkit/aliases.sh\""
+    grep -qxF "$line" "$HOME/.bashrc" 2>/dev/null || printf "%s\n" "$line" >> "$HOME/.bashrc"'
+  if [ "$presets" = "classic providers" ]; then
+    layer_log "presets classic and providers on"
+  else
+    layer_log "presets on: $presets"
+  fi
+else
+  layer_log "no ak alias preset ([agents] presets = [])"
+fi

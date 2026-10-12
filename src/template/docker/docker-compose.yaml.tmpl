@@ -9,8 +9,8 @@ services:
   # >>> dck:service >>>
   {{service}}:
     build:
-      context: ./{{service}}
-      dockerfile: Dockerfile
+      context: {{build_context}}
+      dockerfile: {{build_dockerfile}}
     init: true
     working_dir: {{workspace}}
     command: ["sleep", "infinity"]
@@ -64,7 +64,7 @@ services:
 {% if has_network %}
     networks:
       - default
-      - {{network}}
+{{network_lines}}
 {% endif %}
   # <<< dck:service <<<
 
@@ -76,8 +76,6 @@ volumes:
 
 # >>> dck:networks >>>
 networks:
-  {{network}}:
-    external: true
-    name: {{network}}
+{{network_decls}}
 # <<< dck:networks <<<
 {% endif %}

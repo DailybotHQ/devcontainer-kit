@@ -1,0 +1,1 @@
+# Intentionally empty: the fixture image installs nothing from a package index.

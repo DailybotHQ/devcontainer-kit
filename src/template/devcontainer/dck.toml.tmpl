@@ -38,6 +38,9 @@ editor = {{layers_editor}}
 [agents]
 # Kinds passed to `ak install` when layers.agents is true.
 clis = [{{agents_clis_toml}}]
+# ak alias presets: "classic" (claudex, codexx, …) and "providers" (claude-glm, …).
+# [] = none; removing the key turns both on (the behaviour before v0.3.3).
+presets = [{{agents_presets_toml}}]
 
 [herdr]
 # Register the container as a Herdr machine on `dck up` (needs ssh_port).
