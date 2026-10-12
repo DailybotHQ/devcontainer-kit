@@ -41,11 +41,11 @@ Requires bash 3.2+ and python3 ≥ 3.11 on a Linux or macOS host; Docker (Deskto
 colima or Engine) with Compose v2 for the container verbs.
 
 ```bash
-git clone --branch v0.3.3 https://github.com/DailybotHQ/devcontainer-kit
-( cd devcontainer-kit && curl -fsSLO https://github.com/DailybotHQ/devcontainer-kit/releases/download/v0.3.3/SHA256SUMS \
+git clone --branch v0.3.4 https://github.com/DailybotHQ/devcontainer-kit
+( cd devcontainer-kit && curl -fsSLO https://github.com/DailybotHQ/devcontainer-kit/releases/download/v0.3.4/SHA256SUMS \
     && shasum -a 256 -c SHA256SUMS )   # optional: verify the checkout against the release
 ./devcontainer-kit/install.sh          # --no-rc for scripted installs, --uninstall to remove
-dck --version                          # devcontainer-kit 0.3.3
+dck --version                          # devcontainer-kit 0.3.4
 ```
 
 `install.sh` copies the kit to `~/.local/share/dck` and adds one guarded PATH block to

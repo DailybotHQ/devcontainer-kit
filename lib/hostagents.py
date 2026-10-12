@@ -374,6 +374,12 @@ def report(merged, env=None, profiles=None):
     if p["defaults"]:
         out.append(("info", "host profiles: default profile inside (AGENTKIT_DEFAULT_PROFILE_<CLI>, ak v0.5.2+): %s"
                     % ", ".join("%s %s" % d for d in p["defaults"])))
+        homes = {"claude": "CLAUDE_CONFIG_DIR", "codex": "CODEX_HOME"}
+        plain = ["%s=%s/%s/%s" % (homes[c], p["container_profiles"], c, prof.lstrip("@"))
+                 for c, prof in p["defaults"] if c in homes and prof != "@default"]
+        if plain:
+            out.append(("info", "host profiles: a plain claude/codex inside (a pane Herdr restores without ak) "
+                        "uses it: %s (login shells)" % ", ".join(plain)))
     for cli, prof, why in p["defaults_skipped"]:
         out.append(("warn", "host profiles: default_profile %s = %s not applied — %s" % (cli, prof, why)))
     out.append(("info", "host profiles: shared: %s" % (", ".join(profile_refs(p)) or "none")))

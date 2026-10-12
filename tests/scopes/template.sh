@@ -880,3 +880,16 @@ test_agents_node_first() {
   init_repo "$d" --yes
   assert_contains "$RUN_ERR" "agents.node_first is set but layers.agents is false" "without the agents layer it warns"
 }
+
+# v0.3.4: a preflight refusal is visible through dev.sh even with stderr discarded.
+test_devsh_surfaces_a_refusal() {
+  local r
+  r="$(new_repo rf)"
+  init_repo "$r" --flavour debian --ssh-port 0 --no-herdr --yes
+  # A hand-written host mount the preflight refuses without --trust.
+  python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read(); s = s.replace("  # <<< dck:service <<<\n", "  # <<< dck:service <<<\n  side:\n    image: busybox:1.37\n    volumes:\n      - /etc:/host-etc:ro\n", 1); open(p, "w").write(s)' "$r/docker/local/docker-compose.yaml"
+  run_cmd bash -c 'cd "$1" && PATH="$2:$PATH" DCK_BACKEND=compose DCK_NONINTERACTIVE=1 bash dev.sh up 2>/dev/null' _ "$r" "$DCK_REPO/bin"
+  assert_rc 5 "dck's refusal code is kept"
+  assert_contains "$RUN_OUT" "dev.sh: dck refused to up (exit 5)" "the refusal is on stdout, visible with stderr discarded"
+  assert_contains "$RUN_OUT" "DCK_TRUST=1 bash dev.sh up" "with the way through once reviewed"
+}

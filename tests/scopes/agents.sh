@@ -513,6 +513,7 @@ default_profile = { claude = "@work1", codex = "nope" }'
   fake_ak
   run_cmd bash -c 'cd "$1" && PATH="$2:$PATH" "$3" doctor' _ "$REPO" "$SANDBOX/akbin" "$DCK"
   assert_contains "$RUN_OUT" "default profile inside (AGENTKIT_DEFAULT_PROFILE_<CLI>, ak v0.5.2+): claude @work1" "the doctor shows the mapping"
+  assert_contains "$RUN_OUT" "a plain claude/codex inside (a pane Herdr restores without ak) uses it: CLAUDE_CONFIG_DIR=/home/dev/.dck/host/agentkit/profiles/claude/work1" "and the config home a restored plain claude uses"
   assert_contains "$RUN_OUT" "default_profile codex = @nope not applied — codex @nope is not shared" "and flags one it cannot apply"
   printf 'interface = 2\n[agents]\ndefault_profile = { cursor = "@x" }\n' > "$SANDBOX/p.toml"
   run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" config validate --kind profile "$SANDBOX/p.toml"
@@ -520,4 +521,67 @@ default_profile = { claude = "@work1", codex = "nope" }'
   python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read(); open(p, "w").write(s.replace("[agents]\n", "[agents]\ndefault_profile = { claude = \"@work1\" }\n", 1))' "$REPO/.devcontainer/dck.toml"
   run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" config show --repo "$REPO" --format json
   assert_contains "$RUN_ERR" "agents.default_profile is a host-profile setting" "a repository cannot set it"
+}
+
+# v0.3.4: Codex never checks for an update at startup inside a container — only
+# in the container's own configs; the host's Codex home and host-shared profiles
+# are never written; hooks are never pre-trusted.
+test_codex_update_check_off_only_in_own_configs() {
+  mk_container_home
+  local own="$SANDBOX/h/.dck/volumes/codex/codex" p="$SANDBOX/h/.dck/volumes/agentkit/profiles/codex"
+  mkdir -p "$own" "$p/own1" "$p/mine"
+  ln -sfn "$own" "$SANDBOX/h/.codex"
+  printf '[projects."/app"]\ntrust_level = "trusted"\n' > "$own/config.toml"
+  printf 'check_for_update_on_startup = true\n' > "$p/mine/config.toml"
+  local host_before; host_before="$(cat "$SANDBOX/h/.dck/host/codex/config.toml")"
+  EP_FUNCS=dck_codex_config ep DCK_AGENTS="codex" AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  assert_rc 0 "dck_codex_config runs"
+  assert_eq "$(head -1 "$own/config.toml")" "check_for_update_on_startup = false" "the container's ~/.codex skips the update check (a top-level key, before any table)"
+  assert_contains "$(cat "$own/config.toml")" '[projects."/app"]' "the rest of the config is kept"
+  assert_eq "$(head -1 "$p/own1/config.toml")" "check_for_update_on_startup = false" "an ak codex profile on the container's volume too"
+  assert_contains "$(cat "$own/config.toml")" "[features]
+daemon_auto_start = false" "a plain restored codex starts no app-server daemon"
+  assert_contains "$(cat "$p/mine/config.toml")" "check_for_update_on_startup = true" "a value the developer set is kept"
+  assert_not_contains "$(cat "$p/mine/config.toml")" "check_for_update_on_startup = false" "never doubled"
+  assert_contains "$RUN_ERR" "codex: startup update check and daemon auto-start off in 3 config(s)" "and logged"
+  printf '[features]\ndaemon_auto_start = true\n' > "$p/mine/config.toml"
+  EP_FUNCS=dck_codex_config ep DCK_AGENTS="codex" AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  assert_contains "$(cat "$p/mine/config.toml")" "daemon_auto_start = true" "a daemon_auto_start the developer set is kept"
+  assert_eq "$(grep -c daemon_auto_start "$p/mine/config.toml")" "1" "and not doubled"
+  EP_FUNCS=dck_codex_config ep DCK_AGENTS="codex" AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  assert_not_contains "$RUN_ERR" "update check off" "a second start changes nothing"
+  assert_eq "$(grep -c check_for_update_on_startup "$own/config.toml")" "1" "the key is written once"
+  # The host's Codex home and host-shared profiles: never written.
+  mkdir -p "$SANDBOX/h/.dck/host/agentkit/profiles/codex/work1"
+  printf 'model = "w"\n' > "$SANDBOX/h/.dck/host/agentkit/profiles/codex/work1/config.toml"
+  ln -sfn "$SANDBOX/h/.dck/host/codex" "$SANDBOX/h/.codex"
+  EP_FUNCS=dck_codex_config ep DCK_AGENTS="codex" DCK_HOST_CODEX="$SANDBOX/h/.dck/host/codex" DCK_HOST_PROFILES="codex" \
+     AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/host/agentkit/profiles"
+  assert_eq "$(cat "$SANDBOX/h/.dck/host/codex/config.toml")" "$host_before" "the host's Codex home is never written"
+  assert_eq "$(cat "$SANDBOX/h/.dck/host/agentkit/profiles/codex/work1/config.toml")" 'model = "w"' "nor a host-shared codex profile"
+  assert_not_contains "$(cat "$own/config.toml" "$p/own1/config.toml")" "hooks" "hooks are never pre-trusted"
+  EP_FUNCS=dck_codex_config ep DCK_AGENTS="claude" AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  assert_not_contains "$RUN_ERR" "codex:" "without codex, nothing"
+  assert_contains "$(sed -n '/^dck_start() {/,/^}/p' "$DCK_REPO/lib/entrypoint.sh")" "dck_codex_config || true" "dck_start runs it at every start"
+}
+
+# v0.3.4 (A): a pane Herdr restores runs a plain `claude --resume` without ak; with
+# [agents] default_profile, the login profile points it at that profile's home.
+test_login_profile_points_plain_clis_at_the_default_profile() {
+  local prof="$SANDBOX/profiles"
+  mkdir -p "$prof/claude/work3" "$prof/codex/work2" "$SANDBOX/lh"
+  run_cmd env HOME="$SANDBOX/lh" AGENTKIT_PROFILES_DIR="$prof" AGENTKIT_DEFAULT_PROFILE_CLAUDE="@work3" AGENTKIT_DEFAULT_PROFILE_CODEX="@work2" \
+    sh -c '. "$1"; printf "%s|%s" "${CLAUDE_CONFIG_DIR:-unset}" "${CODEX_HOME:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
+  assert_eq "$RUN_OUT" "$prof/claude/work3|$prof/codex/work2" "CLAUDE_CONFIG_DIR and CODEX_HOME name the default profiles"
+  run_cmd env HOME="$SANDBOX/lh" AGENTKIT_PROFILES_DIR="$prof" AGENTKIT_DEFAULT_PROFILE_CLAUDE="@work3" CLAUDE_CONFIG_DIR=/elsewhere \
+    sh -c '. "$1"; printf "%s" "$CLAUDE_CONFIG_DIR"' _ "$DCK_REPO/images/common/profile.sh"
+  assert_eq "$RUN_OUT" "/elsewhere" "a value already set wins (ak sets its own)"
+  run_cmd env HOME="$SANDBOX/lh" AGENTKIT_PROFILES_DIR="$prof" AGENTKIT_DEFAULT_PROFILE_CLAUDE="@missing" \
+    sh -c '. "$1"; printf "%s" "${CLAUDE_CONFIG_DIR:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
+  assert_eq "$RUN_OUT" "unset" "a profile directory that does not exist is not named"
+  run_cmd env HOME="$SANDBOX/lh" AGENTKIT_PROFILES_DIR="$prof" AGENTKIT_DEFAULT_PROFILE_CLAUDE="../../etc" \
+    sh -c '. "$1"; printf "%s" "${CLAUDE_CONFIG_DIR:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
+  assert_eq "$RUN_OUT" "unset" "a malformed name is refused"
+  run_cmd env HOME="$SANDBOX/lh" sh -c '. "$1"; printf "%s" "${CLAUDE_CONFIG_DIR:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
+  assert_eq "$RUN_OUT" "unset" "without default_profile, nothing changes"
 }

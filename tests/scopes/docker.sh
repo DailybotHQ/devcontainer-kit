@@ -161,6 +161,9 @@ test_node_fixture_end_to_end() {
   assert_match "$RUN_OUT" '/codex$' "codex is installed through ak"
   assert_match "$RUN_OUT" '/pi$' "pi is installed through ak"
   assert_contains "$RUN_OUT" "function" "the wrapper names are shell functions"
+  dev shell -c 'head -1 ~/.codex/config.toml; codex features list 2>/dev/null | grep "^daemon_auto_start "'
+  assert_contains "$RUN_OUT" "check_for_update_on_startup = false" "Codex skips its startup update check inside (dck pins its version)"
+  assert_match "$RUN_OUT" '^daemon_auto_start +[a-z ]+ +false$' "and Codex itself reads daemon_auto_start = false"
   assert_contains "$(cat "$IT_REPO/docker/local/docker-compose.yaml")" "set AGENTKIT_PERMISSIONS=ask in ./app/.env" "the opt-out is documented in compose"
 
   # 9. The editor: DeepWorkPlan Vim at its pinned tag, plugins built.
