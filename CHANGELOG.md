@@ -35,6 +35,8 @@ and the interface number).
     `[build] dockerfile` (a Dockerfile shared by several services, where dck's blocks and
     its `dck/` directory go).
   - `[compose] project` and `[compose] networks` (one top-level `networks:`, external).
+  - `dev_sh = false` (`dck init --no-dev-sh`): a repository that keeps its own `dev.sh`;
+    `dck init` neither creates nor touches it.
   - `[agents] presets`: the ak alias presets (`classic`, `providers`). Unset keeps both,
     as before; new renders write `presets = []` (off).
 - `dck doctor`: Docker Compose >= 2.24 (satellites with `extends` + `!reset`), a compose
@@ -49,6 +51,18 @@ and the interface number).
   `ak install codex` could fail silently). It now goes into its own prefix
   (`/opt/dck/node`); `ak install` runs with it first on PATH and the npm-installed agent
   CLIs are launched on it, while the repository's `node` stays the shell's.
+- **A rebuilt peer's new host key reaches every container.** `dck herdr mesh` (run from
+  any repository) re-reads each running peer's sshd host key from the container itself
+  and re-pins it before pushing, so the host's hop and every other container follow a
+  peer rebuilt outside its own `dck up`.
+- **The host's git identity in every container.** `dck up`, `rebuild`, `start` and
+  `restart` push `user.name`, `user.email` and, when the host signs with SSH, the signing
+  setup (`key::<public key>`, never a path or a private key) into the container user's
+  git config (`dck_git_identity_host`); no `~/.gitconfig` mount and no `DCK_GIT_*` in the
+  repository's `.env` needed (a `DCK_GIT_*` value still wins for its key). `dck doctor`
+  shows the identity and its source.
+- **The Dailybot CLI login survives rebuilds** whether the dailybot layer or the
+  repository installed the CLI: `~/.config/dailybot` is always on the state volume.
 - `[compose] project` wins over `COMPOSE_PROJECT_NAME` in the environment or the compose
   `.env` (passed with `-p`); `dck doctor` resolves the project the same way.
 

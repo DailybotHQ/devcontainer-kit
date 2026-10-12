@@ -241,6 +241,11 @@
           "description": "a Dockerfile shared by several services, relative to the repository (default docker/local/<service>/Dockerfile); dck's managed blocks and its dck/ directory go next to it"
         }
       }
+    },
+    "dev_sh": {
+      "type": "boolean",
+      "default": true,
+      "description": "false: dck init neither creates nor touches dev.sh (a repository that keeps its own); dck init --no-dev-sh writes it"
     }
   }
 }

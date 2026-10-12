@@ -871,6 +871,7 @@ def context(values, repo_name, project, network, base_image, dck_tag, pins=None,
         "herdr_mesh": "true" if values["herdr.mesh"] else "false",
         "ssh_agent_on": values["ssh_agent"],
         "ssh_host_config": "true" if values["ssh_host_config"] else "false",
+        "dev_sh": "true" if values.get("dev_sh", True) else "false",
         "ssh_agent": toml_value(values["ssh_agent"]),
         "herdr_label_fmt": raw_label,
         "rename_user": user != "dev",
@@ -1033,7 +1034,9 @@ def plan(repo, values, ctx, toml_overrides, toml_exists, drop=()):
     rel = "dev.sh"
     rendered = render_text(read_template("dev.sh.tmpl"), ctx, "dev.sh.tmpl")
     old = _read(os.path.join(repo, rel))
-    if old is None:
+    if not values.get("dev_sh", True):
+        changes.append(Change(rel, "unchanged", note="dev_sh = false in dck.toml: dev.sh is not managed"))
+    elif old is None:
         changes.append(Change(rel, "create", rendered, mode=0o755))
     elif "devsh" not in (parse_blocks(old) or {}):
         changes.append(Change(rel, "unchanged", note="the repository's own dev.sh is kept (docs/launcher.md maps "
@@ -1224,7 +1227,7 @@ def init(opts, dck_tag, env=None, out=sys.stdout, err=sys.stderr):
                 ("workspace", "workspace"), ("ssh_port", "ssh_port"),
                 ("agents", "layers.agents"), ("clis", "agents.clis"), ("editor", "layers.editor"),
                 ("herdr_machine", "herdr.machine"), ("ports", "ports"),
-                ("state_volume", "compose.state_volume"))
+                ("state_volume", "compose.state_volume"), ("dev_sh", "dev_sh"))
     if opts.get("ports") is not None:
         merged_ports = dict(raw.get("ports") or {}) if isinstance(raw.get("ports"), dict) else {}
         merged_ports.update(opts["ports"])

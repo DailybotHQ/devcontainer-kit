@@ -203,8 +203,8 @@ test_runtime_persistence_per_cli() {
   assert_eq "$(readlink "$DCK_HOME/.config/agentkit")" "$DCK_PERSIST_ROOT/agentkit/config_agentkit" "the ak config lives on the agentkit volume"
   assert_dir "$DCK_PERSIST_ROOT/agentkit/profiles" "the ak profiles directory exists on its volume"
   assert_contains "$RUN_ERR" "unknown kind 'bogus' skipped" "an unknown kind is skipped, loudly"
-  run_cmd env DCK_AGENTS="" DCK_DAILYBOT=1 bash -c '. "$1"; dck_layer_persist' _ "$LIB"
-  assert_eq "$(readlink "$DCK_HOME/.config/dailybot")" "$DCK_PERSIST_ROOT/state/config_dailybot" "the Dailybot CLI config lives on the state volume"
+  run_cmd env DCK_AGENTS="" DCK_DAILYBOT=0 bash -c '. "$1"; dck_start' _ "$LIB"
+  assert_eq "$(readlink "$DCK_HOME/.config/dailybot")" "$DCK_PERSIST_ROOT/state/config_dailybot" "the Dailybot CLI config lives on the state volume, with or without the dailybot layer"
 }
 
 test_runtime_nothing_without_layers() {

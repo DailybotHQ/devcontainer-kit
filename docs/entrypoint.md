@@ -130,6 +130,17 @@ not followed. The copied names go to `~/.ssh/.dck-copied-keys`; without
 `DCK_SSH_COPY_KEYS=1` the next start removes exactly those files. Names only are
 logged (`ssh keys copied: …`), never a key's contents.
 
+### `dck_git_identity_host`
+
+Reads `key=value` lines on stdin — `user.name`, `user.email`, and, when the host signs
+with SSH, `gpg.format=ssh`, `user.signingkey=key::<public key>`, `commit.gpgsign` — and
+writes them into the user's global git config. `dck up`, `rebuild`, `start` and `restart`
+push them from the host's git config through `docker exec`: no host file is mounted and
+the repository's `.env` is not needed. Other keys, a signing key that is not a `key::`
+public key, and multi-line values are refused. A `DCK_GIT_*` variable in the container's
+environment wins for its key. The source (`host`, `env` or `host+env`) is recorded on the
+state volume for `dck doctor`.
+
 ### `dck_herdr_self <id|->`
 
 Records this container's machine id in the **host's** Herdr catalog (32 hex characters)
@@ -144,7 +155,7 @@ A malformed id is refused; a value already set in the environment wins.
 
 The standard sequence:
 
-1. persist `~/.ssh`, `~/.config/gh`, `~/.config/herdr`, Herdr's saved
+1. persist `~/.ssh`, `~/.config/gh`, `~/.config/dailybot`, `~/.config/herdr`, Herdr's saved
    machines (`~/.local/state/herdr/client`) and `~/.bash_history` on
    the per-project `state` volume (and the agents layer's homes, see
    [layers.md](layers.md));

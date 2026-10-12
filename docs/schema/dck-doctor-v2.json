@@ -579,6 +579,25 @@
         }
       }
     },
+    "git": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "the running container user's git identity and its source (null without a running container)",
+      "required": [
+        "name",
+        "email",
+        "signing",
+        "source"
+      ],
+      "properties": {
+        "name": {"type": ["string", "null"]},
+        "email": {"type": ["string", "null"]},
+        "signing": {"type": ["string", "null"], "description": "gpg.format inside (ssh) or null"},
+        "source": {"type": ["string", "null"], "description": "the host's git config, DCK_GIT_* in the service .env, or both"}
+      }
+    },
     "ssh_keys": {
       "type": [
         "object",

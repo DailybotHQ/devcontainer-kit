@@ -846,3 +846,20 @@ test_user_command_replaces_in_every_form() {
     fi
   done
 }
+
+# #19: a repository with its own dev.sh.
+test_no_dev_sh() {
+  local r
+  r="$(new_repo nd)"
+  printf '#!/usr/bin/env bash\necho "the repository'"'"'s own"\n' > "$r/dev.sh"
+  local before; before="$(cat "$r/dev.sh")"
+  init_repo "$r" --flavour debian --ssh-port 0 --no-dev-sh --yes
+  assert_rc 0 "dck init --no-dev-sh succeeds"
+  assert_eq "$(cat "$r/dev.sh")" "$before" "the repository's dev.sh is untouched"
+  assert_contains "$(cat "$r/.devcontainer/dck.toml")" "dev_sh = false" "the choice is recorded in dck.toml"
+  init_repo "$r" --dry-run
+  assert_contains "$RUN_OUT" "unchanged dev.sh" "later inits keep it"
+  local e; e="$(new_repo nd2)"
+  init_repo "$e" --flavour debian --ssh-port 0 --no-dev-sh --yes
+  assert_absent "$e/dev.sh" "no dev.sh is created"
+}

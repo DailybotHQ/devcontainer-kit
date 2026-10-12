@@ -582,3 +582,30 @@ test_compose_project_beats_compose_project_name() {
   run_cmd bash -c 'cd "$1" && "$2" doctor --json' _ "$r" "$DCK"
   assert_contains "$RUN_OUT" '"project": "local"' "the doctor resolves the same project"
 }
+
+# #21: dck up pushes the host's git identity; no ~/.gitconfig mount, no .env needed.
+test_up_pushes_the_host_git_identity() {
+  local r="$SANDBOX/gi"
+  mkdir -p "$r" && git -C "$r" init -q
+  "$DCK" init --repo "$r" --flavour debian --ssh-port 0 --no-herdr --yes >/dev/null 2>&1 || { fail "fixture: init"; return; }
+  git config --global user.name "Host Dev"
+  git config --global user.email "host@example.invalid"
+  mkdir -p "$HOME/.ssh"
+  printf 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeSigningKeyOnlyForTests0000000000000000 me\n' > "$HOME/.ssh/sign.pub"
+  printf 'PRIVATE-KEY-MATERIAL-NEVER-SENT\n' > "$HOME/.ssh/sign"
+  git config --global gpg.format ssh
+  git config --global user.signingkey "$HOME/.ssh/sign.pub"
+  git config --global commit.gpgsign true
+  echo "gi-app-1" > "$DCK_FAKE_STATE/ps"
+  : > "$DCK_FAKE_STATE/exec_stdin"
+  run_cmd bash -c 'cd "$1" && DCK_BACKEND=compose DCK_NONINTERACTIVE=1 "$2" up' _ "$r" "$DCK"
+  assert_rc 0 "dck up succeeds"
+  local s; s="$(cat "$DCK_FAKE_STATE/exec_stdin")"
+  assert_contains "$(fake_calls docker)" "dck_git_identity_host" "the identity is pushed into the container"
+  assert_contains "$s" "user.name=Host Dev" "user.name"
+  assert_contains "$s" "user.email=host@example.invalid" "user.email"
+  assert_contains "$s" "user.signingkey=key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeSigningKeyOnlyForTests" "the signing key as its public half"
+  assert_not_contains "$s" "PRIVATE-KEY-MATERIAL" "never the private key"
+  assert_not_contains "$s" "$HOME" "never a host path"
+  assert_not_contains "$(cat "$r/docker/local/docker-compose.yaml")" ".gitconfig" "no ~/.gitconfig mount"
+}

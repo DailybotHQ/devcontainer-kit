@@ -499,3 +499,22 @@ test_herdr_self_is_recorded_and_exported() {
   ep dck_herdr_self -
   assert_absent "$f" "\"-\" clears it"
 }
+
+# #21: the host's git identity, pushed by dck up; DCK_GIT_* in the env wins.
+test_git_identity_from_the_host() {
+  local gc="$GIT_CONFIG_GLOBAL"
+  run_cmd bash -c '. "$1"; printf "user.name=Host Dev\nuser.email=host@example.invalid\ngpg.format=ssh\nuser.signingkey=key::ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeSigningKeyOnlyForTests0000000000000000\ncommit.gpgsign=true\nuser.signingkey=/home/me/.ssh/id_ed25519\ncore.editor=evil\n" | dck_git_identity_host' _ "$LIB"
+  assert_rc 0 "the host identity is applied"
+  assert_eq "$(HOME="$DCK_HOME" git config --global user.name)" "Host Dev" "user.name from the host"
+  assert_eq "$(HOME="$DCK_HOME" git config --global user.email)" "host@example.invalid" "user.email from the host"
+  assert_contains "$(HOME="$DCK_HOME" git config --global user.signingkey)" "key::ssh-ed25519" "an SSH signing key as a key:: public key"
+  assert_eq "$(HOME="$DCK_HOME" git config --global commit.gpgsign)" "true" "commit signing on"
+  assert_eq "$(HOME="$DCK_HOME" git config --global core.editor || true)" "" "an unlisted key is never written"
+  assert_not_contains "$(cat "$gc")" "/home/me/.ssh" "a signing key path is never written"
+  assert_eq "$(cat "$DCK_PERSIST_ROOT/state/git-identity-source")" "host" "the source is recorded"
+  run_cmd env DCK_GIT_NAME="Repo Dev" bash -c '. "$1"; printf "user.name=Host Dev\nuser.email=host2@example.invalid\n" | dck_git_identity_host' _ "$LIB"
+  assert_eq "$(HOME="$DCK_HOME" git config --global user.name)" "Host Dev" "DCK_GIT_NAME's key is left to dck_git_identity"
+  assert_eq "$(HOME="$DCK_HOME" git config --global user.email)" "host2@example.invalid" "the other keys still come from the host"
+  assert_eq "$(cat "$DCK_PERSIST_ROOT/state/git-identity-source")" "host+env" "both sources are recorded"
+  assert_contains "$RUN_ERR" "1 kept from DCK_GIT_*" "and logged"
+}

@@ -260,6 +260,9 @@ SH
     --known-hosts "$HOME/.config/dck/ssh/known_hosts" >/dev/null
   printf 'dck-itpeer %s\n' "$(cut -d' ' -f1-2 "$SANDBOX/listener.pub")" >> "$HOME/.config/dck/ssh/known_hosts"
   herdr machine add --label "Peer" dck-itpeer >/dev/null
+  # #21: the host's git identity reaches a container built from scratch (no .env key).
+  git config --global user.name "Fixture Host"
+  git config --global user.email "fixture-host@example.invalid"
 
   with_lock d up
   assert_rc 0 "the first dck up"
@@ -290,6 +293,9 @@ SH
   assert_not_contains "$RUN_OUT$RUN_ERR" "$(sed -n 2p "$HOME/.ssh/id_ed25519")" "no key content is printed"
   d doctor
   assert_contains "$RUN_OUT" "ssh keys copied: id_ed25519, id_ed25519.pub" "the doctor names the copied keys"
+  assert_contains "$RUN_OUT" "git identity     Fixture Host <fixture-host@example.invalid> (from the host's git config)" "the host's git identity is inside after a fresh rebuild, and the doctor names its source"
+  d shell -c 'git config --global user.email'
+  assert_eq "$RUN_OUT" "fixture-host@example.invalid" "git inside uses it"
   d down
 }
 

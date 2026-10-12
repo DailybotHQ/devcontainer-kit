@@ -21,6 +21,7 @@
 #   dck_repo_hook                            docker/local/dev-setup-hook.sh, if present
 #   dck_layer_persist                        per-CLI volumes of the agents layer
 #   dck_git_identity                         global git [user] settings from DCK_GIT_* (no host file)
+#   dck_git_identity_host                    the host's git identity pushed by `dck up` (stdin; DCK_GIT_* wins)
 #   dck_skills_link                          herdr-peers and Herdr skills into each agent's skills dir
 #   dck_agent_trust                          the workspace trusted by Claude and Codex (autonomy on)
 #   dck_ssh_agent_access                     the mounted host SSH agent socket usable by the user
@@ -481,9 +482,6 @@ $(dck_agent_homes "$kind")
 HOMES
     done
   fi
-  if [ "${DCK_DAILYBOT:-0}" = "1" ]; then
-    dck_persist state "$DCK_HOME/.config/dailybot" dir || true
-  fi
 }
 
 # --------------------------------------------------------------------------
@@ -735,6 +733,53 @@ dck_git_identity() {
     set=$((set + 1))
   done
   [ "$set" -eq 0 ] || dck_log "git identity: $set setting(s) written from DCK_GIT_*"
+  if [ "$set" -gt 0 ] && [ -d "$DCK_PERSIST_ROOT/state" ]; then
+    printf 'env\n' > "$DCK_PERSIST_ROOT/state/git-identity-source" 2>/dev/null || true
+  fi
+}
+
+# dck_git_identity_host — the host's git identity, pushed by `dck up` (stdin,
+# "key=value" lines: user.name, user.email, and SSH signing — gpg.format=ssh with
+# a key:: public key, commit.gpgsign — when the host signs that way). No host
+# file is mounted and the repository's .env is not needed. A DCK_GIT_* value in
+# the container's environment (the service .env) wins for its key. The source
+# is recorded for `dck doctor` on the state volume. Root or the user.
+dck_git_identity_host() {
+  _dck_env
+  local line key value var set=0 kept=0
+  while IFS= read -r line; do
+    key="${line%%=*}"; value="${line#*=}"
+    case "$key" in
+      user.name) var=DCK_GIT_NAME ;;
+      user.email) var=DCK_GIT_EMAIL ;;
+      user.signingkey) var=DCK_GIT_SIGNINGKEY; case "$value" in key::*) ;; *) continue ;; esac ;;
+      gpg.format) var=DCK_GIT_GPG_FORMAT; [ "$value" = ssh ] || continue ;;
+      commit.gpgsign) var=DCK_GIT_COMMIT_GPGSIGN; case "$value" in true|false) ;; *) continue ;; esac ;;
+      *) continue ;;
+    esac
+    [ -n "$value" ] && [ "${#value}" -le 1024 ] || continue
+    if [ -n "${!var:-}" ]; then kept=$((kept + 1)); continue; fi
+    if _dck_is_root && [ "$DCK_USER" != "root" ]; then
+      runuser -u "$DCK_USER" -- env HOME="$DCK_HOME" git config --global "$key" "$value" || return 1
+    else
+      HOME="$DCK_HOME" git config --global "$key" "$value" || return 1
+    fi
+    set=$((set + 1))
+  done
+  mkdir -p "$DCK_PERSIST_ROOT/state" 2>/dev/null || true
+  if [ "$set" -gt 0 ] && [ "$kept" -gt 0 ]; then
+    printf 'host+env\n' > "$DCK_PERSIST_ROOT/state/git-identity-source"
+  elif [ "$set" -gt 0 ]; then
+    printf 'host\n' > "$DCK_PERSIST_ROOT/state/git-identity-source"
+  elif [ "$kept" -gt 0 ]; then
+    printf 'env\n' > "$DCK_PERSIST_ROOT/state/git-identity-source"
+  fi
+  _dck_chown "$DCK_USER:$(_dck_group)" "$DCK_PERSIST_ROOT/state/git-identity-source"
+  if [ "$kept" -gt 0 ]; then
+    dck_log "git identity: $set setting(s) from the host's git config, $kept kept from DCK_GIT_*"
+  else
+    dck_log "git identity: $set setting(s) from the host's git config"
+  fi
 }
 
 # dck_skills_link — link the image's shared skills (/usr/local/share/dck/skills:
@@ -1172,6 +1217,8 @@ dck_start() {
   _dck_chown "$DCK_USER:$(_dck_group)" "$DCK_PERSIST_ROOT/state/ssh"
   chmod 0700 "$DCK_PERSIST_ROOT/state/ssh" 2>/dev/null || true
   dck_persist state "$DCK_HOME/.config/gh" dir || true
+  # The Dailybot CLI login, whether the dailybot layer or the repository installed it.
+  dck_persist state "$DCK_HOME/.config/dailybot" dir || true
   dck_persist state "$DCK_HOME/.config/herdr" dir || true
   # Herdr's saved SSH machines (the host, the other containers) live in its
   # client state, not its config: keep them too, or every rebuild drops them.

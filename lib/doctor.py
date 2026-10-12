@@ -399,6 +399,20 @@ def compose_project(compose_dir, compose_name, toml_name=None):
     return compose_name or None
 
 
+def git_identity_info(container, user):
+    """The container user's git identity and where it came from (names only of
+    the signing setup: the format and whether commits are signed)."""
+    out = {"name": None, "email": None, "signing": None, "source": None}
+    for key, field in (("user.name", "name"), ("user.email", "email"), ("gpg.format", "signing")):
+        rc, text = run(["docker", "exec", "-u", user, container, "git", "config", "--global", "--get", key])
+        out[field] = (text or "").strip() or None if rc == 0 else None
+    rc, text = run(["docker", "exec", container, "cat", "/home/%s/.dck/volumes/state/git-identity-source" % user])
+    src = (text or "").strip() if rc == 0 else ""
+    out["source"] = {"host": "the host's git config", "env": "DCK_GIT_* in the service .env",
+                     "host+env": "the host's git config and DCK_GIT_*"}.get(src)
+    return out
+
+
 def compose_info(project, service, state_volume, problems):
     """The compose project's other services, and whether this service's state
     volume is per service. Several repositories sharing one project (one
@@ -460,7 +474,7 @@ def collect(start, profile=None):
         "runtime": rt,
         "profile": prof_out,
         "repo": None, "layers": None, "ssh": None, "herdr": None, "drift": [], "host_profiles": None,
-        "ssh_keys": None, "compose": None,
+        "ssh_keys": None, "compose": None, "git": None,
         "problems": problems,
     }
     merged = None
@@ -500,6 +514,8 @@ def collect(start, profile=None):
                                                  merged["compose.state_volume"], problems)
             report["ssh_keys"] = ssh_keys_info(
                 merged, report["repo"]["container"]["name"] if container_running else None)
+    if merged and container_running:
+        report["git"] = git_identity_info(report["repo"]["container"]["name"], merged["user"])
     h = herdr_info(merged, problems)
     if merged and container_running and h.get("id"):
         # The id the container exports as HERDR_PEERS_SELF (herdr-peers' reply route).
@@ -559,6 +575,11 @@ def text(report):
     if s:
         out.append("ssh              %s" % ("off" if not s["enabled"] else "%s:%s, key %s, answering %s" % (
             s["bind"], s["port"], "present" if s["identity_present"] else "missing", yes(s["answering"]))))
+    g = report.get("git")
+    if g:
+        out.append("git identity     %s%s (from %s)" % (
+            g["name"] or "unset", (" <%s>" % g["email"]) if g["email"] else "",
+            g["source"] or ("nowhere: run dck up" if not g["name"] else "the image or a manual git config")))
     cr = report.get("compose_render")
     if cr and cr["overrides"]:
         out.append("user block       overrides dck's %s (x-dck-merge)" % ", ".join(cr["overrides"]))

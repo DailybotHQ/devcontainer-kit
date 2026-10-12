@@ -170,7 +170,7 @@ def cmd_init(args):
     if clis is not None:
         opts["clis"] = [c for c in clis.replace(",", " ").split() if c]
     for on, off, key in (("--agents", "--no-agents", "agents"), ("--editor", "--no-editor", "editor"),
-                         ("--herdr", "--no-herdr", "herdr_machine")):
+                         ("--herdr", "--no-herdr", "herdr_machine"), ("--dev-sh", "--no-dev-sh", "dev_sh")):
         if flag(args, on):
             opts[key] = True
         if flag(args, off):
