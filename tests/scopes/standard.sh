@@ -59,6 +59,10 @@ test_changelog_keep_a_changelog() {
     assert_match "$c" "^## \[$v\] — [0-9]{4}-[0-9]{2}-[0-9]{2}$" "the CHANGELOG has a dated section for $t"
     assert_match "$c" "^\[$v\]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/$t$" "the CHANGELOG links $t"
   done
+  # The release PR, before its tag exists: VERSION's own section, link and compare base.
+  assert_match "$c" "^## \[$VERSION\] — [0-9]{4}-[0-9]{2}-[0-9]{2}$" "the CHANGELOG has a dated section for VERSION ($VERSION)"
+  assert_match "$c" "^\[$VERSION\]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v$VERSION$" "the CHANGELOG links VERSION (v$VERSION) before it is tagged"
+  assert_match "$c" "^\[Unreleased\]: https://github.com/DailybotHQ/devcontainer-kit/compare/v$VERSION\.\.\.HEAD$" "Unreleased compares from VERSION (v$VERSION)"
   assert_no_match "$c" '^### (Removed|Added|Changed|Fixed|Security|Deprecated)[^ ]' "section headings are the Keep a Changelog types"
 }
 
