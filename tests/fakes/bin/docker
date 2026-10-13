@@ -49,6 +49,13 @@ case "$1" in
       /opt/dck/agent-clis) [ -f "$st/image_agent_clis" ] || exit 1
         cat "$st/image_agent_clis"; exit 0 ;;
     esac
+    # docker exec <container> codex --version -> $st/container_codex_version
+    # (doctor: codex@default host/container version skew)
+    case " $* " in
+      *" codex --version "*|*" codex --version")
+        [ -f "$st/container_codex_version" ] || exit 1
+        cat "$st/container_codex_version"; exit 0 ;;
+    esac
     # docker exec <container> cat /etc/dck/image.env -> $st/container_image_env
     [ -f "$st/container_image_env" ] || exit 1
     cat "$st/container_image_env"; exit 0 ;;

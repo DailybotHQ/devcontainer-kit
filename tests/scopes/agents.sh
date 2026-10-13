@@ -373,6 +373,66 @@ assert all(m["reason"] for m in hp["mounts"]), hp
 assert "OPENAI_API_KEY" in hp["env_names"], hp
 print("ok")' "$json"
   assert_eq "$RUN_OUT" "ok" "doctor --json reports profiles, mounts and names"
+  run_cmd python3 -I -c '
+import json, sys
+hp = json.loads(sys.argv[1])["host_profiles"]
+assert hp["codex"] and hp.get("codex_versions") is not None, hp
+cv = hp["codex_versions"]
+assert set(cv) >= {"host", "container", "match"} and cv["match"] is None, cv
+print("ok")' "$json"
+  assert_eq "$RUN_OUT" "ok" "doctor --json reports codex_versions (unknown without a host/container Codex)"
+}
+
+test_doctor_warns_when_codex_default_versions_differ() {
+  # codex@default is the host's live ~/.codex read-write: a container Codex on
+  # another version has corrupted that state DB. The doctor warns when both
+  # sides report a version and they differ.
+  mk_repo || return 0
+  mk_host
+  fake_ak
+  profile 'host_profiles = true'
+  mkdir -p "$SANDBOX/codexbin"
+  printf '#!/bin/sh\necho "codex-cli 0.162.1"\n' > "$SANDBOX/codexbin/codex"
+  chmod +x "$SANDBOX/codexbin/codex"
+  printf 'proj-app-1\trunning\n' > "$DCK_FAKE_STATE/ps"
+  printf 'codex-cli 0.158.0\n' > "$DCK_FAKE_STATE/container_codex_version"
+  # Other docker exec probes the doctor makes while the container is "running".
+  : > "$DCK_FAKE_STATE/container_image_env"
+  : > "$DCK_FAKE_STATE/image_agent_clis"
+  run_cmd bash -c 'cd "$1" && PATH="$2:$3:$PATH" "$4" doctor' \
+    _ "$REPO" "$SANDBOX/akbin" "$SANDBOX/codexbin" "$DCK"
+  assert_contains "$RUN_OUT" "codex@default is shared read-write" "the text report names the shared Codex home"
+  assert_contains "$RUN_OUT" "host's Codex is 0.162.1" "and the host version"
+  assert_contains "$RUN_OUT" "container's is 0.158.0" "and the container version"
+  assert_contains "$RUN_OUT" "use a named profile inside" "with the fix: a named profile or align versions"
+  run_cmd bash -c 'cd "$1" && PATH="$2:$3:$PATH" "$4" doctor --json' \
+    _ "$REPO" "$SANDBOX/akbin" "$SANDBOX/codexbin" "$DCK"
+  local json="$RUN_OUT" r
+  r="$(printf '%s' "$json" | python3 "$TESTS_DIR/py/minischema.py" "$DCK_REPO/docs/schema/dck-doctor-v2.json" 2>&1)"
+  assert_eq "$r" "" "doctor --json with a Codex version skew matches its schema"
+  run_cmd python3 -I -c '
+import json, sys
+d = json.loads(sys.argv[1])
+hp = d["host_profiles"]
+cv = hp["codex_versions"]
+assert hp["codex"] and cv == {"host": "0.162.1", "container": "0.158.0", "match": False}, cv
+assert any("codex@default is shared read-write" in p and "0.162.1" in p and "0.158.0" in p
+           for p in d["problems"]), d["problems"]
+assert d["ok"] is False
+print("ok")' "$json"
+  assert_eq "$RUN_OUT" "ok" "doctor --json reports match false and a problem"
+  # Same versions: no problem.
+  printf 'codex-cli 0.162.1\n' > "$DCK_FAKE_STATE/container_codex_version"
+  run_cmd bash -c 'cd "$1" && PATH="$2:$3:$PATH" "$4" doctor --json' \
+    _ "$REPO" "$SANDBOX/akbin" "$SANDBOX/codexbin" "$DCK"
+  run_cmd python3 -I -c '
+import json, sys
+d = json.loads(sys.argv[1])
+cv = d["host_profiles"]["codex_versions"]
+assert cv == {"host": "0.162.1", "container": "0.162.1", "match": True}, cv
+assert not any("codex@default is shared read-write" in p for p in d["problems"]), d["problems"]
+print("ok")' "$RUN_OUT"
+  assert_eq "$RUN_OUT" "ok" "matching Codex versions are not a problem"
 }
 
 test_doctor_without_profiles_json() {
@@ -636,7 +696,7 @@ default_profile = { claude = "@work1", codex = "nope" }'
   fake_ak
   run_cmd bash -c 'cd "$1" && PATH="$2:$PATH" "$3" doctor' _ "$REPO" "$SANDBOX/akbin" "$DCK"
   assert_contains "$RUN_OUT" "default profile inside (AGENTKIT_DEFAULT_PROFILE_<CLI>, ak v0.5.2+): claude @work1" "the doctor shows the mapping"
-  assert_contains "$RUN_OUT" "a plain claude/codex inside (a pane Herdr restores without ak) uses it: CLAUDE_CONFIG_DIR=/home/dev/.dck/host/agentkit/profiles/claude/work1" "and the config home a restored plain claude uses"
+  assert_contains "$RUN_OUT" "@default stays the container's own account" "a plain claude uses @default, not the named profile"
   assert_contains "$RUN_OUT" "default_profile codex = @nope not applied — codex @nope is not shared" "and flags one it cannot apply"
   printf 'interface = 2\n[agents]\ndefault_profile = { cursor = "@x" }\n' > "$SANDBOX/p.toml"
   run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" config validate --kind profile "$SANDBOX/p.toml"
@@ -688,25 +748,31 @@ daemon_auto_start = false" "a plain restored codex starts no app-server daemon"
   assert_contains "$(sed -n '/^dck_start() {/,/^}/p' "$DCK_REPO/lib/entrypoint.sh")" "dck_codex_config || true" "dck_start runs it at every start"
 }
 
-# v0.3.4 (A): a pane Herdr restores runs a plain `claude --resume` without ak; with
-# [agents] default_profile, the login profile points it at that profile's home.
-test_login_profile_points_plain_clis_at_the_default_profile() {
+# A login shell must not point CLAUDE_CONFIG_DIR / CODEX_HOME at the named
+# default_profile. Those variables are how the CLI finds @default; pointing
+# them at a profile made @default that profile. A bare `ak <cli>` still
+# follows AGENTKIT_DEFAULT_PROFILE_<CLI>.
+test_login_profile_leaves_default_its_own_home() {
   local prof="$SANDBOX/profiles"
   mkdir -p "$prof/claude/work3" "$prof/codex/work2" "$SANDBOX/lh"
   run_cmd env HOME="$SANDBOX/lh" AGENTKIT_PROFILES_DIR="$prof" AGENTKIT_DEFAULT_PROFILE_CLAUDE="@work3" AGENTKIT_DEFAULT_PROFILE_CODEX="@work2" \
     sh -c '. "$1"; printf "%s|%s" "${CLAUDE_CONFIG_DIR:-unset}" "${CODEX_HOME:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
-  assert_eq "$RUN_OUT" "$prof/claude/work3|$prof/codex/work2" "CLAUDE_CONFIG_DIR and CODEX_HOME name the default profiles"
+  assert_eq "$RUN_OUT" "unset|unset" "default_profile does not move the CLI homes: @default stays its own"
   run_cmd env HOME="$SANDBOX/lh" AGENTKIT_PROFILES_DIR="$prof" AGENTKIT_DEFAULT_PROFILE_CLAUDE="@work3" CLAUDE_CONFIG_DIR=/elsewhere \
     sh -c '. "$1"; printf "%s" "$CLAUDE_CONFIG_DIR"' _ "$DCK_REPO/images/common/profile.sh"
-  assert_eq "$RUN_OUT" "/elsewhere" "a value already set wins (ak sets its own)"
-  run_cmd env HOME="$SANDBOX/lh" AGENTKIT_PROFILES_DIR="$prof" AGENTKIT_DEFAULT_PROFILE_CLAUDE="@missing" \
-    sh -c '. "$1"; printf "%s" "${CLAUDE_CONFIG_DIR:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
-  assert_eq "$RUN_OUT" "unset" "a profile directory that does not exist is not named"
-  run_cmd env HOME="$SANDBOX/lh" AGENTKIT_PROFILES_DIR="$prof" AGENTKIT_DEFAULT_PROFILE_CLAUDE="../../etc" \
-    sh -c '. "$1"; printf "%s" "${CLAUDE_CONFIG_DIR:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
-  assert_eq "$RUN_OUT" "unset" "a malformed name is refused"
-  run_cmd env HOME="$SANDBOX/lh" sh -c '. "$1"; printf "%s" "${CLAUDE_CONFIG_DIR:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
-  assert_eq "$RUN_OUT" "unset" "without default_profile, nothing changes"
+  assert_eq "$RUN_OUT" "/elsewhere" "a home already set is left as it is"
+}
+
+# Claude @default is the directory dck_persist puts on the claude volume.
+# The login profile must not point CLAUDE_CONFIG_DIR at a named profile.
+test_claude_default_lives_on_its_volume() {
+  EP_FUNCS=dck_layer_persist ep DCK_AGENTS="claude" DCK_PERSIST_ROOT="$SANDBOX/h/.dck/volumes"
+  local store="$SANDBOX/h/.dck/volumes/claude/claude"
+  assert_dir "$store" "the container @default profile is a directory on the claude volume"
+  local link
+  link="$(readlink "$SANDBOX/h/.claude")"
+  assert_eq "$link" "$store" "~/.claude points at the claude volume, not a named profile"
+  assert_contains "$RUN_ERR" "container's own @default profile" "and the start says so"
 }
 
 # v0.3.6: each developer's coding-agent CLIs through dck up.

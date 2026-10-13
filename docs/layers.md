@@ -30,7 +30,7 @@ After changing the file, run `dck init` (it shows the diff and asks), then
 ## agents
 
 Installs [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit)
-at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v1.0.0**) into the
+at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v1.0.1**) into the
 dev user's home, following the kit's install contract: the release tarball, verified
 against the pinned `AGENTKIT_SHA256` before it is unpacked, then `install.sh --no-rc`, then `ak install <kind>…` for the
 requested kinds (`DCK_AGENT_CLIS` plus each `INSTALL_<CLI>_CLI=true`; commas or spaces),
@@ -199,11 +199,18 @@ Each read-write mount and its reason is listed in
   (see [SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles)).
 - **A default account inside:** `[agents] default_profile = { claude = "@work3" }` (host
   profile) exports `AGENTKIT_DEFAULT_PROFILE_<CLI>` into the container when that profile
-  is shared, so a bare `ak claude` uses it; the login profile also exports
-  `CLAUDE_CONFIG_DIR` / `CODEX_HOME` as that profile's home (unless already set), so a
-  plain `claude --resume` or `codex resume` that Herdr restores without ak uses it too.
-  The macOS `@default` Claude login lives in the keychain and cannot be a default inside;
-  `dck doctor` shows the mapping and flags one it cannot apply.
+  is shared, so a bare `ak claude` uses it. It does **not** point `CLAUDE_CONFIG_DIR` /
+  `CODEX_HOME` at that profile: those variables are how the CLI finds `@default`, and
+  pointing them there made `@default` the named profile. `@default` is its own account
+  inside the container, the same shape as a named profile: Claude's is its own
+  directory on the claude volume (`~/.claude`), Codex's is `~/.codex`
+  (the host's Codex home when `codex@default` is shared). `ak usage` lists it, and
+  `ak <cli> @default` — and a plain `claude` / `codex` that Herdr restores without ak —
+  uses that home, never the named profile. Log in to it with `ak claude @default`
+  (`ak claude` alone opens the named profile). `dck doctor` shows the mapping and flags
+  one it cannot apply. When `codex@default` is shared, it also warns if the host's
+  `codex --version` differs from the container's (the shared `~/.codex` is read-write;
+  use a named profile inside or align the versions).
 - **Compose backend:** the overlay is a compose file, so with the option on `dck up`
   uses compose even when the devcontainer CLI is installed; an editor that opens the
   container itself does not apply it.
@@ -267,7 +274,7 @@ from the image's `/etc/dck/versions.env`. Every download goes through one verifi
 
 ## Status in v1.0
 
-The `agents` layer is verified end to end with coding-agents-kit `v1.0.0`
+The `agents` layer is verified end to end with coding-agents-kit `v1.0.1`
 (installed from its sha256-verified release tarball; `ak` interface 1, permissions
 `auto` by default; the `docker` test scope builds a rendered node fixture on every CI
 run: `--clis codex --supported all`, the host profile's `clis_extra = ["pi"]`, so

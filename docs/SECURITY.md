@@ -219,6 +219,13 @@ Claude's long-lived token (`claude setup-token`) is inference-only and never ref
 so sharing it has no race; a Claude login kept in the macOS keychain cannot reach a
 container — `dck doctor` names such profiles and the variable to store the token under.
 
+**Codex version skew on `codex@default`.** With coding-agents-kit ≥ 1.0.1,
+`ak codex @default` inside runs the CLI's own home — and when `codex@default` is
+shared that home is the host's live `~/.codex`, read-write. A Codex binary in the
+container on a different version from the host's has already corrupted that state
+DB once. `dck doctor` warns when both sides report a `codex --version` and they
+differ; use a named profile inside (`ak codex @name`) or align the versions.
+
 **Ownership.** On Docker Desktop and OrbStack the bind mounts appear owned by the
 container user. On a native Linux engine they keep the host's uid: the option works
 when your uid is 1000 (the container user's), like the SSH agent socket.

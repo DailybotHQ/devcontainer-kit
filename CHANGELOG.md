@@ -7,6 +7,31 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-10-13
+
+Interface stays **2**. Patch: coding-agents-kit **v1.0.1** so `@default` stays its own
+account inside containers, and a doctor warning when a shared `codex@default` would
+mix host and container Codex versions on the same state DB.
+
+### Changed
+
+- **Pins:** coding-agents-kit **v1.0.1** (`AGENTKIT_TAG`; tag commit `3f51881`, tarball
+  sha256 `923277aa…`, `SHA256SUMS` sha256 `de17573e…`). `@default` is the container's
+  own account: the login profile no longer points `CLAUDE_CONFIG_DIR` / `CODEX_HOME`
+  at `[agents] default_profile` (that made `@default` the named profile). A bare
+  `ak <cli>` still follows `AGENTKIT_DEFAULT_PROFILE_<CLI>` when that is set.
+  `ak usage` lists `@default`, and `ak <cli> @default` — and a plain `claude` /
+  `codex` — uses the container's own home. Claude's `@default` is its own
+  directory on the claude volume (`~/.claude`).
+
+### Added
+
+- **`dck doctor`:** when `[agents] host_profiles` shares `codex@default` (the host's
+  live `~/.codex`, read-write inside), a warning (text and `--json`, schema-additive
+  `host_profiles.codex_versions`) if the host's `codex --version` differs from the
+  container's. A mismatched pair has corrupted that state DB; use a named profile
+  inside (`ak codex @name`) or align the versions.
+
 ### Fixed
 
 - **Herdr:** a changed `[herdr] label` renames the machine again. dck ran
@@ -906,7 +931,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.0.1
 [1.0.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.0.0
 [0.3.7]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.7
 [0.3.6]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.6

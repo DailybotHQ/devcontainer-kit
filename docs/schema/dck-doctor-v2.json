@@ -696,6 +696,25 @@
           "type": "boolean",
           "description": "the host's Codex home (@default) is shared read-write"
         },
+        "codex_versions": {
+          "type": ["object", "null"],
+          "description": "when codex@default is shared: host and container Codex version numbers (match false is a problem); null when codex@default is not shared",
+          "required": ["host", "container", "match"],
+          "properties": {
+            "host": {
+              "type": ["string", "null"],
+              "description": "host `codex --version` number, or null when codex is not on PATH"
+            },
+            "container": {
+              "type": ["string", "null"],
+              "description": "container `codex --version` number, or null without a running container or when codex is missing inside"
+            },
+            "match": {
+              "type": ["boolean", "null"],
+              "description": "true when both sides report the same version; false (a problem) when they differ; null when either side is unknown"
+            }
+          }
+        },
         "skipped": {
           "type": "array",
           "items": {

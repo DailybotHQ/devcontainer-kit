@@ -35,7 +35,7 @@ retyped. Interface 2 (v0.2.0) replaced the base-image keys of interface 1 (`imag
 | `ssh_keys` | null outside a configured repository; else `enabled` (`[ssh] copy_keys` on and the host has `~/.ssh`), `reason` (why it is off), `host_keys` (the `id_*` file names of the host's `~/.ssh` the entrypoint copies), `copied` (the names the running container copied, from its `~/.ssh/.dck-copied-keys`; null without a running container). Names only, never a key's contents; the text report prints `ssh keys copied: <names>` |
 | `herdr.id`, `herdr.self_inside` | the container's machine id in the host's Herdr catalog, and the id the running container exports as `HERDR_PEERS_SELF` (absent without a running container). A problem when they differ: asks from Codex panes would find no reply route |
 | `compose` | null outside a configured repository or without a Docker daemon; else `project` (resolved like the launcher: `[compose] project` in dck.toml, then `COMPOSE_PROJECT_NAME` in the environment, then in the compose directory's `.env`, then the compose file's `name:`), `state_volume` (`<project>_<[compose] state_volume>`), `services` (the project's other services), `shared_with` (other services mounting this service's state volume). A problem when `shared_with` is not empty, or when the project has other services and `state_volume` is the default `state` |
-| `host_profiles` | null outside a configured repository; else `enabled`, `reason` (why it is off), `shared` (CLIs whose host ak profiles `dck up` binds), `profiles` (the shared profiles as `cli@name`; the Codex home is `codex@default`), `mounts` [{`profile`, `mode` (`ro`/`rw`), `reason`}] (every shared directory and the env file), `codex` (the host's Codex home is shared), `skipped` [{`cli`, `reason`}], `env_names` (names in the container's env file — never values), `notes` (the text report's lines) |
+| `host_profiles` | null outside a configured repository; else `enabled`, `reason` (why it is off), `shared` (CLIs whose host ak profiles `dck up` binds), `profiles` (the shared profiles as `cli@name`; the Codex home is `codex@default`), `mounts` [{`profile`, `mode` (`ro`/`rw`), `reason`}] (every shared directory and the env file), `codex` (the host's Codex home is shared), `codex_versions` ({`host`, `container`, `match`} when `codex@default` is shared: each side's `codex --version` number, or null; `match` is true/false when both are known, else null — `false` is a problem), `skipped` [{`cli`, `reason`}], `env_names` (names in the container's env file — never values), `notes` (the text report's lines) |
 | `compose_render` | present in a configured repository: `stale` (`dck init` would change `docker/local/docker-compose.yaml`), `overrides` (the dck keys the user block's `x-dck-merge` replaces, or whose map entries it overrides, as `key.entry`), `error`. A stale file or an error is a problem; the text report prints `user block overrides dck's …` |
 | `git` | null without a running container; else the container user's `name`, `email`, `signing` (`gpg.format`, `ssh` or null) and `source` (the host's git config, `DCK_GIT_*` in the service `.env`, or both) |
 | `os`, `python`, `profile` | host system/arch; python version and whether it is ≥ 3.11; the host profile in use and whether it is valid |
@@ -70,8 +70,11 @@ by other accounts is a problem (`dck setup` narrows it to 0600).
   keychain without its token variable in the env file (run `claude setup-token`, then
   store the token in ak's env file — `~/.config/agentkit/env`, or `ak env import <file>` —
   as `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`, or
-  `CLAUDE_CODE_OAUTH_TOKEN` for `@default`), and a listed variable whose value
-  could not be copied. Logins are read from the host's `ak profiles --json`
+  `CLAUDE_CODE_OAUTH_TOKEN` for `@default`), a listed variable whose value
+  could not be copied, and — when `codex@default` is shared — a host `codex --version`
+  that differs from the container's (the shared `~/.codex` is read-write; a mismatched
+  pair has corrupted that state DB; use a named profile inside, `ak codex @name`, or
+  align the versions). Logins are read from the host's `ak profiles --json`
   (schema `profiles-v1`, coding-agents-kit v0.5.0+); without it the doctor says so.
 
 The text report also says, as a note, when Claude's default account will not be logged

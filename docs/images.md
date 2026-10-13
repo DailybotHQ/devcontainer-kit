@@ -106,7 +106,7 @@ appears under `images/`.
 One file pins every input: base images (and the `uv` image) by tag **and** digest,
 each tool by version **and** SHA-256 per architecture (amd64, arm64),
 deepworkplan-vim by tag, commit **and** installer SHA-256, and the opt-in layers'
-inputs — coding-agents-kit **v1.0.0** (`AGENTKIT_TAG`, tarball `AGENTKIT_SHA256`),
+inputs — coding-agents-kit **v1.0.1** (`AGENTKIT_TAG`, tarball `AGENTKIT_SHA256`),
 Node **24.21.0** for the agents layer, the Dailybot CLI **3.27.0** wheel and uv
 **0.12.24** for the dailybot layer. `images/common/install.sh` and
 `images/common/editor.sh` download through a `fetch()` that refuses a checksum
