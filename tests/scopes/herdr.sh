@@ -94,7 +94,9 @@ test_add_is_idempotent_and_follows_the_label() {
   assert_contains "$RUN_OUT" "already registered" "it says so"
   sed -i.orig 's/^label = "{repo}"$/label = "Project {repo}"/' "$REPO/.devcontainer/dck.toml" && rm -f "$REPO/.devcontainer/dck.toml.orig"
   d herdr add
-  assert_match "$(fake_calls herdr)" 'machine rename --label Project proj [0-9a-f]{32}' "a changed label renames the machine"
+  assert_rc 0 "a changed label is applied"
+  assert_match "$(fake_calls herdr)" 'machine rename [0-9a-f]{32} --label Project proj' "a changed label renames the machine (id first, as Herdr 0.9.3 requires)"
+  assert_contains "$(machines)" '"label": "Project proj"' "Herdr now shows the new label"
   python3 - "$DCK_FAKE_STATE/herdr_machines" <<'PY'
 import json, sys
 p = sys.argv[1]; m = json.load(open(p)); m[0]["enabled"] = False; json.dump(m, open(p, "w"))
@@ -176,6 +178,27 @@ test_status() {
   d herdr status
   assert_contains "$RUN_OUT" "server answering no" "a silent server is reported"
   assert_contains "$RUN_OUT" "dck herdr repair" "and the repair is suggested"
+}
+
+# Herdr 0.9.3 inside a container whose server has not started yet: `herdr
+# status server` prints "status: not running" and exits 0.
+test_a_stopped_server_is_not_answering() {
+  mk_repo
+  printf 'status: not running\nsocket: /home/dev/.config/herdr/herdr.sock\n' > "$DCK_FAKE_STATE/ssh_server_out"
+  d herdr add
+  assert_rc 0 "add succeeds while the server is stopped"
+  assert_contains "$RUN_OUT" "the remote server is not answering yet" "a stopped server is not reported as answering"
+  assert_not_contains "$RUN_OUT" "the remote server answers" "the exit code alone is not trusted"
+  d herdr status
+  assert_contains "$RUN_OUT" "server answering no" "status reports the stopped server"
+  assert_contains "$RUN_OUT" "dck herdr repair" "and suggests the repair"
+}
+
+test_rename_with_the_label_first_is_refused_by_herdr() {
+  # Guards the fake itself: the order Herdr 0.9.3 rejects stays rejected here.
+  run_cmd herdr machine rename --label x 0123456789abcdef0123456789abcdef
+  assert_rc 2 "rename --label <label> <id> is a usage error, as in Herdr 0.9.3"
+  assert_contains "$RUN_ERR" "usage: herdr machine rename <profile-id> --label <label>" "with Herdr's usage line"
 }
 
 test_repair_disables_then_enables() {
@@ -491,6 +514,30 @@ test_layout_runs_inside_the_container() {
   : > "$DCK_FAKE_LOG"
   d up
   assert_not_contains "$(fake_calls docker)" "dck-herdr-layout" "layout = none skips it"
+}
+
+test_up_waits_for_the_server_before_the_layout() {
+  mk_repo
+  printf 'status: not running\n' > "$DCK_FAKE_STATE/ssh_server_out"
+  DCK_HERDR_LAYOUT_WAIT=1 d up
+  assert_rc 0 "dck up succeeds while the container's server is stopped"
+  assert_contains "$RUN_OUT" "waiting for the container's Herdr server (up to 1s" "it waits for the server, bounded"
+  assert_contains "$RUN_OUT" "run: dck herdr layout" "and names the command to run once it connects"
+  assert_not_contains "$(fake_calls docker)" "dck-herdr-layout" "no layout is attempted against a stopped server"
+  assert_not_contains "$RUN_ERR" "the Herdr layout could not be created" "so there is no layout failure"
+  # The host's own Herdr is not running: nothing will start the server, no wait.
+  printf 'status: not running\n' > "$DCK_FAKE_STATE/herdr_status_server"
+  : > "$DCK_FAKE_LOG"
+  DCK_HERDR_LAYOUT_WAIT=30 d up
+  assert_rc 0 "dck up succeeds"
+  assert_contains "$RUN_OUT" "the host Herdr is not running" "the skip is explained"
+  assert_not_contains "$RUN_OUT" "waiting for the container's Herdr server" "it does not wait"
+  # The server runs: the layout is created.
+  rm -f "$DCK_FAKE_STATE/ssh_server_out" "$DCK_FAKE_STATE/herdr_status_server"
+  : > "$DCK_FAKE_LOG"
+  d up
+  assert_contains "$(fake_calls docker)" "dck-herdr-layout --keep" "a running server gets the layout"
+  assert_not_contains "$RUN_OUT" "waiting for the container's Herdr server" "without waiting"
 }
 
 test_up_mesh_off() {
