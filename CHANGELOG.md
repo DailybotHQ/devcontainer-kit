@@ -7,6 +7,28 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.3.7] — 2026-10-13
+
+Interface stays **2**. Upgrade with `dck init` and `dck rebuild` so the image carries the new
+herdr-peers.
+
+### Changed
+
+- **Pins:** herdr-peers **v0.3.2** (`HERDR_PEERS_TAG`, verified by the sha256 of its
+  `SHA256SUMS`, `8a8112ee…`; tag commit `da167c5`, 16 files): agents inside a container get
+  notices, plan lead records (`lead`, `status --pane`, `lead show --pane`) and `DWP_PLAN`
+  ids, which DeepWorkPlan 7.7.1 lanes rely on. The image build checks every file its `SHA256SUMS`
+  lists (now also `bin/` and `docs/schema/`); the image and dck's host copy
+  (`dck host peers install`) still install only the skill, every file of it listed.
+- **Pins:** coding-agents-kit **v0.7.1** (`AGENTKIT_TAG`; tag commit `0e3e3c6`, tarball
+  sha256 `5a6e5380…`, `SHA256SUMS` sha256 `ccf0919e…`): `ak status`, a named profile's
+  suffixed API-key variable counts as its login, Gemini API keys listed under Antigravity,
+  and the Antigravity launch warning only where the Google login is machine-wide.
+- The repository's own container is re-rendered at v0.3.7, and the `images` scope now fails
+  when `docker/local/app/dck/` differs from its sources (`images/versions.env`,
+  `images/common/`, `lib/entrypoint.sh`, `lib/layers/`) or from `VERSION`; the `docker` scope
+  checks that `herdr-peers --version` inside both fixtures is the pinned tag.
+
 ## [0.3.6] — 2026-10-12
 
 Interface stays **2**.
@@ -810,7 +832,9 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.5...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v0.3.7...HEAD
+[0.3.7]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.7
+[0.3.6]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.6
 [0.3.5]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.5
 [0.3.4]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.4
 [0.3.3]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v0.3.3
