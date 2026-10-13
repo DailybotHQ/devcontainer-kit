@@ -202,8 +202,8 @@ Each read-write mount and its reason is listed in
   is shared, so a bare `ak claude` uses it. It does **not** point `CLAUDE_CONFIG_DIR` /
   `CODEX_HOME` at that profile: those variables are how the CLI finds `@default`, and
   pointing them there made `@default` the named profile. `@default` is its own account
-  inside the container, the same shape as a named profile: Claude's is a directory on
-  the claude volume (`~/.claude` → `…/volumes/claude/default`), Codex's is `~/.codex`
+  inside the container, the same shape as a named profile: Claude's is its own
+  directory on the claude volume (`~/.claude`), Codex's is `~/.codex`
   (the host's Codex home when `codex@default` is shared). `ak usage` lists it, and
   `ak <cli> @default` — and a plain `claude` / `codex` that Herdr restores without ak —
   uses that home, never the named profile. Log in to it with `ak claude @default`

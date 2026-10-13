@@ -763,20 +763,16 @@ test_login_profile_leaves_default_its_own_home() {
   assert_eq "$RUN_OUT" "/elsewhere" "a home already set is left as it is"
 }
 
-# Claude @default is a directory of its own on the claude volume, and ~/.claude
-# points at it — the same shape as a named profile, not the host's home.
-test_claude_default_is_its_own_directory() {
-  EP_FUNCS=dck_claude_default_home ep DCK_AGENTS="claude" DCK_PERSIST_ROOT="$SANDBOX/h/.dck/volumes"
-  local store="$SANDBOX/h/.dck/volumes/claude/default"
+# Claude @default is the directory dck_persist puts on the claude volume.
+# The login profile must not point CLAUDE_CONFIG_DIR at a named profile.
+test_claude_default_lives_on_its_volume() {
+  EP_FUNCS=dck_layer_persist ep DCK_AGENTS="claude" DCK_PERSIST_ROOT="$SANDBOX/h/.dck/volumes"
+  local store="$SANDBOX/h/.dck/volumes/claude/claude"
   assert_dir "$store" "the container @default profile is a directory on the claude volume"
-  assert_contains "$RUN_ERR" "container's own @default profile" "and the start says so"
   local link
   link="$(readlink "$SANDBOX/h/.claude")"
-  assert_eq "$link" "$store" "~/.claude points at that directory"
-  EP_FUNCS=dck_claude_default_home ep DCK_AGENTS="claude" DCK_PERSIST_ROOT="$SANDBOX/h/.dck/volumes"
-  assert_contains "$RUN_ERR" "container's own @default profile" "a second start keeps the same link"
-  link="$(readlink "$SANDBOX/h/.claude")"
-  assert_eq "$link" "$store" "still the same directory"
+  assert_eq "$link" "$store" "~/.claude points at the claude volume, not a named profile"
+  assert_contains "$RUN_ERR" "container's own @default profile" "and the start says so"
 }
 
 # v0.3.6: each developer's coding-agent CLIs through dck up.

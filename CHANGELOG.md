@@ -21,8 +21,8 @@ mix host and container Codex versions on the same state DB.
   at `[agents] default_profile` (that made `@default` the named profile). A bare
   `ak <cli>` still follows `AGENTKIT_DEFAULT_PROFILE_<CLI>` when that is set.
   `ak usage` lists `@default`, and `ak <cli> @default` — and a plain `claude` /
-  `codex` — uses the container's own home. Claude's `@default` is a directory on
-  the claude volume (`~/.claude` → `…/volumes/claude/default`).
+  `codex` — uses the container's own home. Claude's `@default` is its own
+  directory on the claude volume (`~/.claude`).
 
 ### Added
 
