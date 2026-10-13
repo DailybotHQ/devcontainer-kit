@@ -129,7 +129,7 @@ entrypoint's `dck_herdr_config` ([entrypoint.md](entrypoint.md)).
 
 An agent in the container can list and ask Herdr agents on the host and in
 other dck containers, and get the reply back, through
-[herdr-peers](https://github.com/DailybotHQ/herdr-peers) (**v0.3.2**: asks, one-way
+[herdr-peers](https://github.com/DailybotHQ/herdr-peers) (**v1.0.0**: asks, one-way
 notices and a plan's lead records). The repository's rendered image installs it
 (`dck/peers.sh`; `herdr-peers` on PATH) from its tag's source, verifying every file
 against that release's `SHA256SUMS`, which is itself pinned by sha256 in
