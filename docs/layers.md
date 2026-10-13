@@ -30,7 +30,7 @@ After changing the file, run `dck init` (it shows the diff and asks), then
 ## agents
 
 Installs [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit)
-at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v1.0.0**) into the
+at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v1.0.1**) into the
 dev user's home, following the kit's install contract: the release tarball, verified
 against the pinned `AGENTKIT_SHA256` before it is unpacked, then `install.sh --no-rc`, then `ak install <kind>…` for the
 requested kinds (`DCK_AGENT_CLIS` plus each `INSTALL_<CLI>_CLI=true`; commas or spaces),
@@ -203,7 +203,14 @@ Each read-write mount and its reason is listed in
   `CLAUDE_CONFIG_DIR` / `CODEX_HOME` as that profile's home (unless already set), so a
   plain `claude --resume` or `codex resume` that Herdr restores without ak uses it too.
   The macOS `@default` Claude login lives in the keychain and cannot be a default inside;
-  `dck doctor` shows the mapping and flags one it cannot apply.
+  `dck doctor` shows the mapping and flags one it cannot apply. With coding-agents-kit
+  **≥ 1.0.1**, `@default` stays a separate account even when those home variables name a
+  profile: `ak usage` lists it, and `ak <cli> @default` runs the CLI's own home
+  (`~/.claude` / `~/.codex`, …). The export still helps Herdr restore a plain
+  `claude --resume` onto the default profile; it no longer folds `@default` into that
+  profile. When `codex@default` is shared, `dck doctor` also warns if the host's
+  `codex --version` differs from the container's (the shared `~/.codex` is read-write;
+  use a named profile inside or align the versions).
 - **Compose backend:** the overlay is a compose file, so with the option on `dck up`
   uses compose even when the devcontainer CLI is installed; an editor that opens the
   container itself does not apply it.
@@ -267,7 +274,7 @@ from the image's `/etc/dck/versions.env`. Every download goes through one verifi
 
 ## Status in v1.0
 
-The `agents` layer is verified end to end with coding-agents-kit `v1.0.0`
+The `agents` layer is verified end to end with coding-agents-kit `v1.0.1`
 (installed from its sha256-verified release tarball; `ak` interface 1, permissions
 `auto` by default; the `docker` test scope builds a rendered node fixture on every CI
 run: `--clis codex --supported all`, the host profile's `clis_extra = ["pi"]`, so

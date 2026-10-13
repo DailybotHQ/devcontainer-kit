@@ -338,7 +338,24 @@ def config_version():
         return "0.0.0"
 
 
-def host_profiles_info(merged, problems):
+def codex_versions_info(container_name):
+    """Host and container Codex versions (numbers only) when codex@default is shared.
+
+    A mismatched pair writing the same ~/.codex state DB has corrupted it once;
+    the doctor warns so the developer can use a named profile inside or align
+    the versions. Either side unknown leaves match null (no warning).
+    """
+    host = first_version(run(["codex", "--version"])[1]) if which("codex") else None
+    container = None
+    if container_name:
+        rc, out = run(["docker", "exec", container_name, "codex", "--version"])
+        if rc == 0:
+            container = first_version(out)
+    match = (host == container) if (host and container) else None
+    return {"host": host, "container": container, "match": match}
+
+
+def host_profiles_info(merged, problems, container_name=None):
     """[agents] host_profiles: what is shared, by name only (never a value)."""
     import hostagents
     lines, p = hostagents.report(merged)
@@ -352,12 +369,26 @@ def host_profiles_info(merged, problems):
     if p["env_names"]:
         mounts.append({"profile": "env", "mode": hostagents.MOUNT_MODES["env"][0],
                        "reason": hostagents.MOUNT_MODES["env"][1]})
+    notes = [m for _lvl, m in lines]
+    codex_versions = None
+    if p["codex"]:
+        # codex@default is the host's live ~/.codex, read-write inside: a Codex
+        # in the container on another version than the host's has corrupted that
+        # state DB. Warn only when both sides report a version and they differ.
+        codex_versions = codex_versions_info(container_name)
+        if codex_versions["match"] is False:
+            msg = ("host profiles: codex@default is shared read-write, but the host's Codex is %s "
+                   "and the container's is %s — a mismatched pair has corrupted that state DB; "
+                   "use a named profile inside (ak codex @name) or align the versions"
+                   % (codex_versions["host"], codex_versions["container"]))
+            problems.append(msg)
+            notes.append(msg)
     return {"enabled": p["enabled"], "reason": p["reason"] or None,
             "shared": hostagents.shared_clis(p), "profiles": hostagents.profile_refs(p),
             "mounts": mounts, "codex": bool(p["codex"]),
+            "codex_versions": codex_versions,
             "skipped": [{"cli": c, "reason": r} for c, r in p["skipped"]],
-            "env_names": p["env_names"], "notes": [m for _lvl, m in lines]}
-
+            "env_names": p["env_names"], "notes": notes}
 
 def ssh_keys_info(merged, container_name):
     """[ssh] copy_keys: the opt-in state and key file NAMES (never contents).
@@ -522,7 +553,9 @@ def collect(start, profile=None, compose_files=None):
                 if not ssh["answering"]:
                     problems.append("sshd does not answer on %s:%s" % (host, merged["ssh_port"]))
             report["ssh"] = ssh
-            report["host_profiles"] = host_profiles_info(merged, problems)
+            report["host_profiles"] = host_profiles_info(
+                merged, problems,
+                report["repo"]["container"]["name"] if container_running else None)
             import render
             st = render.compose_status(repo, "v" + version, profile)
             report["compose_render"] = st

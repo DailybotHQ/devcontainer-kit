@@ -373,6 +373,66 @@ assert all(m["reason"] for m in hp["mounts"]), hp
 assert "OPENAI_API_KEY" in hp["env_names"], hp
 print("ok")' "$json"
   assert_eq "$RUN_OUT" "ok" "doctor --json reports profiles, mounts and names"
+  run_cmd python3 -I -c '
+import json, sys
+hp = json.loads(sys.argv[1])["host_profiles"]
+assert hp["codex"] and hp.get("codex_versions") is not None, hp
+cv = hp["codex_versions"]
+assert set(cv) >= {"host", "container", "match"} and cv["match"] is None, cv
+print("ok")' "$json"
+  assert_eq "$RUN_OUT" "ok" "doctor --json reports codex_versions (unknown without a host/container Codex)"
+}
+
+test_doctor_warns_when_codex_default_versions_differ() {
+  # codex@default is the host's live ~/.codex read-write: a container Codex on
+  # another version has corrupted that state DB. The doctor warns when both
+  # sides report a version and they differ.
+  mk_repo || return 0
+  mk_host
+  fake_ak
+  profile 'host_profiles = true'
+  mkdir -p "$SANDBOX/codexbin"
+  printf '#!/bin/sh\necho "codex-cli 0.162.1"\n' > "$SANDBOX/codexbin/codex"
+  chmod +x "$SANDBOX/codexbin/codex"
+  printf 'proj-app-1\trunning\n' > "$DCK_FAKE_STATE/ps"
+  printf 'codex-cli 0.158.0\n' > "$DCK_FAKE_STATE/container_codex_version"
+  # Other docker exec probes the doctor makes while the container is "running".
+  : > "$DCK_FAKE_STATE/container_image_env"
+  : > "$DCK_FAKE_STATE/image_agent_clis"
+  run_cmd bash -c 'cd "$1" && PATH="$2:$3:$PATH" "$4" doctor' \
+    _ "$REPO" "$SANDBOX/akbin" "$SANDBOX/codexbin" "$DCK"
+  assert_contains "$RUN_OUT" "codex@default is shared read-write" "the text report names the shared Codex home"
+  assert_contains "$RUN_OUT" "host's Codex is 0.162.1" "and the host version"
+  assert_contains "$RUN_OUT" "container's is 0.158.0" "and the container version"
+  assert_contains "$RUN_OUT" "use a named profile inside" "with the fix: a named profile or align versions"
+  run_cmd bash -c 'cd "$1" && PATH="$2:$3:$PATH" "$4" doctor --json' \
+    _ "$REPO" "$SANDBOX/akbin" "$SANDBOX/codexbin" "$DCK"
+  local json="$RUN_OUT" r
+  r="$(printf '%s' "$json" | python3 "$TESTS_DIR/py/minischema.py" "$DCK_REPO/docs/schema/dck-doctor-v2.json" 2>&1)"
+  assert_eq "$r" "" "doctor --json with a Codex version skew matches its schema"
+  run_cmd python3 -I -c '
+import json, sys
+d = json.loads(sys.argv[1])
+hp = d["host_profiles"]
+cv = hp["codex_versions"]
+assert hp["codex"] and cv == {"host": "0.162.1", "container": "0.158.0", "match": False}, cv
+assert any("codex@default is shared read-write" in p and "0.162.1" in p and "0.158.0" in p
+           for p in d["problems"]), d["problems"]
+assert d["ok"] is False
+print("ok")' "$json"
+  assert_eq "$RUN_OUT" "ok" "doctor --json reports match false and a problem"
+  # Same versions: no problem.
+  printf 'codex-cli 0.162.1\n' > "$DCK_FAKE_STATE/container_codex_version"
+  run_cmd bash -c 'cd "$1" && PATH="$2:$3:$PATH" "$4" doctor --json' \
+    _ "$REPO" "$SANDBOX/akbin" "$SANDBOX/codexbin" "$DCK"
+  run_cmd python3 -I -c '
+import json, sys
+d = json.loads(sys.argv[1])
+cv = d["host_profiles"]["codex_versions"]
+assert cv == {"host": "0.162.1", "container": "0.162.1", "match": True}, cv
+assert not any("codex@default is shared read-write" in p for p in d["problems"]), d["problems"]
+print("ok")' "$RUN_OUT"
+  assert_eq "$RUN_OUT" "ok" "matching Codex versions are not a problem"
 }
 
 test_doctor_without_profiles_json() {
