@@ -978,6 +978,7 @@ cmd_up() {
   if [ "$BACKEND" = devcontainer ] && [ "${#args[@]}" -eq 0 ]; then
     note "starting ${SERVICES[*]} with the devcontainer CLI (project $PROJECT)"
     if [ "$recreate" -eq 1 ]; then
+      save_layer_profiles
       devcontainer up --workspace-folder "$DC_REPO" --remove-existing-container
     else
       devcontainer up --workspace-folder "$DC_REPO"
@@ -995,6 +996,7 @@ cmd_up() {
     fi
     note "starting ${SERVICES[*]} (project $PROJECT)"
     if [ "$recreate" -eq 1 ]; then
+      save_layer_profiles
       dc up -d --force-recreate "${SERVICES[@]}"
     else
       # --no-recreate: a second `up` is a no-op, not a replacement. A container
@@ -1005,6 +1007,26 @@ cmd_up() {
     fi
   fi
   after_start
+}
+
+# save_layer_profiles — before a recreate. With [agents] host_profiles, a
+# running container may keep ak profiles of a CLI the host does not share in
+# its layer (an image of dck v0.3.5 or earlier never linked them to the
+# volume): the recreate would drop them and their logins. This dck version's
+# dck_host_volume_profiles runs in the old container first and moves them onto
+# its agentkit volume (never overwriting; logged by path). Best effort: a
+# container that is not running, or cannot run it, is left as is.
+save_layer_profiles() {
+  container_running || return 0
+  local out line
+  out="$(dc exec -T --user root "$DC_SERVICE" bash -c '. /dev/stdin && dck_host_volume_profiles' \
+           < "$DCK_LIB/entrypoint.sh" 2>&1)" || true
+  while IFS= read -r line; do
+    case "$line" in "dck-entrypoint: agents: "*) note "${line#dck-entrypoint: }" ;; esac
+  done <<EOF
+$out
+EOF
+  return 0
 }
 
 # stale_service_image — true when the image compose would run for the dev
@@ -1246,6 +1268,7 @@ cmd_rebuild() {
   selected_services ${BUILD_SERVICES[@]+"${BUILD_SERVICES[@]}"}
   if [ "$BACKEND" = devcontainer ] && [ "${#BUILD_SERVICES[@]}" -eq 0 ]; then
     note "rebuilding with the devcontainer CLI (project $PROJECT)"
+    save_layer_profiles
     if [ "$NO_CACHE" -eq 1 ]; then
       devcontainer up --workspace-folder "$DC_REPO" --remove-existing-container --build-no-cache
     else
@@ -1262,6 +1285,7 @@ cmd_rebuild() {
       dc build "${SERVICES[@]}"
     fi
     note "recreating ${SERVICES[*]} with the new images"
+    save_layer_profiles
     dc up -d --force-recreate "${SERVICES[@]}"
   fi
   after_start

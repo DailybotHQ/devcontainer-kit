@@ -167,13 +167,16 @@ Each read-write mount and its reason is listed in
   (created 0700) — the directory ak uses with the option off, so both modes see the same
   profiles. `ak antigravity @g1`, its login inside, then `dck rebuild` (or `dck up
   --recreate`): the login is still there. A shared CLI's directory holds the host's mounts
-  and is never linked — create a new profile of a shared CLI on the host. A container
-  started by v0.3.5 or earlier and restarted (not recreated) is migrated at its next start:
-  each profile the volume lacks is moved there; for a name the volume already has, the
-  volume's copy is kept and the layer's directory is set aside as
-  `~/.dck/host/agentkit/profiles/.<cli>.dck-pre-volume-<UTC>`, logged by path only.
-  A link there that points outside the volume, or a volume directory that is a symlink,
-  is refused and left as is.
+  and is never linked — create a new profile of a shared CLI on the host. **Upgrading:** a
+  container started from an image of v0.3.5 or earlier keeps such profiles in its layer;
+  `dck up --recreate` and `dck rebuild` first run this version's step inside the old
+  container, which moves each profile the volume lacks onto it (reported as `agents: …`).
+  For a name the volume already has, the volume's copy is kept and the layer's is set
+  aside on the volume as `~/.dck/volumes/agentkit/profiles/.<cli>.dck-pre-volume-<UTC>`,
+  logged by path only. An entry on another device (a bind mount) is never moved; a link
+  there that points outside the volume, or a volume directory that is a symlink, is
+  refused and left as is. A container recreated by other means (the editor, plain
+  `docker compose`) skips that step: run `dck up --recreate` once instead.
 - **Claude:** a profile logged in through the macOS keychain cannot reach a container.
   Give each such account a long-lived token — `claude setup-token`, then store it in
   ak's env file (`~/.config/agentkit/env`, mode 600; `ak env import <file>` copies

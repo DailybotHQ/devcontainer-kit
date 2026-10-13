@@ -52,7 +52,8 @@ Interface stays **2**.
   reaches no OS keyring, so it keeps each Google login in a file under that home —
   one login per ak profile (`ak antigravity @name`), several accounts side by side,
   which the macOS Keychain's single slot never allowed. Its profiles stay unshareable
-  from the host (`[agents] host_profiles` skips them, as before).
+  from the host (`[agents] host_profiles` skips them, as before). A state volume can no
+  longer be named `antigravity` (it is the CLI's home volume).
 
 ### Changed
 
@@ -78,11 +79,17 @@ Interface stays **2**.
   share (antigravity, cursor, or a CLI with no host profile) was written to
   `~/.dck/host/agentkit/profiles/<cli>/` in the container layer, so `dck rebuild` (or any
   recreate) lost it and its login. The entrypoint now links that directory to the CLI's
-  directory on the `agentkit` volume (0700) — the one ak uses with the option off — and
-  migrates an older container's profiles without overwriting the volume's copy (the rest is
-  kept as `.<cli>.dck-pre-volume-<UTC>`, logged by path). Shared CLIs' directories (the
-  host's mounts) are never touched; a link pointing outside the volume is refused. See
+  directory on the `agentkit` volume (0700) — the one ak uses with the option off. Before
+  a recreate, `dck up --recreate` and `dck rebuild` run that step inside the old container,
+  so an older image's layer-only profiles move onto the volume first, without overwriting
+  the volume's copy (the rest is kept on the volume as `.<cli>.dck-pre-volume-<UTC>`,
+  logged by path). Shared CLIs' directories (the host's mounts) and anything on another
+  device are never moved; a link pointing outside the volume is refused. See
   [docs/layers.md](docs/layers.md#host-accounts).
+- The preflight checked devcontainer.json's compose files even when `--compose-file`
+  (PRIMARY mode, satellites) replaced them, so a given file with `privileged`, the Docker
+  socket, host mounts or a path outside the repository started without `--trust`. It now
+  checks the files compose runs.
 - `dck up` reused an image dck did not build when one already had the service's tag (a
   pre-dck image left by a repository's old tooling, with its own entrypoint), so no host
   step ran until `dck rebuild`. `dck up` now inspects the image first: one without dck's

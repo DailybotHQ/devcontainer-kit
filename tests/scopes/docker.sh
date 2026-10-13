@@ -235,6 +235,14 @@ test_node_fixture_end_to_end() {
   assert_rc 0 "a recreate with host accounts on"
   dev shell -c 'cat ~/.dck/host/agentkit/profiles/antigravity/it1/token'
   assert_eq "$RUN_OUT" "it-login" "the non-shared profile's login survives the recreate"
+  # A container started from an older image kept such profiles in its layer: dck
+  # moves them onto the volume in the old container before it recreates it.
+  dev shell -c 'p=~/.dck/host/agentkit/profiles; unlink "$p/grok" && mkdir -p "$p/grok/old1" && echo old-login > "$p/grok/old1/token"'
+  with_lock d "${prim[@]}" up --recreate app
+  assert_rc 0 "a recreate of a container with layer-only profiles"
+  assert_contains "$RUN_OUT" "agents: grok profiles moved onto the agentkit volume" "dck reports the profiles it saved"
+  dev shell -c 'cat ~/.dck/host/agentkit/profiles/grok/old1/token'
+  assert_eq "$RUN_OUT" "old-login" "a layer-only profile survives the recreate"
   printf 'interface = 2\n[agents]\nclis_extra = ["pi"]\n' > "$HOME/.config/dck/profile.toml"
 
   # 8. Persistence across rebuild: the state and agent volumes survive.

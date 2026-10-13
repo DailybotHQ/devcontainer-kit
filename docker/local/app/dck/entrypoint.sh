@@ -520,13 +520,22 @@ dck_host_homes() {
 # directory on the agentkit volume, the one ak uses without host_profiles:
 #   * only CLIs in DCK_AGENTS and not in DCK_HOST_PROFILES — a shared CLI's
 #     directory holds the host's bind mounts and is never touched;
-#   * a real directory left by an older dck (a container restarted, not
-#     recreated) is migrated: each entry the volume lacks is moved there; the
-#     volume's copy is never overwritten — what remains is kept aside as
-#     .<cli>.dck-pre-volume-<UTC> and logged by path (never by content);
+#   * a real directory there holds profiles only the container layer keeps:
+#     `dck up --recreate` / `dck rebuild` run this step in the old container
+#     before replacing it (an image of dck v0.3.5 or earlier lacks it). Each
+#     entry the volume lacks is moved there; the volume's copy is never
+#     overwritten — what remains is kept on the volume as
+#     .<cli>.dck-pre-volume-<UTC>, logged by path (never by content); an entry
+#     on another device (a bind mount) is never moved;
 #   * the volume directory is created 0700 for the user; a link to anywhere
 #     else, or a volume path that is a symlink, is refused and left alone.
 # Idempotent: a link already in place is left as is.
+# The device number of a path, never following a final symlink (GNU stat in
+# the container, BSD stat for the tests on macOS).
+_dck_dev() {
+  stat -c %d "$1" 2>/dev/null || stat -f %d "$1" 2>/dev/null
+}
+
 dck_host_volume_profiles() {
   _dck_env
   local root="$DCK_HOME/.dck/host/agentkit/profiles" vroot="$DCK_PERSIST_ROOT/agentkit/profiles"
@@ -536,7 +545,7 @@ dck_host_volume_profiles() {
     dck_log "agents: a profiles directory is a symlink; non-shared profiles are not linked to the volume"
     return 0
   fi
-  local kind link vol e stamp left
+  local kind link vol e stamp left dev
   for kind in $DCK_AGENTS; do
     dck_agent_homes "$kind" >/dev/null || continue
     case " ${DCK_HOST_PROFILES:-} " in *" $kind "*) continue ;; esac
@@ -555,22 +564,32 @@ dck_host_volume_profiles() {
       continue
     fi
     if [ -d "$link" ]; then
+      dev="$(_dck_dev "$link")"
+      if [ -z "$dev" ] || [ "$dev" != "$(_dck_dev "$root")" ]; then
+        dck_log "agents: refusing $link (a mount point); left as is"
+        continue
+      fi
       left=0
       for e in "$link"/* "$link"/.[!.]* "$link"/..?*; do
         [ -e "$e" ] || [ -L "$e" ] || continue
-        if [ -e "$vol/${e##*/}" ] || [ -L "$vol/${e##*/}" ]; then
+        if [ "$(_dck_dev "$e")" != "$dev" ]; then
+          dck_log "agents: $e is a mount point; not moved"
+          left=2
+        elif [ -e "$vol/${e##*/}" ] || [ -L "$vol/${e##*/}" ]; then
           left=1
         elif ! mv "$e" "$vol/"; then
           left=1
         fi
       done
-      if [ "$left" = 0 ]; then
+      if [ "$left" = 2 ]; then
+        continue
+      elif [ "$left" = 0 ]; then
         rmdir "$link" || { dck_log "agents: cannot migrate $link; left as is"; continue; }
         dck_log "agents: $kind profiles moved onto the agentkit volume"
       else
         stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-        mv "$link" "$root/.$kind.dck-pre-volume-$stamp" || { dck_log "agents: cannot migrate $link; left as is"; continue; }
-        dck_log "agents: $kind profiles moved onto the agentkit volume; entries not moved (already there, or a failed move) stay in $root/.$kind.dck-pre-volume-$stamp"
+        mv "$link" "$vroot/.$kind.dck-pre-volume-$stamp" || { dck_log "agents: cannot migrate $link; left as is"; continue; }
+        dck_log "agents: $kind profiles moved onto the agentkit volume; entries not moved (already there, or a failed move) are kept in $vroot/.$kind.dck-pre-volume-$stamp"
       fi
     elif [ -e "$link" ]; then
       dck_log "agents: refusing $link (not a directory); left as is"

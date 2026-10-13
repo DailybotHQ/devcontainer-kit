@@ -175,8 +175,10 @@ second runtime compose overlay (`$TMPDIR/dck-<uid>/<project>-agents.yml`, 0600 i
 host does not share (antigravity, cursor, a CLI with no host profile) is the container's:
 the entrypoint links `~/.dck/host/agentkit/profiles/<cli>` to that CLI's directory on the
 project's `agentkit` volume (0700, the container user's), never to a host path. It refuses a
-link there that points anywhere else and a volume directory that is a symlink; migrating an
-older container's profiles never overwrites the volume's copy and logs paths, never content.
+link there that points anywhere else, a volume directory that is a symlink, and moving
+anything on another device (a bind mount); migrating an older container's profiles (run
+inside it by `dck up --recreate` / `dck rebuild`, as root, with this dck version's
+library) never overwrites the volume's copy and logs paths, never content.
 
 **Least privilege.** Every mount is read-only unless the CLI must write there; each
 read-write mount and its reason (the same table the code uses, shown by `dck doctor`):

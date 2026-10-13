@@ -383,6 +383,33 @@ test_doctor_without_profiles_json() {
   assert_contains "$RUN_OUT" "ak profiles --json" "without a host ak the doctor says logins were not checked"
 }
 
+test_recreate_saves_layer_profiles_first() {
+  mk_repo || return 0
+  mk_host
+  profile 'host_profiles = true'
+  printf 'proj-app-1\n' > "$DCK_FAKE_STATE/ps"
+  printf 'dck-entrypoint: agents: pi profiles moved onto the agentkit volume\ndck-entrypoint: other\n' > "$DCK_FAKE_STATE/exec_out"
+  local verb log save rec
+  for verb in "up --recreate" "rebuild"; do
+    : > "$DCK_FAKE_LOG"
+    # shellcheck disable=SC2086  # the verb and its flag
+    run_cmd bash -c 'cd "$1" && shift && env TMPDIR="$1" "$2" $3' _ "$REPO" "$SANDBOX/tmp" "$DCK" "$verb"
+    assert_rc 0 "dck $verb with a running container"
+    log="$(fake_calls docker)"
+    save="$(printf '%s\n' "$log" | grep -n "exec -T --user root app bash -c . /dev/stdin && dck_host_volume_profiles" | head -1 | cut -d: -f1)"
+    rec="$(printf '%s\n' "$log" | grep -n "up -d --force-recreate" | head -1 | cut -d: -f1)"
+    assert_ne "$save" "" "dck $verb runs this version's dck_host_volume_profiles in the old container"
+    assert_eq "$([ -n "$save" ] && [ -n "$rec" ] && [ "$save" -lt "$rec" ] && echo before)" "before" "before it is recreated"
+    assert_contains "$RUN_OUT" "agents: pi profiles moved onto the agentkit volume" "what it moved is reported"
+    assert_not_contains "$RUN_OUT" "other" "and nothing else from the container"
+  done
+  : > "$DCK_FAKE_STATE/ps"
+  : > "$DCK_FAKE_LOG"
+  run_cmd bash -c 'cd "$1" && shift && env TMPDIR="$1" "$2" up --recreate' _ "$REPO" "$SANDBOX/tmp" "$DCK"
+  assert_rc 0 "dck up --recreate with nothing running"
+  assert_not_contains "$(fake_calls docker)" "dck_host_volume_profiles" "no container: nothing to save"
+}
+
 # ---------------------------------------------------------------------------
 # Entrypoint: Codex home, skills, unattended-launch trust
 # ---------------------------------------------------------------------------
@@ -460,7 +487,7 @@ test_non_shared_profiles_live_on_the_volume() {
   assert_dir "$vol/antigravity/g1" "a profile ak creates there lands on the volume"
   hvp
   assert_eq "$(readlink "$root/antigravity")" "$vol/antigravity" "a second start keeps the link"
-  assert_eq "$(ls -a "$root" | grep -c dck-pre-volume)" "0" "and moves nothing aside (idempotent)"
+  assert_eq "$(ls -a "$vol" | grep -c dck-pre-volume)" "0" "and moves nothing aside (idempotent)"
   assert_not_contains "$RUN_ERR" "refusing" "nor refuses its own link"
 }
 
@@ -486,15 +513,34 @@ test_non_shared_profiles_migrate_without_overwriting() {
   assert_eq "$(cat "$vol/antigravity/g2/token")" "volume-g2" "the volume's copy is never overwritten"
   assert_eq "$(cat "$vol/pi/p1/token")" "layer-p1" "every non-shared CLI is migrated"
   assert_eq "$(cat "$vol/pi/.state")" "volume-state" "a file of the same name is not overwritten either"
-  local bak; bak="$(ls -a "$root" | grep '^\.antigravity\.dck-pre-volume-[0-9]\{8\}T[0-9]\{6\}Z$')"
-  assert_ne "$bak" "" "the layer's conflicting copy is kept aside, timestamped"
-  assert_eq "$(cat "$root/$bak/g2/token")" "layer-g2" "with its content intact"
-  assert_eq "$(cat "$root"/.pi.dck-pre-volume-*/.state)" "layer-state" "the layer's conflicting file is kept aside too"
-  assert_contains "$RUN_ERR" "stay in $root/$bak" "the backup is logged by path"
+  local bak; bak="$(ls -a "$vol" | grep '^\.antigravity\.dck-pre-volume-[0-9]\{8\}T[0-9]\{6\}Z$')"
+  assert_ne "$bak" "" "the layer's conflicting copy is kept aside on the volume (a recreate keeps it), timestamped"
+  assert_eq "$(cat "$vol/$bak/g2/token")" "layer-g2" "with its content intact"
+  assert_eq "$(cat "$vol"/.pi.dck-pre-volume-*/.state)" "layer-state" "the layer's conflicting file is kept aside too"
+  assert_contains "$RUN_ERR" "kept in $vol/$bak" "the backup is logged by path"
   assert_not_contains "$RUN_ERR" "layer-g2" "never by content"
   assert_eq "$(readlink "$root/antigravity")" "$vol/antigravity" "then the link is made"
   hvp
-  assert_eq "$(ls -a "$root" | grep -c dck-pre-volume)" "2" "a second start migrates nothing again"
+  assert_eq "$(ls -a "$vol" | grep -c dck-pre-volume)" "2" "a second start migrates nothing again"
+}
+
+test_non_shared_profiles_never_move_a_mount() {
+  mk_container_home
+  local root="$SANDBOX/h/.dck/host/agentkit/profiles" vol="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  mkdir -p "$root/pi/p1" "$root/pi/mounted" "$root/cline/c1"
+  printf 'host\n' > "$root/pi/mounted/token"
+  # A bind mount cannot be made here: _dck_dev reports another device for it.
+  run_cmd env DCK_USER="$(id -un)" DCK_HOME="$SANDBOX/h" DCK_AGENTS="pi cline" DCK_HOST_PROFILES="claude" \
+    AGENTKIT_PROFILES_DIR="$root" bash -c '. "$1"
+_dck_dev() { case "$1" in */mounted|*/cline) echo 99 ;; *) echo 1 ;; esac; }
+dck_host_volume_profiles' _ "$DCK_REPO/lib/entrypoint.sh"
+  assert_eq "$(cat "$root/pi/mounted/token")" "host" "an entry on another device (a bind mount) is never moved"
+  assert_absent "$vol/pi/mounted" "nor copied to the volume"
+  if [ -L "$root/pi" ]; then fail "a directory holding a mount is not replaced by the link" "linked"
+  else pass "a directory holding a mount is not replaced by the link"; fi
+  assert_contains "$RUN_ERR" "$root/pi/mounted is a mount point" "and it is logged"
+  assert_dir "$root/cline/c1" "a CLI directory that is itself a mount point is left as is"
+  assert_contains "$RUN_ERR" "refusing $root/cline (a mount point)" "and logged"
 }
 
 test_non_shared_profiles_refuse_foreign_links() {
