@@ -16,11 +16,13 @@ mix host and container Codex versions on the same state DB.
 ### Changed
 
 - **Pins:** coding-agents-kit **v1.0.1** (`AGENTKIT_TAG`; tag commit `3f51881`, tarball
-  sha256 `923277aa…`, `SHA256SUMS` sha256 `de17573e…`). With agentkit ≥ 1.0.1,
-  `@default` stays a separate account even when the container's login profile exports
-  `CLAUDE_CONFIG_DIR` / `CODEX_HOME` for `[agents] default_profile` (Herdr restore still
-  needs that export): `ak usage` lists `@default`, and `ak <cli> @default` runs the
-  CLI's own home.
+  sha256 `923277aa…`, `SHA256SUMS` sha256 `de17573e…`). `@default` is the container's
+  own account: the login profile no longer points `CLAUDE_CONFIG_DIR` / `CODEX_HOME`
+  at `[agents] default_profile` (that made `@default` the named profile). A bare
+  `ak <cli>` still follows `AGENTKIT_DEFAULT_PROFILE_<CLI>` when that is set.
+  `ak usage` lists `@default`, and `ak <cli> @default` — and a plain `claude` /
+  `codex` — uses the container's own home. Claude's `@default` is a directory on
+  the claude volume (`~/.claude` → `…/volumes/claude/default`).
 
 ### Added
 

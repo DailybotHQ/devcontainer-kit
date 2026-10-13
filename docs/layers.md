@@ -199,16 +199,16 @@ Each read-write mount and its reason is listed in
   (see [SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles)).
 - **A default account inside:** `[agents] default_profile = { claude = "@work3" }` (host
   profile) exports `AGENTKIT_DEFAULT_PROFILE_<CLI>` into the container when that profile
-  is shared, so a bare `ak claude` uses it; the login profile also exports
-  `CLAUDE_CONFIG_DIR` / `CODEX_HOME` as that profile's home (unless already set), so a
-  plain `claude --resume` or `codex resume` that Herdr restores without ak uses it too.
-  The macOS `@default` Claude login lives in the keychain and cannot be a default inside;
-  `dck doctor` shows the mapping and flags one it cannot apply. With coding-agents-kit
-  **≥ 1.0.1**, `@default` stays a separate account even when those home variables name a
-  profile: `ak usage` lists it, and `ak <cli> @default` runs the CLI's own home
-  (`~/.claude` / `~/.codex`, …). The export still helps Herdr restore a plain
-  `claude --resume` onto the default profile; it no longer folds `@default` into that
-  profile. When `codex@default` is shared, `dck doctor` also warns if the host's
+  is shared, so a bare `ak claude` uses it. It does **not** point `CLAUDE_CONFIG_DIR` /
+  `CODEX_HOME` at that profile: those variables are how the CLI finds `@default`, and
+  pointing them there made `@default` the named profile. `@default` is its own account
+  inside the container, the same shape as a named profile: Claude's is a directory on
+  the claude volume (`~/.claude` → `…/volumes/claude/default`), Codex's is `~/.codex`
+  (the host's Codex home when `codex@default` is shared). `ak usage` lists it, and
+  `ak <cli> @default` — and a plain `claude` / `codex` that Herdr restores without ak —
+  uses that home, never the named profile. Log in to it with `ak claude @default`
+  (`ak claude` alone opens the named profile). `dck doctor` shows the mapping and flags
+  one it cannot apply. When `codex@default` is shared, it also warns if the host's
   `codex --version` differs from the container's (the shared `~/.codex` is read-write;
   use a named profile inside or align the versions).
 - **Compose backend:** the overlay is a compose file, so with the option on `dck up`

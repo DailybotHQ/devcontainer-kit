@@ -696,7 +696,7 @@ default_profile = { claude = "@work1", codex = "nope" }'
   fake_ak
   run_cmd bash -c 'cd "$1" && PATH="$2:$PATH" "$3" doctor' _ "$REPO" "$SANDBOX/akbin" "$DCK"
   assert_contains "$RUN_OUT" "default profile inside (AGENTKIT_DEFAULT_PROFILE_<CLI>, ak v0.5.2+): claude @work1" "the doctor shows the mapping"
-  assert_contains "$RUN_OUT" "a plain claude/codex inside (a pane Herdr restores without ak) uses it: CLAUDE_CONFIG_DIR=/home/dev/.dck/host/agentkit/profiles/claude/work1" "and the config home a restored plain claude uses"
+  assert_contains "$RUN_OUT" "@default stays the container's own account" "a plain claude uses @default, not the named profile"
   assert_contains "$RUN_OUT" "default_profile codex = @nope not applied — codex @nope is not shared" "and flags one it cannot apply"
   printf 'interface = 2\n[agents]\ndefault_profile = { cursor = "@x" }\n' > "$SANDBOX/p.toml"
   run_cmd python3 -I "$DCK_REPO/lib/dckpy.py" config validate --kind profile "$SANDBOX/p.toml"
@@ -748,25 +748,35 @@ daemon_auto_start = false" "a plain restored codex starts no app-server daemon"
   assert_contains "$(sed -n '/^dck_start() {/,/^}/p' "$DCK_REPO/lib/entrypoint.sh")" "dck_codex_config || true" "dck_start runs it at every start"
 }
 
-# v0.3.4 (A): a pane Herdr restores runs a plain `claude --resume` without ak; with
-# [agents] default_profile, the login profile points it at that profile's home.
-test_login_profile_points_plain_clis_at_the_default_profile() {
+# A login shell must not point CLAUDE_CONFIG_DIR / CODEX_HOME at the named
+# default_profile. Those variables are how the CLI finds @default; pointing
+# them at a profile made @default that profile. A bare `ak <cli>` still
+# follows AGENTKIT_DEFAULT_PROFILE_<CLI>.
+test_login_profile_leaves_default_its_own_home() {
   local prof="$SANDBOX/profiles"
   mkdir -p "$prof/claude/work3" "$prof/codex/work2" "$SANDBOX/lh"
   run_cmd env HOME="$SANDBOX/lh" AGENTKIT_PROFILES_DIR="$prof" AGENTKIT_DEFAULT_PROFILE_CLAUDE="@work3" AGENTKIT_DEFAULT_PROFILE_CODEX="@work2" \
     sh -c '. "$1"; printf "%s|%s" "${CLAUDE_CONFIG_DIR:-unset}" "${CODEX_HOME:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
-  assert_eq "$RUN_OUT" "$prof/claude/work3|$prof/codex/work2" "CLAUDE_CONFIG_DIR and CODEX_HOME name the default profiles"
+  assert_eq "$RUN_OUT" "unset|unset" "default_profile does not move the CLI homes: @default stays its own"
   run_cmd env HOME="$SANDBOX/lh" AGENTKIT_PROFILES_DIR="$prof" AGENTKIT_DEFAULT_PROFILE_CLAUDE="@work3" CLAUDE_CONFIG_DIR=/elsewhere \
     sh -c '. "$1"; printf "%s" "$CLAUDE_CONFIG_DIR"' _ "$DCK_REPO/images/common/profile.sh"
-  assert_eq "$RUN_OUT" "/elsewhere" "a value already set wins (ak sets its own)"
-  run_cmd env HOME="$SANDBOX/lh" AGENTKIT_PROFILES_DIR="$prof" AGENTKIT_DEFAULT_PROFILE_CLAUDE="@missing" \
-    sh -c '. "$1"; printf "%s" "${CLAUDE_CONFIG_DIR:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
-  assert_eq "$RUN_OUT" "unset" "a profile directory that does not exist is not named"
-  run_cmd env HOME="$SANDBOX/lh" AGENTKIT_PROFILES_DIR="$prof" AGENTKIT_DEFAULT_PROFILE_CLAUDE="../../etc" \
-    sh -c '. "$1"; printf "%s" "${CLAUDE_CONFIG_DIR:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
-  assert_eq "$RUN_OUT" "unset" "a malformed name is refused"
-  run_cmd env HOME="$SANDBOX/lh" sh -c '. "$1"; printf "%s" "${CLAUDE_CONFIG_DIR:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
-  assert_eq "$RUN_OUT" "unset" "without default_profile, nothing changes"
+  assert_eq "$RUN_OUT" "/elsewhere" "a home already set is left as it is"
+}
+
+# Claude @default is a directory of its own on the claude volume, and ~/.claude
+# points at it — the same shape as a named profile, not the host's home.
+test_claude_default_is_its_own_directory() {
+  EP_FUNCS=dck_claude_default_home ep DCK_AGENTS="claude" DCK_PERSIST_ROOT="$SANDBOX/h/.dck/volumes"
+  local store="$SANDBOX/h/.dck/volumes/claude/default"
+  assert_dir "$store" "the container @default profile is a directory on the claude volume"
+  assert_contains "$RUN_ERR" "container's own @default profile" "and the start says so"
+  local link
+  link="$(readlink "$SANDBOX/h/.claude")"
+  assert_eq "$link" "$store" "~/.claude points at that directory"
+  EP_FUNCS=dck_claude_default_home ep DCK_AGENTS="claude" DCK_PERSIST_ROOT="$SANDBOX/h/.dck/volumes"
+  assert_contains "$RUN_ERR" "container's own @default profile" "a second start keeps the same link"
+  link="$(readlink "$SANDBOX/h/.claude")"
+  assert_eq "$link" "$store" "still the same directory"
 }
 
 # v0.3.6: each developer's coding-agent CLIs through dck up.

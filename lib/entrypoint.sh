@@ -484,6 +484,12 @@ dck_layer_persist() {
       done <<HOMES
 $(dck_agent_homes "$kind")
 HOMES
+      # After dck_persist: it links ~/.claude at the volume's seeded copy.
+      # @default is its own directory on that volume, the same shape as a
+      # named profile — never the host's ~/.claude and never another profile.
+      if [ "$kind" = claude ]; then
+        dck_claude_default_home || true
+      fi
     done
   fi
 }
@@ -599,6 +605,41 @@ dck_host_volume_profiles() {
     ln -s "$vol" "$link" && _dck_chown -h "$DCK_USER:$(_dck_group)" "$link"
   done
   return 0
+}
+
+# Claude @default lives in its own directory on the claude volume
+# (<volume>/default), and ~/.claude points at it. dck_persist links ~/.claude
+# at the volume's seeded copy first; this retargets that link. Same idea as a
+# named ak profile (a directory the CLI writes into), so a login with
+# `ak claude @default` stays there across rebuilds and is never the host
+# Keychain login or another profile's home. A real directory (not the persist
+# link) is left alone.
+dck_claude_default_home() {
+  local vol="$DCK_PERSIST_ROOT/claude" store="$DCK_PERSIST_ROOT/claude/default" link="$DCK_HOME/.claude"
+  local seeded="$vol/$(_dck_persist_key ".claude")"
+  mkdir -p "$store" || return 1
+  _dck_chown "$DCK_USER:$(_dck_group)" "$store"
+  if [ -L "$link" ] && [ "$(readlink "$link")" = "$store" ]; then
+    dck_log "agents: ~/.claude is the container's own @default profile"
+    return 0
+  fi
+  if [ -L "$link" ]; then
+    # The persist link: keep whatever a previous login wrote there.
+    if [ "$(readlink "$link")" = "$seeded" ] && [ -d "$seeded" ] && [ -n "$(ls -A "$seeded" 2>/dev/null)" ] \
+       && [ -z "$(ls -A "$store" 2>/dev/null)" ]; then
+      rm -rf "$store"
+      mv "$seeded" "$store"
+    fi
+    rm -f "$link"
+  elif [ -d "$link" ]; then
+    dck_log "agents: ~/.claude is a directory; left as the container's @default home"
+    return 0
+  elif [ -e "$link" ]; then
+    rm -f "$link"
+  fi
+  ln -s "$store" "$link"
+  _dck_chown -h "$DCK_USER:$(_dck_group)" "$link"
+  dck_log "agents: ~/.claude is the container's own @default profile"
 }
 
 # ~/.codex -> the mounted host Codex home. The image's copy (or the link to the
