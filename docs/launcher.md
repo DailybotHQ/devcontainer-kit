@@ -232,8 +232,10 @@ project, service, user and workspace (`exec <cmd…>` runs in the main service; 
 is compose's own `down`). That fallback creates missing `.env` files from their
 examples (umask 077, never through a symlink or over an existing file), runs a
 preflight mirroring dck's before `up`, `build` and `rebuild` (`DCK_TRUST=1` starts a
-configuration that reaches the host), passes `$SSH_AUTH_SOCK` as
-`DCK_HOST_SSH_AUTH_SOCK` on a Linux host, and does not run
+configuration that reaches the host), chooses `DCK_HOST_SSH_AUTH_SOCK` by Docker
+provider before `up` and `rebuild` as dck does (Docker Desktop and OrbStack: the
+compose default; a native Linux engine: `$SSH_AUTH_SOCK`; any other provider:
+`/dev/null`, so the agent bind cannot fail the start), and does not run
 `docker/local/dev-setup-hook.sh` itself (the container's entrypoint runs it at every
 start). For volumes dck created, plain
 compose prints a harmless `volume ... already exists but was not created by

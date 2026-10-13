@@ -435,6 +435,29 @@ test_devsh_without_dck_uses_compose() {
   assert_contains "$(fake_calls dck)" "dck agents" "dck is found in its install directory"
 }
 
+# The plain-compose fallback chooses the host SSH agent socket by Docker
+# provider, as dck does, so the bind (never creating a missing host path)
+# cannot fail `up` on a provider without Docker Desktop's socket.
+test_devsh_without_dck_picks_the_agent_socket_by_provider() {
+  local r
+  r="$(new_repo devsh-agent)"
+  init_repo "$r" --no-herdr --yes
+  echo "29.0.0|Docker Desktop|docker-desktop" > "$DCK_FAKE_STATE/info_out"
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" DCK_HOST_SSH_AUTH_SOCK= bash "$r/dev.sh" up
+  assert_rc 0 "up on Docker Desktop"
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_sock")" "" "Docker Desktop: the compose default (its shared agent socket)"
+  echo "29.0.0|Ubuntu 24.04|colima" > "$DCK_FAKE_STATE/info_out"
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" DCK_HOST_SSH_AUTH_SOCK= SSH_AUTH_SOCK= bash "$r/dev.sh" up
+  assert_rc 0 "up on another provider"
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_sock")" "/dev/null" "another provider: /dev/null, never a missing path"
+  assert_contains "$RUN_ERR" "not shared with this Docker provider" "said once"
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" DCK_HOST_SSH_AUTH_SOCK=/run/custom.sock bash "$r/dev.sh" up
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_sock")" "/run/custom.sock" "an explicit DCK_HOST_SSH_AUTH_SOCK is kept"
+  : > "$DCK_FAKE_LOG"
+  run_cmd env PATH="$(nodck_path)" HOME="$SANDBOX/nodck" DCK_HOST_SSH_AUTH_SOCK= bash "$r/dev.sh" ps
+  assert_not_contains "$(fake_calls docker)" "docker info" "verbs that create no container do not probe the provider"
+}
+
 # A fake kit release for install-dck: a tree, its SHA256SUMS (served by the fake
 # curl) and a git that "clones" the tree.
 mk_kit() {
