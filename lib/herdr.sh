@@ -67,8 +67,31 @@ herdr_ssh_ok() {
   ssh -o BatchMode=yes -o ConnectTimeout=3 "$DCK_ALIAS" true </dev/null >/dev/null 2>&1
 }
 
+# herdr_status_running <output of `herdr status server`> — Herdr exits 0
+# whether or not a server runs; only its `status: running` line means one
+# answers (`status: not running` otherwise). Captured, then tested: a pipe into
+# `grep -q` can fail under pipefail.
+herdr_status_running() {
+  case "
+$1
+" in *"
+status: running
+"*) return 0 ;; esac
+  return 1
+}
+
 herdr_server_ok() {
-  ssh -o BatchMode=yes -o ConnectTimeout=3 "$DCK_ALIAS" herdr status server </dev/null >/dev/null 2>&1
+  local out
+  out="$(ssh -o BatchMode=yes -o ConnectTimeout=3 "$DCK_ALIAS" herdr status server </dev/null 2>/dev/null)" || return 1
+  herdr_status_running "$out"
+}
+
+# The host's own Herdr server: when it is not running, nothing will attach the
+# container (and start its server) soon, so dck up does not wait for it.
+herdr_host_server_ok() {
+  local out
+  out="$(herdr status server </dev/null 2>/dev/null)" || return 1
+  herdr_status_running "$out"
 }
 
 # wait_for <description> <function>
@@ -296,7 +319,9 @@ herdr_add() {
   herdr_lookup
   if [ -n "$HERDR_ID" ]; then
     if [ "$HERDR_LABEL_NOW" != "$DCK_HERDR_LABEL" ]; then
-      herdr machine rename --label "$DCK_HERDR_LABEL" "$HERDR_ID" >/dev/null || die "herdr machine rename failed"
+      # Id first: Herdr 0.9.3 rejects `rename --label <label> <id>` (the order its
+      # own --help prints) with "usage: herdr machine rename <profile-id> --label <label>".
+      herdr machine rename "$HERDR_ID" --label "$DCK_HERDR_LABEL" >/dev/null || die "herdr machine rename failed"
       note "herdr: renamed machine $DCK_ALIAS to \"$DCK_HERDR_LABEL\""
     fi
     if [ "$HERDR_ENABLED" = "0" ]; then
@@ -404,6 +429,28 @@ dck_herdr_after_up() {
     ( herdr_mesh ) || true
   fi
   if [ "${DCK_HERDR_LAYOUT:-standard}" = "standard" ]; then
-    ( herdr_layout --keep ) || warn "herdr: the standard layout was not created (run: dck herdr layout)"
+    herdr_layout_after_up
   fi
+}
+
+# herdr_layout_after_up — the layout is created against the container's own
+# Herdr server, which only exists once the host Herdr has attached the machine
+# (its retry starts it, often 15-75 s after the container is up). Wait for it,
+# bounded by DCK_HERDR_LAYOUT_WAIT seconds (default 60), and only while the
+# host's Herdr runs; otherwise skip with the command to run later.
+herdr_layout_after_up() {
+  if ! herdr_server_ok; then
+    if ! herdr_host_server_ok; then
+      note "herdr: the host Herdr is not running, so the container's server has not started; open Herdr, then run: dck herdr layout"
+      return 0
+    fi
+    local HERDR_WAIT="${DCK_HERDR_LAYOUT_WAIT:-60}"  # read by herdr_wait_for
+    case "$HERDR_WAIT" in ''|*[!0-9]*) HERDR_WAIT=60 ;; esac
+    note "herdr: waiting for the container's Herdr server (up to ${HERDR_WAIT}s; the host Herdr starts it when it connects)"
+    if ! herdr_wait_for "server" herdr_server_ok; then
+      note "herdr: the container's Herdr server is not running yet; once Herdr shows the machine connected, run: dck herdr layout"
+      return 0
+    fi
+  fi
+  ( herdr_layout --keep ) || warn "herdr: the standard layout was not created (run: dck herdr layout)"
 }

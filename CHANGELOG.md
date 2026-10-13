@@ -7,6 +7,29 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+### Fixed
+
+- **Herdr:** a changed `[herdr] label` renames the machine again. dck ran
+  `herdr machine rename --label <label> <id>`, the order Herdr 0.9.3's `--help`
+  prints but its parser rejects (`usage: herdr machine rename <profile-id> --label
+  <label>`); the failure stopped the rest of `dck up` (the machine id pushed inside,
+  the mesh refresh, the layout). dck now passes the id first.
+- **Herdr:** `dck herdr add|status|repair` and `dck up` no longer report a stopped
+  remote server as answering. `herdr status server` exits 0 and prints
+  `status: not running` while no server runs; dck now requires its
+  `status: running` line.
+- **Herdr:** `dck up` (and `rebuild`, `start`, `restart`) waits for the container's
+  Herdr server before creating the standard layout, up to `DCK_HERDR_LAYOUT_WAIT`
+  seconds (default 60) and only while the host's Herdr runs; when it does not start
+  in time the layout is skipped with a note (run `dck herdr layout`) instead of
+  failing with "the Herdr layout could not be created".
+- **dev.sh:** the plain-compose fallback (no dck installed) chooses
+  `DCK_HOST_SSH_AUTH_SOCK` by Docker provider before `up` and `rebuild`, as dck does:
+  `/dev/null` on a provider without Docker Desktop's agent socket (colima, podman, …),
+  so the agent bind no longer fails the start there. A bare `docker compose up` on
+  such a provider still needs `DCK_HOST_SSH_AUTH_SOCK=/dev/null` (documented in the
+  rendered compose file and `docs/config.md`).
+
 ## [1.0.0] — 2026-10-13
 
 The first stable release. Interface stays **2**; nothing breaks from v0.3.7, so upgrade with

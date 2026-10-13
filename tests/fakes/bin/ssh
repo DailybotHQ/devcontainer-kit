@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Fake ssh. Logs argv. $DCK_FAKE_STATE/ssh_rc sets the status (default 0),
 # ssh_server_rc the status of `... herdr status server`, ssh_out the output,
-# ssh_err what it prints on stderr.
+# ssh_err what it prints on stderr. `... herdr status server` prints
+# ssh_server_out (default "status: running": Herdr exits 0 either way).
 # `ssh -G <alias>` prints $DCK_FAKE_STATE/ssh_G_<alias> (exit 255 when absent).
 # A command running dck_mesh_apply saves its stdin to ssh_stdin_<last host arg>.
 st="${DCK_FAKE_STATE:-/nonexistent}"
@@ -16,9 +17,11 @@ case " $* " in
     host=""; prev=""; for a in "$@"; do case "$a" in -*|*=*|BatchMode*|ConnectTimeout*) ;; *) [ -z "$host" ] && [ "$prev" != "-o" ] && host="$a" ;; esac; prev="$a"; done
     cat > "$st/ssh_stdin_$host" ;;
 esac
+case " $* " in
+  *" herdr status server "*)
+    if [ -f "$st/ssh_server_out" ]; then cat "$st/ssh_server_out"; else printf 'status: running\nversion: 0.9.3\n'; fi
+    exit "$(cat "$st/ssh_server_rc" 2>/dev/null || echo 0)" ;;
+esac
 cat "$st/ssh_out" 2>/dev/null
 cat "$st/ssh_err" >&2 2>/dev/null
-case " $* " in
-  *" herdr status server "*) exit "$(cat "$st/ssh_server_rc" 2>/dev/null || echo 0)" ;;
-esac
 exit "$(cat "$st/ssh_rc" 2>/dev/null || echo 0)"

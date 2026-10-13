@@ -87,7 +87,8 @@ a container started by an editor plugin, which does not pass
 for `ssh <alias> true` to succeed, then registers the machine. Idempotent: an
 existing registration is kept, renamed if the label changed and re-enabled if
 it was disabled. Finally it checks whether the remote Herdr server answers
-(`ssh <alias> herdr status server`); a server that has not started yet is
+(`ssh <alias> herdr status server` printing `status: running` — Herdr exits 0
+with `status: not running` too); a server that has not started yet is
 reported, not an error — Herdr starts it when it connects.
 
 **`status`** — the include block, the registration (id, label,
@@ -264,7 +265,12 @@ bash dev.sh herdr-layout   # the same, from the repository
 
 - **`dck up` runs it with `--keep`** right after `dck herdr add` (as do `dck rebuild`,
   `dck start` and `dck restart`).
-  `[herdr] layout = "none"` in dck.toml turns that off.
+  `[herdr] layout = "none"` in dck.toml turns that off. The layout needs the
+  container's own Herdr server, which starts only when the host Herdr attaches
+  the machine (often 15–75 s after the container is up): `dck up` waits for it
+  up to `DCK_HERDR_LAYOUT_WAIT` seconds (default 60) while the host's Herdr
+  runs, and otherwise skips the layout with a note to run `dck herdr layout`
+  once Herdr shows the machine connected.
 - **`--keep` never rearranges your work:**
   - a "Home" workspace from an earlier version is renamed App;
   - Development is split only when it has exactly one pane, so a layout

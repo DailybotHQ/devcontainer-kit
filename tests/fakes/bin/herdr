@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Fake herdr CLI. Logs argv; machines live in $DCK_FAKE_STATE/herdr_machines
-# (the JSON array `herdr machine list --json` prints).
+# (the JSON array `herdr machine list --json` prints). `herdr status server`
+# prints $DCK_FAKE_STATE/herdr_status_server (default "status: running") and
+# exits 0 either way, as Herdr 0.9.3 does.
 printf 'herdr %s\n' "$*" >> "${DCK_FAKE_LOG:-/dev/null}"
 exec python3 - "${DCK_FAKE_STATE:-/tmp}/herdr_machines" "$@" <<'PY'
 import hashlib, json, os, sys
@@ -15,6 +17,10 @@ def find(mid):
     sys.stderr.write("machine %s not found\n" % mid); sys.exit(1)
 if args[:1] == ["--version"]:
     print("herdr 0.9.3"); sys.exit(0)
+if args[:2] == ["status", "server"]:
+    p = os.path.join(os.path.dirname(db), "herdr_status_server")
+    sys.stdout.write(open(p).read() if os.path.exists(p) else "status: running\nversion: 0.9.3\n")
+    sys.exit(0)
 if args[:1] != ["machine"]:
     sys.exit(0)
 cmd, rest = args[1], args[2:]
@@ -30,8 +36,11 @@ if cmd == "add":
                      "enabled": True, "selected": False})
     save(); print("saved machine %s" % mid); sys.exit(0)
 if cmd == "rename":
-    label = rest[rest.index("--label") + 1]
-    find(rest[-1])["label"] = label; save(); sys.exit(0)
+    # Herdr 0.9.3 takes the id first and rejects `rename --label <label> <id>`
+    # (the order its --help prints).
+    if len(rest) != 3 or rest[0].startswith("-") or rest[1] != "--label":
+        sys.stderr.write("usage: herdr machine rename <profile-id> --label <label>\n"); sys.exit(2)
+    find(rest[0])["label"] = rest[2]; save(); sys.exit(0)
 if cmd in ("enable", "disable"):
     find(rest[0])["enabled"] = cmd == "enable"; save(); sys.exit(0)
 if cmd == "remove":
