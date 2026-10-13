@@ -122,9 +122,12 @@ test_node_fixture_end_to_end() {
   # The apply path is the same on Linux (where dck skips the mesh: peers are unreachable there).
   DCK_HOST_OS=Darwin d herdr mesh
   assert_rc 0 "dck herdr mesh applies the peer list inside"
-  dev shell -c 'test -f ~/.ssh/config.d/dck-peers && head -1 ~/.ssh/config; herdr-peers --help >/dev/null && echo peers-ok; command -v dck-herdr-layout; ls ~/.agents/skills; echo "owner:$(stat -c %U ~/.agents)"'
+  dev shell -c 'test -f ~/.ssh/config.d/dck-peers && head -1 ~/.ssh/config; herdr-peers --help >/dev/null && echo peers-ok; herdr-peers --version; command -v dck-herdr-layout; ls ~/.agents/skills; echo "owner:$(stat -c %U ~/.agents)"'
   assert_contains "$RUN_OUT" "Include config.d/dck-peers" "the peers ssh config is included"
   assert_contains "$RUN_OUT" "peers-ok" "herdr-peers runs inside"
+  local ptag; ptag="$(sed -n 's/^HERDR_PEERS_TAG=//p' "$DCK_REPO/images/versions.env")"
+  ptag="${ptag#v}"
+  assert_match "$RUN_OUT" "^herdr-peers ${ptag//./\\.} " "herdr-peers inside is the pinned v$ptag"
   assert_contains "$RUN_OUT" "/usr/local/bin/dck-herdr-layout" "the layout script is installed"
   assert_contains "$RUN_OUT" "herdr-peers" "the herdr-peers skill is linked for the agents"
   local skill
@@ -373,11 +376,14 @@ test_python_fixture() {
   with_lock dev up
   assert_rc 0 "dev.sh up builds and starts the python fixture"
   local dtag; dtag="$(sed -n 's/^DWP_VIM_TAG=//p' "$DCK_REPO/images/versions.env")"
-  dev shell -c 'python3 --version; uv --version >/dev/null && echo uv-ok; git -C ~/.config/nvim describe --tags; herdr-peers --help >/dev/null && echo peers-ok; command -v ak || echo no-ak'
+  dev shell -c 'python3 --version; uv --version >/dev/null && echo uv-ok; git -C ~/.config/nvim describe --tags; herdr-peers --help >/dev/null && echo peers-ok; herdr-peers --version; command -v ak || echo no-ak'
   assert_match "$RUN_OUT" '^Python 3\.13' "the python runtime is the flavour's"
   assert_contains "$RUN_OUT" "uv-ok" "uv is installed"
   assert_contains "$RUN_OUT" "$dtag" "nvim is DeepWorkPlan Vim $dtag"
   assert_contains "$RUN_OUT" "peers-ok" "herdr-peers runs inside"
+  local ptag; ptag="$(sed -n 's/^HERDR_PEERS_TAG=//p' "$DCK_REPO/images/versions.env")"
+  ptag="${ptag#v}"
+  assert_match "$RUN_OUT" "^herdr-peers ${ptag//./\\.} " "herdr-peers inside is the pinned v$ptag"
   assert_contains "$RUN_OUT" "no-ak" "without the agents layer, no coding-agent kit is installed"
   run_cmd docker volume ls -q --filter "label=com.docker.compose.project=$IT_PROJECT"
   assert_contains "$RUN_OUT" "${IT_PROJECT}_state-py" "[compose] state_volume names the state volume"

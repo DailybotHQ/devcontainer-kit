@@ -43,7 +43,31 @@ test_tools_pinned_with_checksums() {
   assert_match "$(pin DWP_VIM_COMMIT)" '^[0-9a-f]{40}$' "deepworkplan-vim's tag is bound to a commit"
   assert_match "$(pin DWP_VIM_INSTALLER_SHA256)" '^[0-9a-f]{64}$' "deepworkplan-vim's installer has a SHA-256"
   assert_match "$(pin AGENTKIT_TAG)" '^v[0-9]+\.[0-9]+\.[0-9]+$' "the agents layer pins coding-agents-kit by tag"
+  assert_match "$(pin HERDR_PEERS_TAG)" '^v[0-9]+\.[0-9]+\.[0-9]+$' "herdr-peers is pinned to a release tag"
+  assert_match "$(pin HERDR_PEERS_SUMS_SHA256)" '^[0-9a-f]{64}$' "herdr-peers' release SHA256SUMS has a SHA-256"
   assert_match "$(pin DAILYBOT_CLI_WHEEL_SHA256)" '^[0-9a-f]{64}$' "the dailybot layer pins the CLI wheel hash"
+}
+
+# The repository's own container (rendered by `bin/dck init --repo .`) carries
+# the current pins and build steps: a pin bump without a re-render would leave
+# the dogfood image on the old versions.
+test_repository_container_is_current() {
+  local dck="$DCK_REPO/docker/local/app/dck" f b src
+  assert_eq "$(cat "$dck/versions.env")" "$(cat "$IMG/versions.env")" "docker/local/app/dck/versions.env equals images/versions.env"
+  assert_eq "$(cat "$dck/VERSION")" "devcontainer-kit v$(cat "$DCK_REPO/VERSION")" "the repository's container is rendered with this version"
+  local n=0
+  for f in $(cd "$DCK_REPO" && find docker/local/app/dck -type f ! -name '*.dck-bak-*' | sort); do
+    b="${f#docker/local/app/dck/}"
+    case "$b" in
+      VERSION|versions.env) continue ;;
+      entrypoint.sh) src="$DCK_REPO/lib/entrypoint.sh" ;;
+      layers/*) src="$DCK_REPO/lib/$b" ;;
+      *) src="$IMG/common/$b" ;;
+    esac
+    assert_eq "$(cmp -s "$DCK_REPO/$f" "$src" && echo same)" "same" "$f equals its source"
+    n=$((n + 1))
+  done
+  [ "$n" -ge 10 ] && pass "every build file of the repository's container is compared ($n)" || fail "only $n build files found under docker/local/app/dck"
 }
 
 test_every_download_is_verified() {
