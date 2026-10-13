@@ -2,7 +2,7 @@
   "addons": {
     "ai-diff-reviewer": {
       "enabled": true,
-      "version": "v3.3.11"
+      "version": "v3.3.12"
     },
     "devcontainer": {
       "enabled": true,
