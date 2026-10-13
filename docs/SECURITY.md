@@ -4,7 +4,8 @@ devcontainer-kit writes a container setup into repositories, runs a root
 entrypoint, builds images from the network and wires SSH between your host and
 your containers. This document states what it defends, how, and what it
 deliberately does not. Every default below is asserted by the `security` test
-scope (plus the `images`, `entrypoint`, `launcher` and `herdr` scopes).
+scope (plus the `images`, `template`, `entrypoint`, `launcher`, `agents`, `sshkeys`
+and `herdr` scopes).
 
 ## Threat model
 
@@ -18,12 +19,12 @@ in your images, and your Herdr machines.
 | --- | --- | --- |
 | you → dck on your host | yes | dck acts with your permissions, inside the write scope below |
 | the repository's files → dck | **no** — you may run dck on a repository you just cloned | dck parses them (JSONC, TOML, compose); never writes or reads secrets through a symlink they plant; never imports a module from them; never forwards your agent to an address they choose |
-| the repository's container configuration → your Docker daemon | **only after review** | `up`/`start`/`build`/`rebuild` hand the repository's compose file and `devcontainer.json` to Docker (and the devcontainer CLI). Anything in them that reaches the host — `initializeCommand`, `privileged`, `cap_add`, host namespaces, devices, the Docker socket, bind mounts outside the repository, a compose file outside it, in devcontainer.json's list or given with `--compose-file` — is refused until you pass `--trust` (or `DCK_TRUST=1`). dck-rendered setups contain none of these. Treat `--trust` like "trust this folder" in an editor |
+| the repository's container configuration → your Docker daemon | **only after review** | `up`/`start`/`restart`/`build`/`rebuild` hand the repository's compose files and `devcontainer.json` to Docker (and the devcontainer CLI). Anything in them that reaches the host — `initializeCommand`, `privileged`, `cap_add`, `security_opt`, host namespaces, devices, the Docker socket, bind mounts outside the repository, a compose `.env` that sets `DCK_HOST_SSH_AUTH_SOCK`, a compose file outside the repository — is refused until you pass `--trust` (or `DCK_TRUST=1`). The files checked are the ones compose runs: devcontainer.json's list, or the files given with `--compose-file` (PRIMARY mode and satellites), which replace it. dck-rendered setups contain none of these. Treat `--trust` like "trust this folder" in an editor |
 | the repository → its own container | yes, by design | the container exists to run the repository's code; its hook and its Dockerfile run there, with the dev user's sudo |
 | the container → your host | **no** | the container reaches the host through what you publish (loopback ports) and through your SSH agent: forwarded on the sessions you open, and — with `ssh_agent = true`, the default — its socket mounted for the container's lifetime. Code in the container can *use* the agent's keys (sign, never read them) while it runs: for git that is the point; for sensitive keys use `ssh-add -c` (confirm each use) or set `ssh_agent = false`. With the host as a mesh peer (`[host] machine = true`) that also means a shell on the host — see the next row |
 | a dck container → your host's shell | **only with the host listener (opt-in)** | `dck host listener enable` (or a yes to the one question `dck setup` asks) runs a user-level sshd on **127.0.0.1** only (default port 22033, its own ed25519 host key, `AllowUsers` you, no passwords, no PAM, no root, no TCP forwarding (`PermitOpen none`), no agent forwarding, no `~/.ssh/rc`, only the local stream forward Herdr's client uses) that authorizes **only the dck key** (`no-agent-forwarding,no-X11-forwarding,no-user-rc`), kept alive by a launchd agent. While it runs, any process that can use the dck key through your agent — code in any running dck container with the agent socket — can open a shell on your host as you. That is what lets agents inside answer agents on the host. Turn it off with `dck host listener disable` (removes the launchd agent and its files), `[host] machine = false`, `ssh_agent = false` per repository, or `ssh-add -d ~/.config/dck/ssh/id_ed25519`. With `listener = "external"` dck reuses a listener you already run and writes nothing on the host; with `"remote-login"` it relies on the system sshd and your own `authorized_keys` |
 | one dck container → another dck container | **only through the mesh** | `[herdr] mesh = true` (the default; Docker Desktop only) loads the dck key into your agent so agents inside can ask agents in the other containers. Every container with the agent socket can then log in to every other dck container (they all authorize the dck key) and read what it holds (`.env`, logins). Only run untrusted repositories with `mesh = false` and `ssh_agent = false`, and remove the key from the agent (`ssh-add -d ~/.config/dck/ssh/id_ed25519`). The mesh never forwards the agent further (`ForwardAgent no`) |
-| a dck container → your agent accounts | **only with `[agents] host_profiles` (opt-in, host profile)** | off by default, and only your host profile can turn it on — a repository's `dck.toml` cannot. When on, `dck up` binds into the container the host's ak profiles of the CLIs the repository installs (optionally only those `host_profile_names` lists), the host's Codex home, and an env file read-only with only the Claude tokens of the shared profiles and the names you list; read-write only where the CLI writes. Code in the container can then act as you on those accounts and read those credentials while it runs. See [Host accounts](#host-accounts-agents-host_profiles) |
+| a dck container → your agent accounts | **only with `[agents] host_profiles` (opt-in, host profile)** | off by default, and only your host profile can turn it on — a repository's `dck.toml` cannot. When on, `dck up` binds into the container the host's ak profiles of the CLIs the repository wires (optionally only those `host_profile_names` lists), the host's Codex home, and an env file read-only with only the Claude tokens of the shared profiles and the names you list; read-write only where the CLI writes. Code in the container can then act as you on those accounts and read those credentials while it runs. See [Host accounts](#host-accounts-agents-host_profiles) |
 | a dck container → your SSH private keys | **only with `[ssh] copy_keys` (opt-in, host profile)** | off by default, and only your host profile can turn it on — a repository's `dck.toml` cannot. When on, `dck up` binds your **whole** `~/.ssh` read-only into the container, so while it is on every file there — not only the `id_*` keys: `config`, `known_hosts`, any other key or file you keep there — is readable by processes inside. Every start also copies the `id_*` keys, **private ones included**, into the container's `~/.ssh` on its state volume. Code in the container can then read those keys and use them anywhere, after the container stops too, for as long as the copies exist. See [Host SSH keys](#host-ssh-keys-ssh-copy_keys) |
 | other machines on your network → the container | **no** | nothing listens beyond 127.0.0.1 unless `bind` says so |
 | the network → the image build | **no** | every base-image download is pinned and checksum-verified; the opt-in layers install coding-agents-kit from its sha256-verified release tarball and resolve the Dailybot CLI's dependencies with uv (see Supply chain) |
@@ -285,8 +286,8 @@ host profile is escalated to the developer, who accepts it once per profile
 
 ### Auth volumes per project
 
-Named volumes (`state`, one per coding-agent CLI, `agentkit`) are declared by
-compose without `external`, so compose prefixes them with the project name:
+Named volumes (`state`, or the name `[compose] state_volume` sets; one per
+coding-agent CLI; `agentkit`) are declared by compose without `external`, so compose prefixes them with the project name:
 logins in one repository's container are not shared with another's. Sharing is
 possible only by an explicit edit outside the managed blocks.
 
@@ -294,14 +295,18 @@ possible only by an explicit edit outside the managed blocks.
 
 - Base images pinned by tag **and** digest; gh, Herdr, Neovim and (for the
   agents layer) Node pinned by version **and SHA-256** per architecture;
-  deepworkplan-vim by tag, commit **and** installer SHA-256; uv and the
-  Dailybot CLI wheel by version and SHA-256 — all in one file,
+  deepworkplan-vim by tag, commit **and** installer SHA-256; herdr-peers by tag
+  and the SHA-256 of its release `SHA256SUMS` (every installed file checked
+  against it, in the images and for `dck host peers install`); the
+  coding-agents-kit tarball by tag **and** SHA-256; uv and the Dailybot CLI
+  wheel by version and SHA-256 — all in one file,
   `images/versions.env`. A `fetch()` verifies every download before use (the
   editor's installer is downloaded, verified, then run — never piped into a
   shell).
-- Repositories pin the base image by digest in compose (`dck init` resolves
-  it); `dck doctor` reports a tag-only pin and a local image that differs from
-  the pin.
+- Repositories pin the base image by digest in the rendered Dockerfile
+  (`ARG BASE_IMAGE`, resolved by `dck init`); `dck doctor` reports a tag-only
+  pin, and `docker/local/<service>/dck/` files that differ from the installed
+  kit's.
 - GitHub Actions are pinned by commit SHA. Only the image workflow can write
   packages. Images are built with provenance and an SBOM.
 - Known limits: the Neovim checksums were computed at pin time (the release
@@ -312,9 +317,9 @@ possible only by an explicit edit outside the managed blocks.
   the same plugin commits; those commits are fetched from each plugin's
   upstream repository and verified by commit hash, not by a separate checksum
   or signature; Debian's `nodejs`/`npm` in `python-3.13` and `debian` come
-  from the distribution's signed archive; coding-agents-kit is
-  pinned by tag (its installer then installs each CLI through the vendor's
-  channel); the Dailybot CLI's dependencies are resolved by uv at build time.
+  from the distribution's signed archive; coding-agents-kit itself is
+  verified, but its installer then installs each CLI through the vendor's
+  channel; the Dailybot CLI's dependencies are resolved by uv at build time.
 
 ### `dev.sh` without dck
 
@@ -361,8 +366,14 @@ Variables that swap a binary or answer a prompt in tests (`DCK_HOST_SSHD`,
   project's services.
 - No `eval` of command output in the shell code; values from the python side
   are read line by line into an allow-listed set of variables.
-- The compose overlay lives in a 0700 directory dck must own (a planted or
-  symlinked directory is refused) and is written 0600.
+- The compose overlay (and the `-agents`, `-sshkeys` and `-clis` overlays next
+  to it) lives in a 0700 directory dck must own (a planted or symlinked
+  directory is refused) and is written 0600.
+- `dck up` inspects an existing image under the service's tag before reusing
+  it: one without dck's `DCK_IMAGE_VERSION` or `dck-entrypoint` (built by
+  something else, with its own entrypoint), or built by another dck version
+  than the repository's render, is rebuilt and its container replaced, with a
+  note naming the image and why.
 - `dck init` refuses `$HOME` and `/`; `install.sh` refuses to replace a
   directory that is not a dck install.
 
@@ -380,7 +391,7 @@ Variables that swap a binary or answer a prompt in tests (`DCK_HOST_SSHD`,
 | `--trust` is per invocation | an explicit, reviewable decision each time a host-reaching configuration is started |
 | The host listener is opt-in, asked once | a shell on your host from any dck container is a real widening; the question says so, the answer is recorded in your profile, and `dck host listener disable` undoes it |
 | `[ssh] copy_keys` is off by default and host-only | private keys at rest in a container's volume are readable by everything that runs there; you choose it once in your host profile (`dck setup` asks), a repository can never ask for it, and turning it off removes the copies |
-| `[agents] host_profiles` is off by default and host-only | sharing your agent accounts with a container is a real widening; you turn it on once in your host profile, a repository can never ask for it, and only the CLIs that repository installs are shared |
+| `[agents] host_profiles` is off by default and host-only | sharing your agent accounts with a container is a real widening; you turn it on once in your host profile, a repository can never ask for it, and only the CLIs that repository wires are shared |
 | The mesh is on by default | agents inside a container asking agents in the other containers is the point of the Herdr integration; with it, every dck container can log in to the others (see the trust boundaries). Untrusted repositories: `[herdr] mesh = false`, `ssh_agent = false` |
 
 ## Coding agents

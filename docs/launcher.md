@@ -6,7 +6,7 @@ launchers: one tool, no repository known by name, everything read from the
 repository it runs in.
 
 ```
-dck [--repo DIR] [--profile NAME] [--project NAME] <verb> [args]
+dck [--repo DIR] [--profile NAME] [--project NAME] [--trust] <verb> [args]
 dck [--project NAME] --compose-file F... <verb> [args]                      # PRIMARY mode
 dck --project NAME --compose-file F... --service S <verb> [args]           # a satellite
 ```
@@ -21,8 +21,8 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
 | Verb | What it does |
 | --- | --- |
 | `init [flags]` | render or reconcile the template ([init.md](init.md)) |
-| `setup` | create each `docker/local/**/.env` from its `.env.example` at **0600** (an existing readable one is narrowed to 0600, loudly), create missing external networks, create the dedicated dck SSH key; with Herdr on the host, install a verified herdr-peers for it and, once on a terminal (macOS), offer the host listener ([herdr.md](herdr.md)) |
-| `up [--recreate] [svc…]` | start `runServices`, detached. A second `up` leaves running containers alone; `--recreate` applies compose changes. An image under the dev service's tag that dck did not build (no `DCK_IMAGE_VERSION` or `dck-entrypoint`: a pre-dck image left by older tooling) or built by another dck version than the render is rebuilt first and its container replaced. Registers the Herdr machine afterwards when `dck.toml` says so ([herdr.md](herdr.md)) |
+| `setup` | create each `docker/local/**/.env` from its `.env.example` at **0600** (an existing readable one is narrowed to 0600, loudly), write your host git identity into each service `.env` as `DCK_GIT_*` where a key is absent (SSH signing only), warn when your ssh-agent holds no key, create missing external networks, create the dedicated dck SSH key; once on a terminal, ask whether to copy your SSH keys inside (`[ssh] copy_keys`, [config.md](config.md)); with Herdr on the host, install a verified herdr-peers for it and, once on a terminal (macOS), offer the host listener ([herdr.md](herdr.md)) |
+| `up [--recreate] [svc…]` | start `runServices`, detached. A second `up` leaves running containers alone; `--recreate` applies compose changes. An image under the dev service's tag that dck did not build (no `DCK_IMAGE_VERSION` or `dck-entrypoint`: a pre-dck image left by older tooling) or built by another dck version than the render is rebuilt first and its container replaced. Afterwards: your git SSH aliases and git identity are pushed inside, and the Herdr machine is registered when `dck.toml` says so ([herdr.md](herdr.md)). Satellites also take `--seed-state-from VOLUME` and `--label TEXT` (below) |
 | `down [svc…]` | stop and remove this repository's services — never `compose down`; named volumes and the project network are kept (the next `up` reuses them). With `[herdr] machine`, the Herdr machine and SSH alias `up` registered are removed with the dev service (the next `up` registers them again). To retire a repository completely: `docker volume rm <project>_state …` and `docker network rm <project>_default` |
 | `stop` / `start` / `restart` `[svc…]` | as compose; `stop` skips the environment checks so a stack can always be stopped; `start` and `restart` then run the same post-start steps as `up` (below) |
 | `ps [svc…]` | the repository's containers |
@@ -40,7 +40,7 @@ python3 ≥ 3.11 and, for the container verbs, Docker with Compose v2.
 | `host peers install\|status` | herdr-peers for the host, verified against its release `SHA256SUMS`; used by `agents` and `ask` |
 | `agents`, `ask <machine>:<pane> "<prompt>"` | herdr-peers `list` / `ask` from the host |
 | `herdr layout [--keep\|--reset]` | the standard sidebar inside: App · Editor · Development · Agents ([herdr.md](herdr.md)) |
-| `--skill`, `--version`, `help` | the bundled agent skill, the version, usage |
+| `--skill [dck-dockerfile]`, `--version`, `help [init]` | the bundled agent skill (`dck`, or the named one), the version, usage (`dck help init`: the `init` flags) |
 
 ## Workspace satellites
 
@@ -60,7 +60,9 @@ dck --project acme-ws1 --compose-file ... --service apisatellite down   # it and
 ```
 
 - `--project` is required with `--service`: a satellite never runs in the main
-  service's project, and nothing of the main service is touched.
+  service's project, and nothing of the main service is touched. A satellite takes
+  `up`, `down`, `ps`, `logs`, `shell`, `exec`, `ssh`, `stop`, `start`, `restart`,
+  `config` and `herdr`; another verb is a usage error.
 - `--compose-file` (repeatable) replaces the compose file set; without it, the
   repository's files are used. The preflight checks the given files: one that reaches
   the host, or lies outside the repository, needs `--trust`.
@@ -121,8 +123,9 @@ the running image installed and says `rebuild needed: dck rebuild` when they dif
   `mounts` and `containerEnv` in a private overlay
   (`$TMPDIR/dck-<uid>/<project>-overlay.yml`, 0600, in a 0700 directory dck
   must own — a planted or symlinked directory is refused). `DCK_BACKEND=compose|devcontainer`
-  forces one; `--project`, `--compose-file` and a developer CLI list that is not
-  dck.toml's always use compose.
+  forces one; `--project`, `--compose-file`, `[agents] host_profiles`,
+  `[ssh] copy_keys` and a developer CLI list that is not dck.toml's use compose
+  (their runtime overlays are compose files the devcontainer CLI never reads).
 - **Never `--remove-orphans`.** A compose project may be shared or declare
   on-demand services; the flag would delete containers someone else uses.
 - **Never the directory-name default project.** The project name comes from
@@ -131,10 +134,11 @@ the running image installed and says `rebuild needed: dck rebuild` when they dif
   `dck init` writes). Otherwise dck refuses (exit 5): compose would otherwise
   build a second, parallel stack next to the editor's.
 - **The repository's container configuration is reviewed before it runs.**
-  `up`, `start`, `build` and `rebuild` refuse (exit 5) a configuration that
+  `up`, `start`, `restart`, `build` and `rebuild` refuse (exit 5) a configuration that
   reaches the host — `initializeCommand`, `privileged`, `cap_add`, host
   namespaces, devices, the Docker socket, bind mounts or compose files outside
-  the repository — and list what they found. Re-run with `--trust` (or
+  the repository, a compose `.env` that sets `DCK_HOST_SSH_AUTH_SOCK` — and list
+  what they found (with `--compose-file`, in the files given). Re-run with `--trust` (or
   `DCK_TRUST=1`) after reading it. dck-rendered setups never trigger it.
 - **Your agent only goes to loopback.** `dck ssh` (and Herdr) connect to
   `127.0.0.1` whatever `bind` says, and refuse a `bind` that is not loopback or
@@ -156,11 +160,12 @@ entrypoint). `dck ssh` connects to `127.0.0.1:<ssh_port>` with:
   the persistent key's public half through `docker exec` and writes it under the
   alias. The key survives rebuilds on the `state` volume; when that volume was
   removed, the new key is re-pinned with a note instead of refused;
-- `-o StrictHostKeyChecking=accept-new` — only for an image older than v0.3.1
-  (no key helper): trusted on first use, a *changed* key refused, with the exact
+- `-o StrictHostKeyChecking=accept-new` — it matters only for an image older than
+  v0.3.1 (no key helper): trusted on first use, a *changed* key refused, with the exact
   `ssh-keygen -R` fix;
-- `-o UserKnownHostsFile=~/.config/dck/ssh/known_hosts` — your
-  `~/.ssh/known_hosts` does not grow a line per container.
+- `-o HostKeyAlias=<alias> -o UserKnownHostsFile=~/.config/dck/ssh/known_hosts` —
+  keyed by the repository's alias, not host and port, so a reused port never collides;
+  your `~/.ssh/known_hosts` does not grow a line per container.
 
 ## Exit codes
 
@@ -181,8 +186,10 @@ entrypoint). `dck ssh` connects to `127.0.0.1:<ssh_port>` with:
 | `DCK_PROFILE` | host profile name (same as `--profile`) |
 | `DCK_CONFIG_HOME` | config directory (default `$XDG_CONFIG_HOME/dck` or `~/.config/dck`) |
 | `DCK_PYTHON` | the python3 ≥ 3.11 to use |
-| `DCK_NO_DIGEST=1` | `dck init` skips the digest lookup |
 | `DCK_NONINTERACTIVE=1` | never prompt (as if stdin were not a terminal) |
+| `DCK_AGENT_CLIS`, `INSTALL_<CLI>_CLI` | the coding-agent CLIs your image installs ([config.md](config.md#each-developers-coding-agent-clis)); also read from `docker/local/.env` |
+| `DCK_HOST_SSH_AUTH_SOCK` | the host path mounted as the container's SSH agent; dck sets it per Docker provider when unset |
+| `DCK_INSTALL_DIR` | where `install.sh` installs and `dev.sh` looks for dck (default `~/.local/share/dck`) |
 | `COMPOSE_PROJECT_NAME` | project name (see above) |
 | `DCK_TRUST=1` | same as `--trust` (start a configuration that reaches the host) |
 | `DCK_SSH_CONFIG` | `dck ssh` passes `-F <file>` (e.g. `/dev/null` to ignore `~/.ssh/config`) |
@@ -209,21 +216,26 @@ install.
 | `bash dev.sh …` | runs |
 | --- | --- |
 | `up` | `dck setup`, then `dck up` |
-| `down`, `shell`, `exec`, `build`, `rebuild`, `logs`, `ps`, `doctor`, `ssh`, `setup` | the same `dck` verb |
+| `down`, `shell`, `exec`, `build`, `rebuild`, `logs`, `ps`, `doctor`, `ssh`, `setup` | the same `dck` verb (`up`, `build` and `rebuild` repeat a refusal, exit 5, on stdout too) |
 | `herdr [add\|status\|repair\|remove\|mesh]` | `dck herdr …` (default `add`) |
+| `herdr-layout [--keep\|--reset]` | `dck herdr layout …` |
 | `agents` | `dck agents` (herdr-peers list) |
 | `ask <machine>:<pane> "<prompt>"` | `dck ask …` (herdr-peers ask) |
-
+| `help` | the commands |
 | `install-dck` | installs devcontainer-kit on this host: clones the tag it was rendered with, verifies every shipped file against that release's `SHA256SUMS`, runs `install.sh --no-rc` (dck needs python3 >= 3.11) |
 
 `dev.sh` finds `dck` on `PATH`, then in `${DCK_INSTALL_DIR:-~/.local/share/dck}/bin`.
 When it is not installed, **Docker alone is enough** for the container verbs:
 `up`, `down`, `shell`, `exec`, `build`, `rebuild`, `logs` and `ps` run on plain
-`docker compose -f docker/local/docker-compose.yaml`, with the rendered service,
-user and workspace. That fallback creates missing `.env` files from their
-examples (umask 077), passes `$SSH_AUTH_SOCK` as `DCK_HOST_SSH_AUTH_SOCK` on a
-Linux host, and does not run `docker/local/dev-setup-hook.sh` itself (the
-container's entrypoint runs it at every start). For volumes dck created, plain
+`docker compose -p <project> -f docker/local/docker-compose.yaml`, with the rendered
+project, service, user and workspace (`exec <cmd…>` runs in the main service; `down`
+is compose's own `down`). That fallback creates missing `.env` files from their
+examples (umask 077, never through a symlink or over an existing file), runs a
+preflight mirroring dck's before `up`, `build` and `rebuild` (`DCK_TRUST=1` starts a
+configuration that reaches the host), passes `$SSH_AUTH_SOCK` as
+`DCK_HOST_SSH_AUTH_SOCK` on a Linux host, and does not run
+`docker/local/dev-setup-hook.sh` itself (the container's entrypoint runs it at every
+start). For volumes dck created, plain
 compose prints a harmless `volume ... already exists but was not created by
 Docker Compose` warning. The dck-only verbs (`doctor`, `ssh`, `setup`,
 `herdr`, `herdr-layout`, `agents`, `ask`) print the pinned install steps and

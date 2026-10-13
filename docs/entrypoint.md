@@ -1,6 +1,7 @@
 # Entrypoint library
 
-`lib/entrypoint.sh` is baked into every base image at
+`lib/entrypoint.sh` is vendored by `dck init` into `docker/local/<service>/dck/` and
+copied into the repository's image (and every published base image) at
 `/usr/local/lib/dck/entrypoint.sh`. The image's entrypoint,
 `/usr/local/bin/dck-entrypoint`, sources it, runs **`dck_start`** as root and
 then `exec`s the container command (`sleep infinity` by default). One
@@ -18,8 +19,11 @@ Set by the compose file `dck init` renders ([init.md](init.md)):
 | --- | --- | --- |
 | `DCK_USER` | `dev` | the user whose home is managed |
 | `DCK_HOME` | that user's home | |
-| `DCK_WORKSPACE` | `/app` (dck.toml `workspace`) | the repository mount; Herdr opens every workspace and new pane here |
+| `DCK_WORKSPACE` | `/workspace` (the rendered compose passes dck.toml `workspace`, default `/app`) | the repository mount; Herdr opens every workspace and new pane here |
 | `DCK_SSH` | `0` | `1` starts sshd (`ssh_port` ≠ 0 in `dck.toml`) |
+| `DCK_AGENTS` | empty | the wired CLIs (`[agents] clis`, or every CLI in `[agents] supported` in the advanced mode), installed or not: their homes go on their volumes and `dck_agent_trust` / `dck_codex_config` act on them |
+| `AGENTKIT_PROFILES_DIR` | `$DCK_PERSIST_ROOT/agentkit/profiles` | where ak keeps its profiles; with `[agents] host_profiles` the overlay points it at `~/.dck/host/agentkit/profiles` |
+| `DCK_GIT_NAME`, `DCK_GIT_EMAIL`, `DCK_GIT_SIGNINGKEY`, `DCK_GIT_GPG_FORMAT`, `DCK_GIT_COMMIT_GPGSIGN` | empty | a git identity from the service's `.env`; each wins over the host's for its key (`dck_git_identity`) |
 | `DCK_AUTHORIZED_KEYS` | empty | public key(s) to authorize; `dck up` passes the dedicated dck key |
 | `DCK_PERSIST_ROOT` | `$DCK_HOME/.dck/volumes` | where named volumes are mounted, one directory per volume |
 | `DCK_REPO_HOOK` | `$DCK_WORKSPACE/docker/local/dev-setup-hook.sh` | the repository hook |
@@ -61,6 +65,28 @@ given, for the one user meant to have them:
   `DCK_AUTHORIZED_KEYS` are left out;
 - values are never printed: only the number of variables is logged.
 
+### `dck_layer_persist`
+
+For each kind in `DCK_AGENTS`, links the CLI's homes onto the volume of the same
+name with `dck_persist` (the table in [layers.md](layers.md#agents); antigravity:
+`~/.gemini`), `~/.config/agentkit` onto the `agentkit` volume, and creates the
+volume's `profiles/` directory. With `DCK_HOST_CODEX` set, `~/.codex` links to the
+host's Codex home instead (its volume keeps its contents). Unknown kinds are logged
+and skipped.
+
+### `dck_host_volume_profiles`
+
+With `[agents] host_profiles` on (`AGENTKIT_PROFILES_DIR` is
+`~/.dck/host/agentkit/profiles`), links `~/.dck/host/agentkit/profiles/<cli>` of every
+CLI in `DCK_AGENTS` but not in `DCK_HOST_PROFILES` (antigravity, cursor, a CLI with no
+host profile) to `<cli>/` on the `agentkit` volume (0700), so a profile created inside
+survives a recreate. A real directory found there (an image of v0.3.5 or earlier) is
+moved onto the volume entry by entry, never overwriting the volume's copy (the rest is
+kept as `.<cli>.dck-pre-volume-<UTC>`, logged by path); `dck up --recreate` and
+`dck rebuild` run this step inside the old container first. A shared CLI's directory,
+a mount point, a link pointing elsewhere or a symlinked volume directory is refused and
+left as is ([layers.md](layers.md#host-accounts)).
+
 ### `dck_sshd`
 
 When `DCK_SSH=1`: generates an **ed25519 host key once** into
@@ -98,6 +124,40 @@ overwriting your values: `onboarding = false`; `[terminal]` `default_shell`,
 missing; `[experimental] allow_nested = true` always (the container's Herdr
 runs inside the host's). Duplicate tables — invalid TOML that makes Herdr
 ignore the whole file — are merged. An unchanged file is not rewritten.
+
+### `dck_mesh_apply`
+
+Reads the peer list `dck herdr mesh` pushes on stdin (`peer`, `self`, `hostkey`,
+`disabled`, `catalog` lines; anything else is refused) and writes
+`~/.ssh/config.d/dck-peers` (`HostName host.docker.internal`, `ForwardAgent no`,
+`StrictHostKeyChecking yes`), `~/.ssh/known_hosts.dck-peers` and, with `catalog` lines,
+Herdr's saved machines as a copy of the host's catalog (`dck_mesh_catalog`). With
+`[herdr] mesh = false` recorded on the state volume (`dck_mesh_optout set|clear`) it
+reads and ignores the input. No private key is involved ([herdr.md](herdr.md)).
+
+### `dck_hostssh_apply`
+
+Reads the developer's own SSH aliases that `dck up` pushes on stdin (`pub`, `host`,
+`kh` lines): the public half of each key in `~/.ssh/dck-host-keys/`, one `Host` block
+per alias in `~/.ssh/config.d/dck-host` (`IdentityFile` is the `.pub`, so signing goes
+through the host's agent) and the host keys already trusted in
+`~/.ssh/known_hosts.dck-host`. Loopback hosts and malformed lines are refused.
+
+### `dck_ssh_agent_access` and `dck_herdr_agent_link`
+
+The host's SSH agent socket arrives at `/run/dck/ssh-agent.sock` root-owned;
+`dck_ssh_agent_access` gives the user's group access (a Linux host's own socket is
+left alone). `dck_herdr_agent_link` repoints Herdr's forwarded-agent link
+(`~/.config/herdr/herdr.sock.agent`) at that socket when it dangles; the login
+profile does the same per shell.
+
+### `dck_skills_link`
+
+Links each skill in `/usr/local/share/dck/skills` (herdr-peers, Herdr and, with the
+agents layer, `agentkit`, `agentkit-setup`, `agentkit-orchestrate`) into
+`~/.agents/skills`, `~/.claude/skills` and the skills directories of `~/.codex`,
+`~/.cursor` and `~/.config/opencode` that exist — never into the host's Codex home,
+never over a real directory you put there.
 
 ### `dck_repo_hook`
 
@@ -143,6 +203,12 @@ Codex home and host-shared profiles (`[agents] host_profiles`) are never written
 value the developer set is kept, and Codex's hooks are not touched: trusting them is a
 consent the developer gives on Codex's own screen.
 
+### `dck_git_identity`
+
+At every start, writes the `DCK_GIT_*` variables (above) into the user's global git
+config; signing settings only for `gpg.format=ssh` with a `key::` signing key. Values
+are never printed.
+
 ### `dck_git_identity_host`
 
 Reads `key=value` lines on stdin — `user.name`, `user.email`, and, when the host signs
@@ -170,14 +236,19 @@ The standard sequence:
 
 1. persist `~/.ssh`, `~/.config/gh`, `~/.config/dailybot`, `~/.config/herdr`, Herdr's saved
    machines (`~/.local/state/herdr/client`) and `~/.bash_history` on
-   the per-project `state` volume (and the agents layer's homes, see
-   [layers.md](layers.md));
-2. git identity, SSH agent access, `dck_ssh_copy_keys`, skills links (herdr-peers,
-   Herdr and, with the agents layer, coding-agents-kit's skills) and `dck_agent_trust`;
-3. `dck_herdr_config`;
+   the service's state volume (mounted at `~/.dck/volumes/state` whatever its compose
+   name, `[compose] state_volume`), then `dck_layer_persist` (the agents layer's homes
+   and `dck_host_volume_profiles`, see [layers.md](layers.md));
+2. `dck_git_identity`, `dck_ssh_agent_access`, `dck_ssh_copy_keys`, `dck_skills_link`,
+   `dck_agent_trust` and `dck_codex_config`;
+3. `dck_herdr_config` and `dck_herdr_agent_link`;
 4. `dck_env_profile`;
 5. `dck_sshd`;
 6. `dck_repo_hook`.
+
+The host pushes the rest after the start, through `docker exec`:
+`dck_git_identity_host`, `dck_hostssh_apply`, `dck_herdr_self`, `dck_mesh_apply` and
+`dck_host_key_pub`.
 
 ## Using it from your own entrypoint
 

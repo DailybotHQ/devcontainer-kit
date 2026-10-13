@@ -19,6 +19,9 @@ dck herdr repair    # fixes a client stuck on "reconnecting"
 dck herdr remove    # unregisters it and drops its SSH alias
 ```
 
+`dck down` does the same for the dev service: it removes the machine and the alias
+`dck up` registered, and the next `dck up` registers them again.
+
 ## Identity: the SSH alias
 
 The machine **is** its SSH alias, `<alias_prefix><repo-slug>` (`dck-myrepo`
@@ -46,6 +49,13 @@ and adds `Include config.d/dck` once at the top of `~/.ssh/config` (OpenSSH
 applies an `Include` before the first `Host` to every host). Herdr includes
 your SSH config, so `herdr machine add --label <label> dck-myrepo` reaches the
 container through it.
+
+A workspace satellite (`dck --project P --compose-file F… --service S up`,
+[launcher.md](launcher.md#workspace-satellites)) is its own machine: alias
+`dck-<project>-<service>`, label `<project> · <service>` (or `--label`), its sshd port
+read from compose; its `down` removes only that machine and alias. PRIMARY mode
+(`--compose-file` without `--service`) keeps the main service's alias, label and
+machine.
 
 - **Agent forwarding, never key copies.** The dedicated dck key
   (`~/.config/dck/ssh/id_ed25519`) only proves *you* to the container's sshd;
@@ -97,8 +107,10 @@ sessions keep running) and the include block.
 
 ## What dck never does
 
-- edit Herdr's own files (`~/.config/herdr`, `~/.local/state/herdr`, its
-  endpoint catalogs) — it only calls the `herdr` CLI;
+- edit the host's Herdr files (`~/.config/herdr`, `~/.local/state/herdr`, its
+  endpoint catalogs) — on the host it only calls the `herdr` CLI (inside a
+  container the entrypoint keeps Herdr's config and the mesh writes its saved
+  machines, below);
 - copy a private key into a container unless you opt in with `[ssh] copy_keys`
   (host profile; [SECURITY.md](SECURITY.md#host-ssh-keys-ssh-copy_keys)), or authorize
   "every `~/.ssh/*.pub`";
@@ -108,7 +120,7 @@ sessions keep running) and the include block.
 
 ## Inside the container
 
-The base images ship Herdr (pinned, `/usr/local/bin/herdr`, on the PATH of the
+Every image ships Herdr (**0.9.3**, pinned, `/usr/local/bin/herdr`, on the PATH of the
 non-login SSH session the Herdr client uses) and a seeded config with login
 shells, `new_cwd = <workspace>` and `allow_nested = true`, kept current by the
 entrypoint's `dck_herdr_config` ([entrypoint.md](entrypoint.md)).
@@ -117,10 +129,12 @@ entrypoint's `dck_herdr_config` ([entrypoint.md](entrypoint.md)).
 
 An agent in the container can list and ask Herdr agents on the host and in
 other dck containers, and get the reply back, through
-[herdr-peers](https://github.com/DailybotHQ/herdr-peers). The image installs
-it from its tag's source, verifying every file against that release's
-`SHA256SUMS`, which is itself pinned by sha256 in `versions.env`. Herdr's
-own skill, matching the pinned binary, is installed next to it. At every
+[herdr-peers](https://github.com/DailybotHQ/herdr-peers) (**v0.3.2**: asks, one-way
+notices and a plan's lead records). The repository's rendered image installs it
+(`dck/peers.sh`; `herdr-peers` on PATH) from its tag's source, verifying every file
+against that release's `SHA256SUMS`, which is itself pinned by sha256 in
+`versions.env`. Herdr's own skill, matching the pinned binary, is installed next to
+it. At every
 start the entrypoint links both skills into each agent's skill directory
 (`~/.agents/skills`, `~/.claude/skills`, and the others that exist).
 
@@ -231,13 +245,15 @@ standard sidebar:
 
 | Workspace | Content |
 | --- | --- |
-| **Home** | one shell (pane `home`), focused at the end |
+| **App** | one shell (pane `app`), focused at the end |
 | **Editor** | one shell (pane `editor`) |
 | **Development** | tab `Development`, split `server` \| `tests` |
 | **Agents** | tabs `Agent 1` … `Agent 4` |
 
 Every pane is a plain shell in the workspace directory. The layout starts no
-program: agents are started by you, or through `ak`.
+program: agents are started by you, or through `ak`. Both modes then close the
+workspace Herdr's server opened before the layout ran (named `~`, or after the app
+path) while it is still one pane with no agent.
 
 ```bash
 dck herdr layout           # with a TTY: ask whether to reset (default keep); without one: keep
@@ -250,11 +266,12 @@ bash dev.sh herdr-layout   # the same, from the repository
   `dck start` and `dck restart`).
   `[herdr] layout = "none"` in dck.toml turns that off.
 - **`--keep` never rearranges your work:**
+  - a "Home" workspace from an earlier version is renamed App;
   - Development is split only when it has exactly one pane, so a layout
     you arranged by hand stays as it is;
   - a tab whose presence cannot be read is skipped, never duplicated.
 - **`--reset` touches only the four standard workspaces** (and the legacy
-  "Home (~)"). It aborts, recreating nothing, when one of them cannot be
+  "Home" and "Home (~)"). It aborts, recreating nothing, when one of them cannot be
   closed.
 - **It runs inside the container,** as the container user, against the
   container's own Herdr server (`dck-herdr-layout`, installed by the

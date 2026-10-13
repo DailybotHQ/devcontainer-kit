@@ -193,7 +193,7 @@ x-dck-merge".
 | list | your items are appended after dck's | `volumes`, `env_file`, `ports`, `networks`, `extra_hosts`, `depends_on`, `cap_add` |
 | map | merged; your entry wins on the same key | `environment`, `labels` |
 | scalar | yours replaces dck's; `dck doctor` reports the override | `working_dir`, `init`, `user` |
-| replace-only keys | yours replaces dck's in **any** form (string, flow list `[...]` or block list), never appended; reported like a scalar | `command`, `entrypoint`, `healthcheck`, `build`, `image`, `restart` |
+| replace-only keys | yours replaces dck's in **any** form (string, flow list `[...]` or block list), never appended; reported like a scalar | `command`, `entrypoint`, `healthcheck`, `build`, `image`, `restart`, `platform`, `stop_signal` |
 
 Named volumes in `x-dck-merge.volumes` that are not dck's own (`logins`,
 `sqlite_volume` above) are declared once in the single top-level `volumes:`
@@ -309,11 +309,13 @@ out). Start it through dck instead ([launcher.md](launcher.md#workspace-satellit
       - "127.0.0.1:${API_WS_PORT:-8100}:8000"
     volumes: !override                # its own mounts: never the main state volume
       - ../..:/app:cached
-      - state:/home/dev/.dck/volumes/state
+      - state-api:/home/dev/.dck/volumes/state
 ```
 
-The satellite runs in its own compose project, so `state` there is
-`<satellite project>_state`, not the main one's.
+The satellite runs in its own compose project, so `state-api` there is
+`<satellite project>_state-api`, not the main one's (`acme-platform_state-api`). Name
+the volume the file declares (the service's `[compose] state_volume`); the mount point
+stays `~/.dck/volumes/state`.
 
 **What the repository's script calls** — instead of
 `docker compose -p <ws> -f … up -d apisatellite`:
@@ -359,7 +361,7 @@ repository's mode and its options ([config.md](config.md#each-developers-coding-
 
 A user block, a satellite or any hand-written part of the file that reaches the host —
 a bind mount outside the repository, `privileged`, `cap_add`, the Docker socket — makes
-`dck up`, `build` and `rebuild` stop with exit status 5 until you review it and pass
+`dck up`, `start`, `restart`, `build` and `rebuild` stop with exit status 5 until you review it and pass
 `--trust` (or `DCK_TRUST=1`). The reasons are printed on stderr; `bash dev.sh` also says
 so on **stdout** (`dev.sh: dck refused to up (exit 5) …`), so a script or tool that
 discards stderr still sees why nothing started. After reviewing:
@@ -392,6 +394,28 @@ presets = []          # subset of ["classic", "providers"]
 both `classic` and `providers` apply, as before; new renders write `presets = []`
 (no presets). See [layers.md](layers.md).
 
+## The agents' Node first: `[agents] node_first`
+
+```toml
+[agents]
+node_first = true     # off by default
+```
+
+When the image's `node` is older than the pinned major, the agents layer installs its
+own Node in `/opt/dck/node` and leaves the repository's `node` first on PATH. A
+repository whose own tooling needs that newer Node sets `node_first = true`: the
+rendered Dockerfile puts `/opt/dck/node/bin` first (`ENV PATH`, `DCK_NODE_FIRST=1`) and
+the login profile does the same for SSH and Herdr shells.
+
+## A repository's own `dev.sh`: `dev_sh = false`
+
+```toml
+dev_sh = false        # or: dck init --no-dev-sh
+```
+
+For a repository that already ships a `dev.sh` (often the stack's own script): `dck
+init` neither creates nor touches it. Call `dck` from that script instead.
+
 ## Security notes
 
 The user block is the repository's own compose content. dck merges it into the
@@ -400,9 +424,10 @@ compose content ([SECURITY.md](SECURITY.md)):
 
 - **Host-reaching keys need `--trust`.** Bind mounts of host paths outside the
   repository (the `../../..:/workspaces:ro` mount above is one), `privileged`,
-  `cap_add`, host namespaces, devices or the Docker socket make `up`, `start`, `build`
-  and `rebuild` refuse (exit 5) until you pass `--trust` (or `DCK_TRUST=1`) after
-  reading what they list.
+  `cap_add`, host namespaces, devices or the Docker socket make `up`, `start`,
+  `restart`, `build` and `rebuild` refuse (exit 5) until you pass `--trust` (or
+  `DCK_TRUST=1`) after reading what they list. With `--compose-file` (satellites,
+  PRIMARY mode) the files compose actually runs are the ones checked.
 - **Prefer read-only mounts** for shared sources (`:ro`): the container then reads
   sibling checkouts without being able to change them.
 - **`env_file` contents reach the container and its SSH sessions.** Every variable

@@ -12,7 +12,7 @@ the same rules and are checked against the validator by the test suite.
 Validate either by hand:
 
 ```bash
-dck config                                   # effective config of the current repo
+dck config                                   # what dck resolved for the current repo
 python3 -I lib/dckpy.py config validate .devcontainer/dck.toml
 python3 -I lib/dckpy.py config validate --kind profile ~/.config/dck/profile.toml
 ```
@@ -35,6 +35,7 @@ flavour = "node-24"            # python-3.13 | node-24 | debian (official image,
 # base_image = "node:22.20.0-trixie-slim@sha256:<64 hex>"   # optional override, digest required
 ssh_agent = true               # share the host's SSH agent (git over SSH); keys never enter
 ssh_host_config = true         # your git aliases from ~/.ssh/config inside, public keys only
+dev_sh = true                  # false: dck init never creates or touches dev.sh
 ssh_port = 22040               # loopback-only host port for Herdr; 0 = no sshd
 ports = { web = 4321 }         # named loopback ports
 [layers]
@@ -44,11 +45,13 @@ editor = true                  # nvim + deepworkplan-vim as the default editor
 [agents]
 clis = []                      # the CLIs wired and installed for everyone
 # supported = "all"            # advanced: wire every CLI, each developer chooses
+presets = []                   # ak alias presets: classic, providers ([] = none)
+# node_first = false           # the agents' own Node first on PATH
 [herdr]
 machine = true                 # register as a Herdr machine on `dck up`
 label = "{repo}"
 layout = "standard"            # the sidebar dck up creates inside: standard | none
-mesh = true                    # dck up runs `dck herdr mesh` (Docker Desktop only; docs/SECURITY.md)
+mesh = true                    # dck up runs `dck herdr mesh` (skipped on a Linux host; docs/SECURITY.md)
 [compose]
 state_volume = "state"         # this service's state volume; one per repository in a shared project
 # project = "acme-platform"    # the compose project name (default <prefix><repo-slug>)
@@ -77,12 +80,13 @@ other services' volumes and networks, port strings and satellites:
 | `ssh_port` | integer or string | `0` | `0` (no sshd) or 1024–65535; published on `bind` only. Also a string: the host port as a compose expression (`"${API_SSH_PORT:-22540}"`, rendered `"127.0.0.1:${API_SSH_PORT:-22540}:22"`); dck resolves it for `dck ssh`, Herdr and the doctor from the environment, then `docker/local/.env`, then the default |
 | `bind` | string | `127.0.0.1` | IPv4 address every published port binds to. Changing it exposes the container's ports beyond this machine — see [SECURITY.md](SECURITY.md). `dck ssh` and Herdr still connect only to 127.0.0.1 and refuse a `bind` that is neither loopback nor `0.0.0.0` |
 | `ports` | table | `{}` | `name = port` (integer or string); names `^[a-z][a-z0-9_-]{0,31}$`; ports unique and different from `ssh_port`. A value may also be a compose port string, `"HOST:CONTAINER"` with either side a number or `${VAR:-default}` (`"${DJANGO_RUNSERVER_HOST_PORT:-8000}:8000"`, `"5001:3000"`), rendered verbatim after `<bind>:` unless it names a host IP ([shared-stack.md](shared-stack.md#port-strings)) |
+| `dev_sh` | boolean | `true` | `false` (`dck init --no-dev-sh`): `dck init` neither creates nor touches `dev.sh`, for a repository that keeps its own |
 | `layers.agents` | boolean | `false` | see [layers.md](layers.md) |
 | `layers.dailybot` | boolean | `false` | see [layers.md](layers.md) |
 | `layers.editor` | boolean | `true` | see [layers.md](layers.md) |
-| `agents.clis` | array | `[]` | the CLIs chosen at onboarding: kinds from `claude codex cursor opencode pi cline grok antigravity`, no duplicates; a warning when set while `layers.agents` is false. Without `agents.supported` (the default) they are both **wired** (home volume, host-profile sharing, `default_profile`) and **installed** for everyone; with it, they are the default install set, within `supported` ([Each developer's CLIs](#each-developers-coding-agent-clis)) |
+| `agents.clis` | array | `[]` | the CLIs chosen at onboarding: kinds from `claude codex cursor opencode pi cline grok antigravity`, no duplicates, each within `agents.supported` when that is set; a warning when set while `layers.agents` is false. Without `agents.supported` (the default) they are both **wired** (home volume, host-profile sharing, `default_profile`) and **installed** for everyone; with it, they are the default install set, within `supported` ([Each developer's CLIs](#each-developers-coding-agent-clis)) |
 | `agents.supported` | `"all"` or array | unset (= `clis`) | **advanced** opt-in: the CLIs every image is wired for, installed or not; each developer chooses what to install within them. `"all"` = every kind ak knows. A volume for a CLI nobody installed stays empty, so a CLI a developer installs later just works. `dck init --supported all` writes it; an interactive `dck init` offers it ([Each developer's CLIs](#each-developers-coding-agent-clis)) |
-| `herdr.machine` | boolean | `false` | requires a non-zero `ssh_port` |
+| `herdr.machine` | boolean | `false` | requires a non-zero `ssh_port`; a new `dck init` sets it when `herdr` is on the host's `PATH` |
 | `herdr.label` | string | `{repo}` | 1–64 chars; placeholders `{repo}` `{service}` `{project}` `{user}` |
 | `herdr.layout` | string | `standard` | `standard` (App · Editor · Development · Agents, created by `dck up`) or `none` ([herdr.md](herdr.md)) |
 | `compose.project` | string | unset | `^[a-z0-9][a-z0-9_-]{0,62}$`: the rendered compose project name (`name:`) instead of `<compose_project_prefix><repo-slug>`; it wins over `COMPOSE_PROJECT_NAME` in the environment or `docker/local/.env` (dck passes `-p`); only `dck --project` overrides it |
@@ -93,7 +97,7 @@ other services' volumes and networks, port strings and satellites:
 | `agents.node_first` | boolean | `false` | put the agents' own Node (`/opt/dck/node`, installed when the image's `node` is older than the pinned major) first on PATH — `ENV PATH` in the Dockerfile and the login profile — for a repository whose own tooling needs that Node (Node 24). Off: the image's `node` stays first. Needs `layers.agents` |
 | `agents.presets` | array | unset (both) | ak alias presets: subset of `classic` (`claudex`, `codexx`, …) and `providers` (`claude-glm`, …). Unset keeps both (the behaviour before v0.3.3); `[]` turns them off; new renders write `presets = []` |
 | `compose.state_volume` | string | `state` | `^[a-z0-9][a-z0-9_.-]{0,62}$`, not an agents-layer volume name (`agentkit`, `claude`, `codex`, …). The named volume of this service's state — sshd host key, `~/.ssh` (`authorized_keys`, `known_hosts`, copied keys), gh auth, Herdr client state and config, shell history — mounted at `~/.dck/volumes/state` (only the compose volume's name changes). Compose prefixes it with the project name, so repositories that share one compose project (one `COMPOSE_PROJECT_NAME`) and keep the default would share **one** state volume: give each its own, e.g. `state-<service>` (`dck init --state-volume NAME`). The default keeps the volume existing installs already have; changing it starts the service with a fresh state volume (re-pinned host key, new gh login) and leaves the old one in place. `dck doctor` flags a shared project whose state volume is not per service |
-| `herdr.mesh` | boolean | `true` | `dck up` runs `dck herdr mesh`: agents inside reach the other dck containers (and the host, with `host_machine`). Docker Desktop only; widens trust between containers ([SECURITY.md](SECURITY.md)) |
+| `herdr.mesh` | boolean | `true` | `dck up` runs `dck herdr mesh`: agents inside reach the other dck containers (and the host, with the profile's `host.machine`). Skipped on a Linux host (peers are reachable only with Docker Desktop); widens trust between containers ([SECURITY.md](SECURITY.md)). `false` also ignores mesh refreshes pushed by other repositories; an explicit `dck herdr mesh` still runs |
 
 ## Host profile
 
@@ -127,9 +131,11 @@ label = "host"                     # the host's Herdr label inside containers
 external = true                    # also push the host's other loopback Herdr machines
 [agents]
 host_profiles = false              # true → containers use the host's agent accounts (opt-in)
-host_profile_names = []            # only these host profiles ("claude@work1"); [] = all of the repo's CLIs
+host_profile_names = []            # only these host profiles ("claude@work1"); [] = all of the repo's wired CLIs
 host_env_keys = []                 # exact names copied besides the shared profiles' Claude tokens
 default_profile = {}               # e.g. { claude = "@work3" }: a bare `ak claude` inside uses it
+# clis = ["claude", "codex"]       # the CLIs YOUR images install, instead of each repo's clis
+clis_extra = []                    # CLIs added to every image (within what the repo wires)
 ```
 
 | Key | Type | Default | Rule |
@@ -150,7 +156,7 @@ default_profile = {}               # e.g. { claude = "@work3" }: a bare `ak clau
 | `ssh.identity` | string | `~/.config/dck/ssh/id_ed25519` | `~` expands to `$HOME` |
 | `ssh.host_extra` | array of strings | `[]` | aliases or host names beyond the git hosting services whose `~/.ssh/config` blocks `ssh_host_config` also copies into containers. Host-side only — a repository's `dck.toml` cannot set it. Every container with the agent socket can then reach those hosts as you |
 | `ssh.copy_keys` | boolean | `false` | `dck up` binds the host's **whole** `~/.ssh` read-only at `~/.ssh_host` — while it is on, every file there (not only `id_*`: `config`, `known_hosts`, other keys) is readable by processes in the container (a runtime compose overlay, never written into the repository; uses the compose backend) and every container start copies its `id_*` keys into the container's `~/.ssh` on the state volume: private keys 0600, `.pub` 0644, refreshed when they change on the host, removed when they are removed there. For tools that only offer key files, such as `gh auth login`. Never touches dck's `config`, `config.d/`, `authorized_keys` or `known_hosts.dck-host`. **Your private keys then rest in the volume, readable by code in the container** ([SECURITY.md](SECURITY.md#host-ssh-keys-ssh-copy_keys)). `dck setup` asks once and records the answer. Off: `copy_keys = false`, then `dck up --recreate` (the copies are removed at the next start); full wipe: `dck down` and remove the `<project>_state` volume. Host-side only — a repository's `dck.toml` cannot set it |
-| `agents.host_profiles` | boolean | `false` | `dck up` shares the host's agent accounts with containers whose repository turns `layers.agents` on: each host ak profile (`$AGENTKIT_PROFILES_DIR/<cli>/<name>`, default root `~/.local/share/agentkit/profiles`) of the CLIs in that repository's `agents.supported` (installed or not; only profiles that exist on the host are bound) — claude, codex, pi, cline, grok, opencode; never cursor, whose profiles hold absolute host symlinks — the host's Codex home (`$CODEX_HOME` or `~/.codex`) when `codex@default` is shared, and an env file read-only. Read-write only where the CLI writes (each reason in SECURITY.md). Through a runtime compose overlay, never written into the repository; uses the compose backend. Host-side only — a repository's `dck.toml` cannot set it. See [layers.md](layers.md#host-accounts) and [SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles) |
+| `agents.host_profiles` | boolean | `false` | `dck up` shares the host's agent accounts with containers whose repository turns `layers.agents` on: each host ak profile (`$AGENTKIT_PROFILES_DIR/<cli>/<name>`, default root `~/.local/share/agentkit/profiles`) of the CLIs that repository wires (`agents.clis`, or `agents.supported` in the advanced mode; installed or not; only profiles that exist on the host are bound) — claude, codex, pi, cline, grok, opencode; never cursor or antigravity, whose profiles hold absolute host symlinks — the host's Codex home (`$CODEX_HOME` or `~/.codex`) when `codex@default` is shared, and an env file read-only. Read-write only where the CLI writes (each reason in SECURITY.md). Through a runtime compose overlay, never written into the repository; uses the compose backend. Host-side only — a repository's `dck.toml` cannot set it. See [layers.md](layers.md#host-accounts) and [SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles) |
 | `agents.default_profile` | table | `{}` | the account a bare `ak <cli>` uses inside: `{ claude = "@work3", codex = "@work2" }` (cli one of claude codex pi cline grok opencode), exported as `AGENTKIT_DEFAULT_PROFILE_<CLI>` (coding-agents-kit v0.5.2+) when that profile is shared by `host_profiles`, and the container's login profile points `CLAUDE_CONFIG_DIR` / `CODEX_HOME` at it, so a plain `claude --resume` or `codex resume` that Herdr's session restore relaunches without ak uses that account too; the answer to a macOS `@default` Claude login, which lives in the keychain and cannot reach a container. `dck doctor` shows the mapping and flags one it cannot apply. Host-side only |
 | `agents.host_profile_names` | array of strings | `[]` | only these host profiles are shared and get their Claude token: `"<cli>@<name>"` (`cli` one of claude codex pi cline grok opencode; `@default` is the CLI's own home, for Codex `~/.codex`, for Claude the default token); at most 64. Empty: every profile of the repository's supported CLIs, and their own homes |
 | `agents.clis` | array | unset | the coding-agent CLIs **you** want installed in every repository's image, instead of its `dck.toml` `clis`; `[]` installs none. Each must be wired by the repository (its `clis` in the default mode, its `agents.supported` in the advanced mode). Needs `dck rebuild` after a change ([Each developer's CLIs](#each-developers-coding-agent-clis)) |
@@ -163,9 +169,10 @@ default_profile = {}               # e.g. { claude = "@work3" }: a bare `ak clau
 - The repo file decides everything about the container; the profile decides
   host-side naming (project prefix, network, SSH alias, label format, key).
 - `herdr.label` in the repo wins over `labels.machine` in the profile.
-- Credentials are the host's decision: `agents.host_profiles`, `agents.host_env_keys`
-  and `ssh.copy_keys` are read from the profile only; in a repository's `dck.toml` they are ignored with a
-  warning. The repository decides which CLIs are *wired* (`agents.clis`, or
+- Credentials are the host's decision: `agents.host_profiles`, `agents.host_env_keys`,
+  `agents.host_profile_names`, `agents.default_profile`, `agents.clis_extra` and
+  `ssh.copy_keys` are read from the profile only; in a repository's `dck.toml` they are
+  ignored with a warning. The repository decides which CLIs are *wired* (`agents.clis`, or
   `agents.supported` in the advanced mode), so only their accounts are shared; in
   the advanced mode each developer decides which are *installed*.
 - The repo **slug** is the directory name lower-cased with every character

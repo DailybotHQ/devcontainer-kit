@@ -15,8 +15,16 @@ test_readme_sections_in_order() {
     assert_contains "$eco" "[$repo](" "the ecosystem table lists $repo"
   done
   assert_contains "$eco" "(this repository)" "the ecosystem table marks this repository"
-  assert_eq "$(head -1 "$R/README.md")" "# devcontainer-kit" "README starts with the title"
-  assert_match "$(sed -n 3p "$R/README.md")" '^A standard, agent-ready development container' "the title is followed by the one-line value"
+  # An optional centred logo block (<p align="center">…</p> + a blank line) may precede the title.
+  local body
+  body="$(awk 'NR==1 && /^<p align="center">/ {skip=1} skip { if (/^<\/p>/) {skip=0; blank=1}; next } blank && /^$/ {blank=0; next} {blank=0; print}' "$R/README.md")"
+  assert_eq "$(printf '%s\n' "$body" | head -1)" "# devcontainer-kit" "README starts with the title (after the optional logo)"
+  assert_match "$(printf '%s\n' "$body" | sed -n 3p)" '^A standard, agent-ready development container' "the title is followed by the one-line value"
+  local logo
+  for logo in logo-dark.png logo-light.png; do
+    assert_eq "$([ -f "$R/assets/$logo" ] && echo yes)" "yes" "assets/$logo exists"
+    assert_contains "$(cat "$R/README.md")" "raw.githubusercontent.com/DailybotHQ/devcontainer-kit/main/assets/$logo" "README header serves assets/$logo"
+  done
   assert_contains "$(cat "$R/README.md")" "actions/workflows/ci.yml/badge.svg" "README has the CI badge"
   assert_contains "$(cat "$R/README.md")" "img.shields.io/github/v/release/DailybotHQ/devcontainer-kit" "README has the release badge"
   assert_contains "$(cat "$R/README.md")" "img.shields.io/github/license/DailybotHQ/devcontainer-kit" "README has the license badge"
