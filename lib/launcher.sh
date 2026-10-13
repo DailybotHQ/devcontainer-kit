@@ -837,8 +837,12 @@ $line" ;;
 # mounts). Those need an explicit --trust (or DCK_TRUST=1) once you have read them.
 preflight_check() {
   [ "${DCK_TRUST:-0}" = "1" ] && return 0
-  local found
-  if found="$(dckpy devc preflight --repo "$DC_REPO")"; then return 0; fi
+  local found f files=()
+  # --compose-file replaces devcontainer.json's list: the files compose will run are checked.
+  if [ "${#DCK_COMPOSE_OVERRIDE[@]}" -gt 0 ]; then
+    for f in "${DC_COMPOSE_FILES[@]}"; do files+=(--compose-file "$f"); done
+  fi
+  if found="$(dckpy devc preflight --repo "$DC_REPO" ${files[@]+"${files[@]}"})"; then return 0; fi
   [ -n "$found" ] || exit "$DCK_EXIT_CONFIG"
   printf 'dck: this repository'"'"'s container configuration reaches the host:\n' >&2
   printf '%s\n' "$found" | sed 's/^/  - /' >&2

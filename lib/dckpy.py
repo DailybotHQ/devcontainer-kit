@@ -222,7 +222,11 @@ def cmd_devc(args):
                 print(p)
             return EXIT_OK
         if sub == "preflight":
-            found = devc.preflight(opt(args, "--repo"))
+            repo = opt(args, "--repo")
+            files = []
+            while "--compose-file" in args:
+                files.append(opt(args, "--compose-file"))
+            found = devc.preflight(repo, files)
             for f in found:
                 print(f)
             return EXIT_REFUSED if found else EXIT_OK

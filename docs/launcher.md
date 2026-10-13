@@ -62,7 +62,8 @@ dck --project acme-ws1 --compose-file ... --service apisatellite down   # it and
 - `--project` is required with `--service`: a satellite never runs in the main
   service's project, and nothing of the main service is touched.
 - `--compose-file` (repeatable) replaces the compose file set; without it, the
-  repository's files are used.
+  repository's files are used. The preflight checks the given files: one that reaches
+  the host, or lies outside the repository, needs `--trust`.
 - Its sshd port is read from compose (`docker compose port <svc> 22`) once it runs.
 - `--seed-state-from VOLUME` copies only the login state (`config_gh`,
   `config_dailybot`; never history, keys or Herdr state) into the satellite's state
@@ -85,7 +86,8 @@ dck --compose-file docker/local/docker-compose.yaml \
 ```
 
 - The files replace the list in order (paths relative to the current directory; a
-  symlink is refused); dck's runtime overlays (devcontainer mounts, host profiles,
+  symlink is refused) and are what the preflight checks: one that reaches the host, or
+  lies outside the repository, needs `--trust`; dck's runtime overlays (devcontainer mounts, host profiles,
   `copy_keys`, the developer's CLIs) still go last.
 - It is the primary, not a satellite: the same project, alias, label and Herdr machine as
   a plain `dck up`, and every host step (authorized key, copied keys, host profiles and

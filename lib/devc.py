@@ -249,12 +249,15 @@ def _host_paths(text):
     return [p for p in out if p.startswith(("/", ".", "~", "$"))]
 
 
-def preflight(repo):
+def preflight(repo, compose_files=None):
     """Features of the repository's own configuration that act on the HOST
     when dck starts it (devcontainer.json / compose). dck-rendered setups have
-    none; anything listed needs the user's explicit --trust."""
+    none; anything listed needs the user's explicit --trust. compose_files (dck
+    --compose-file) replaces devcontainer.json's list, as it does for compose."""
     root = os.path.realpath(repo)
     info = read(repo)
+    if compose_files:
+        info["compose_files"] = list(compose_files)
     data = jsonc.load(info["file"])
     found = []
     # The agent socket bind is dck's own only while dck.toml asks for it.

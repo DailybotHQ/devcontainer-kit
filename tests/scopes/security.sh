@@ -217,6 +217,25 @@ PY
   assert_rc 5 "a compose file outside the repository needs --trust"
 }
 
+test_compose_file_override_needs_trust_too() {
+  local r; r="$(sec_repo prim)"
+  printf 'services:\n  app:\n    privileged: true\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock\n' > "$r/docker/local/docker-compose.extra.yaml"
+  : > "$DCK_FAKE_LOG"
+  in_repo "$r" "$DCK" --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.extra.yaml up
+  assert_rc 5 "PRIMARY mode: a --compose-file reaching the host needs --trust"
+  assert_contains "$RUN_ERR" "docker/local/docker-compose.extra.yaml: privileged: true" "the preflight checks the files compose will run"
+  assert_not_contains "$(fake_calls docker)" " up " "nothing was started"
+  in_repo "$r" "$DCK" --project prim2 --service app --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.extra.yaml up
+  assert_rc 5 "a satellite's --compose-file too"
+  mkdir -p "$SANDBOX/elsewhere-prim"; cp "$r/docker/local/docker-compose.yaml" "$SANDBOX/elsewhere-prim/c.yaml"
+  in_repo "$r" "$DCK" --compose-file "$SANDBOX/elsewhere-prim/c.yaml" up
+  assert_rc 5 "a --compose-file outside the repository needs --trust"
+  in_repo "$r" "$DCK" --compose-file docker/local/docker-compose.yaml up
+  assert_rc 0 "the repository's own dck-rendered file starts without --trust"
+  in_repo "$r" "$DCK" --trust --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.extra.yaml up
+  assert_rc 0 "--trust starts it after review"
+}
+
 test_agent_socket_bind_cannot_be_redirected() {
   local r; r="$(sec_repo sock)"
   printf 'DCK_HOST_SSH_AUTH_SOCK: /etc\n' > "$r/docker/local/.env"
