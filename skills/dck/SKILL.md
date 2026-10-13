@@ -19,7 +19,7 @@ without Herdr; each of those only adds to it.
 
 ```bash
 dck --version                  # is it installed?
-dck doctor --json              # interface, runtime, repo, layers, ssh, herdr, drift
+dck doctor --json              # interface, runtime, repo, layers, ssh, herdr, drift, problems
 ```
 
 Read `interface` first: this skill speaks interface **2**. If `dck` is missing,
@@ -40,16 +40,19 @@ git clone --branch v0.3.7 https://github.com/DailybotHQ/devcontainer-kit
 | to start it | `dck setup && dck up` |
 | a shell / one command inside | `dck shell` · `dck shell -c "<cmd>"` · `dck exec <service> <cmd…>` |
 | it rebuilt after Dockerfile changes | `dck rebuild` (`--no-cache` for a clean build) |
-| it stopped / removed | `dck stop` · `dck down` (named volumes are kept) |
+| it stopped / removed | `dck stop` · `dck down` (named volumes are kept; also removes the Herdr machine `dck up` registered) · `dck start` / `dck restart` |
+| a recreate after a config change | `dck up --recreate` |
 | to see what dck resolved | `dck config`, `dck ports`, `dck ps`, `dck logs --no-follow` |
 | SSH into it | `dck ssh [cmd…]` |
-| it in Herdr | set `[herdr] machine = true` and `ssh_port` in `.devcontainer/dck.toml`, then `dck up` (or `dck herdr add`); `dck herdr status`; a client stuck on "reconnecting" → `dck herdr repair` |
-| agents inside to reach agents on the host | ask the user first (it lets any dck container open a shell on the host): `dck host listener enable` (macOS), or a `[host]` table with `listener = "external"` for a listener they already run; then `dck herdr mesh` |
+| it in Herdr | set `[herdr] machine = true` and `ssh_port` in `.devcontainer/dck.toml`, then `dck up` (or `dck herdr add`); `dck herdr status`; a client stuck on "reconnecting" → `dck herdr repair`; `dck herdr remove` unregisters it |
+| the standard Herdr sidebar inside (App · Editor · Development · Agents) | `dck herdr layout` (`--keep` creates only what is missing, `--reset` recreates the four standard workspaces and touches no other; `dck up` runs it with `--keep`) |
+| agents inside to reach agents on the host | ask the user first (it lets any dck container open a shell on the host): `dck host listener enable` (macOS), or a `[host]` table with `listener = "external"` for a listener they already run; then `dck herdr mesh`. `dck host listener status` shows it, `dck host listener disable` removes it |
 | agents inside to reach other containers | `dck herdr mesh` (also run by `dck up`): the other dck containers and the host's other loopback Herdr machines (`[mesh] external`); containers another kit manages log in with keys listed in `[ssh] authorized_extra` |
-| to list or ask agents from the host | `dck agents`, `dck ask <machine>:<pane> "<prompt>"` (herdr-peers; `dck host peers install` if missing) |
+| to list or ask agents from the host | `dck agents`, `dck ask <machine>:<pane> "<prompt>"` (herdr-peers; `dck host peers install` if missing, `dck host peers status` shows the copy) |
 | coding-agent CLIs inside | at onboarding, ask the developer which CLIs to install and set `[layers] agents = true` and `[agents] clis = [...]` in `dck.toml` (the default: exactly those are wired and installed for everyone); offer the advanced mode as an explicit choice — `supported = "all"` (`dck init --supported all`) wires every CLI and lets each developer choose — never pick it silently; `dck init` (shows the diff), `dck rebuild` |
 | a different set of CLIs for one developer | default mode: only fewer of `clis` (anything else needs the advanced mode in `dck.toml`, the team's decision). Advanced mode: `DCK_AGENT_CLIS="grok opencode"` or `INSTALL_<CLI>_CLI=true` in the gitignored `docker/local/.env`, or `[agents] clis` / `clis_extra` in the host profile (every repository); then `dck rebuild`. `dck doctor` shows the mode, supported / requested / installed and says when a rebuild is needed |
 | a script to recreate the main service with an extra compose file | `dck --compose-file <base> --compose-file <extra> up --recreate <svc>` (PRIMARY mode: no `--service`; keeps every host step, the same alias and Herdr machine) |
+| a second instance of a dev service in another compose project (a workspace satellite) | `dck --project <P> --compose-file <F>… --service <S> up` (`--seed-state-from <volume>` copies only the gh / Dailybot login into its empty state volume, `--label <text>` names its Herdr machine); the same flags with `down`, `ps`, `logs`, `shell`, `exec`, `ssh`, `stop`, `start`, `restart`, `config`, `herdr` act on that service only |
 | the host's agent accounts inside (no login in the container) | ask the user first (it shares their credentials with the container): they set `[agents] host_profiles = true` in their **host profile** (`~/.config/dck/profile.toml`, never `dck.toml`), then `dck up --recreate`; `dck doctor` names what is shared and which Claude profiles need `claude setup-token` and the token stored in ak's env file |
 | `gh auth login` (or any tool that only offers key files) to use the host's SSH keys | ask the user first (it puts their PRIVATE keys inside the container): they set `[ssh] copy_keys = true` in their **host profile** (or answer yes in `dck setup`), then `dck up --recreate`; `dck doctor` lists the copied key names |
 | to know what is wrong | `dck doctor` (human) or `dck doctor --json` (parse `problems`) |
@@ -102,7 +105,8 @@ What running this skill's commands may write, and nothing else:
 | Path | Written by | When |
 | --- | --- | --- |
 | the repository: `.devcontainer/`, `docker/local/`, `dev.sh`, `.gitignore` (dck block) | `dck init` | creation, or reconciliation after consent |
-| `docker/local/**/.env` (created 0600 from `.env.example`; existing values never overwritten) | `dck setup`, `dck up` | when missing; missing `DCK_GIT_*` keys are appended from your git config |
+| `docker/local/**/.env` (created 0600 from `.env.example`; existing values never overwritten) | `dck setup`, `dck up/start/restart/build/rebuild` | when missing; `dck setup` also appends missing `DCK_GIT_*` keys from your git config |
+| the container user's git config (`user.name`, `user.email`, an SSH signing **public** key) and dck's records on the state volume (the Herdr machine id behind `HERDR_PEERS_SELF`) | `dck up/start/restart/rebuild`, `dck herdr add/mesh` | inside the container only; a `DCK_GIT_*` value wins for its key |
 | your ssh-agent: the dck key is added (`ssh-add`, never the macOS Keychain) | `dck herdr mesh`, `dck up` with `[herdr] mesh` | Docker Desktop only; `ssh-add -d` removes it |
 | your ssh-agent: your own keys that `~/.ssh/config` aliases use (`ssh-add`, `--apple-use-keychain` on macOS) | `dck up`, `dck rebuild` with `ssh_host_config` | only a key the agent lacks; asks for its passphrase on a terminal |
 | the container's `~/.ssh/config.d/dck-host`, `dck-host-keys/*.pub`, `known_hosts.dck-host` (public data from your `~/.ssh`) | `dck up`, `dck rebuild` with `ssh_host_config` | never a private key |
@@ -117,7 +121,7 @@ What running this skill's commands may write, and nothing else:
 | the `[host]` table of your dck profile | `dck setup` (your answer), `dck host listener enable` | once, never rewritten |
 | `~/.local/share/dck-host/herdr-peers/<tag>/` (verified against the release SHA256SUMS) | `dck setup`, `dck host peers install` | when herdr is on the host |
 | Docker objects of this repository's compose project (containers, images, per-project volumes, declared external networks) | `dck up/build/rebuild/down/setup` | on those verbs |
-| `$TMPDIR/dck-<uid>/` (0700, compose overlay) | compose backend | on up/build |
+| `$TMPDIR/dck-<uid>/` (0700: the compose overlay, and the `-agents`, `-sshkeys` and `-clis` overlays when their option applies, each 0600) | compose backend | on up/start/restart/build/rebuild |
 | `~/.local/share/dck/` and one PATH block in `~/.bashrc`/`~/.zshrc` | `install.sh` | only when the user installs |
 
 dck never edits Herdr's own files, never copies a private key into a

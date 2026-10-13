@@ -59,5 +59,7 @@ helps — it never prints secret values), and the steps to reproduce.
 
 The threat model, trust boundaries and the defaults this project enforces (loopback-only
 ports, SSH agent forwarding instead of key copies, runtime host keys, pinned and
-checksum-verified images, `--trust` for host-reaching repository configuration) are
+checksum-verified images, `--trust` for host-reaching repository configuration — including
+files given with `--compose-file`) and the opt-ins that widen them on purpose (the host
+listener, `[agents] host_profiles`, `[ssh] copy_keys`, all host-profile only) are
 documented in [docs/SECURITY.md](docs/SECURITY.md).

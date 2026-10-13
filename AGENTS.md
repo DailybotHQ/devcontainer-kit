@@ -4,7 +4,7 @@ Entry point for AI agents working **on** this repository (`CLAUDE.md` is a symli
 
 ## Purpose
 
-A standard, agent-ready development container for any repository, built on the Dev Containers spec: a template (`devcontainer.json` + compose + `docker/local/`), the `dck` launcher (setup/up/shell/rebuild/doctor), base images in python and node flavours that ship **without** coding agents (agents are an opt-in layer), and an sshd wired so each container can join [Herdr](https://herdr.dev) as a machine.
+A standard, agent-ready development container for any repository, built on the Dev Containers spec: a template (`devcontainer.json` + compose + `docker/local/`), the `dck` launcher (setup/up/shell/rebuild/doctor), images built from the repository itself in `python-3.13`, `node-24` and `debian` flavours (optional prebuilt base images from the same steps) that ship **without** coding agents (agents are an opt-in layer), and an sshd wired so each container can join [Herdr](https://herdr.dev) as a machine.
 
 ## Command / skill
 
@@ -15,19 +15,21 @@ devcontainer-kit (alias dck); skill dck
 | Path | What |
 | --- | --- |
 | `bin/dck`, `bin/devcontainer-kit` | the launcher (bash 3.2+) |
-| `lib/*.sh` | launcher modules: `common`, `launcher`, `herdr`, `doctor`; `entrypoint.sh` is the in-container library |
-| `lib/*.py` | python side (stdlib, run as `python3 -I lib/dckpy.py`): `config`, `render` (`dck init`), `devc`, `jsonc`, `sshconf`, `doctor`, `hostagents` (`[agents] host_profiles`), `sshkeys` (`[ssh] copy_keys`), `agentclis` (each developer's coding-agent CLIs) |
-| `lib/layers/` | opt-in layer installers baked into the images (agents, dailybot) |
+| `lib/*.sh` | launcher modules: `common`, `launcher`, `herdr`, `hostlistener` (`dck host listener`), `peers_host` (`dck host peers`), `doctor`; `entrypoint.sh` is the in-container library |
+| `lib/*.py` | python side (stdlib, run as `python3 -I lib/dckpy.py`): `config`, `render` (`dck init`), `devc`, `jsonc`, `sshconf`, `doctor`, `hostagents` (`[agents] host_profiles`), `sshkeys` (`[ssh] copy_keys`), `agentclis` (each developer's coding-agent CLIs), `dckpy` (the dispatcher) |
+| `lib/layers/` | opt-in layer installers baked into the images (`agents.sh`, `dailybot.sh`, shared `common.sh`) |
 | `src/template/` | the Dev Container template `dck init` renders |
-| `images/` | base image Dockerfiles per flavour, `common/` build steps, `versions.env` (the single pin file) |
-| `skills/dck/` | the product's agent skill (`dck --skill`) |
-| `docs/` | user docs, `schema/` (dck.toml, profile, doctor JSON Schemas), `SECURITY.md` |
+| `images/` | base image Dockerfiles per flavour (`python-3.13`, `node-24`, `debian`), `common/` build steps (vendored into each repository by `dck init`), `versions.env` (the single pin file) |
+| `skills/dck/`, `skills/dck-dockerfile/` | the product's agent skills (`dck --skill`, `dck --skill dck-dockerfile`) |
+| `docs/` | user docs, `schema/` (dck.toml, profile, doctor JSON Schemas, v1 and v2), `SECURITY.md` |
 | `install.sh` | user install into `~/.local/share/dck` |
-| `scripts/` | `check-public-hygiene.sh` (CI hygiene gate), `release-sums.sh` (release `SHA256SUMS`) |
+| `scripts/` | `check-public-hygiene.sh` (CI hygiene gate), `release-sums.sh` (release `SHA256SUMS`), `release-notes.sh` (release notes from `CHANGELOG.md`) |
+| `assets/` | brand logos for the README header (`logo-dark.png` for dark themes, `logo-light.png` for light ones); `assets/README.md` says which is which |
 | `.github/` | CI, image and release workflows; issue/PR templates; CODEOWNERS; Dependabot |
 | `.agents/` | vendored `deepworkplan` skill and the `dwp-*` command delegators (`.claude`, `.cursor` → `.agents`) |
 | `.devcontainer/`, `docker/local/`, `dev.sh` | the repository's own dck container (dogfood, rendered by `bin/dck init --repo .`; re-render after changing `lib/`, `images/common/` or `src/template/`) |
 | `tests/` | `run.sh` (scopes), `lib.sh`, `scopes/`, `fakes/`, `fixtures/`, `py/minischema.py` |
+| `.review/`, `.public-hygiene-allow` | AI Diff Reviewer overrides (`extension.md`); the hygiene check's allow-list |
 
 ## Validation
 

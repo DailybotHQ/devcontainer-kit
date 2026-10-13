@@ -40,8 +40,10 @@ list. The installed list is recorded in
 `/opt/dck/agent-clis`; `dck up` and `dck doctor` compare it with the requested one and
 say **rebuild needed: dck rebuild** when they differ.
 
-What `dck init` renders when `agents = true` with `clis = ["claude", "codex"]` (the
-default mode; the advanced mode renders the same for every CLI in `supported`):
+What `dck init` renders when `agents = true` with `clis = ["claude", "codex"]` and
+`presets = []` (the default mode; the advanced mode renders the same for every CLI in
+`supported`; comment lines left out). A `dck.toml` without a `presets` key renders the
+same `RUN` without `DCK_AGENT_PRESETS`, which keeps both presets:
 
 ```dockerfile
 # >>> dck:layers >>>
@@ -120,10 +122,12 @@ RUN DCK_USER=dev DCK_AGENT_SUPPORTED="claude codex" DCK_AGENT_PRESETS="" dck-lay
   set `AGENTKIT_PERMISSIONS=ask` in `docker/local/<service>/.env` (the
   compose block is reconciled by `dck init`; the `.env` is yours);
   `ak <kind> --ask` opts out for one launch.
-- **The wrapper names.** The layer turns on ak's `classic` preset (`claudex`,
-  `codexx`, `cursorx`, `opencodex`, `pix`, `clinex`, `grokx`) and `providers`
-  preset (`claude-glm`, `codex-glm`, `codex-azure`, `codex-xai`, …), loaded by
-  every bash the dev user starts.
+- **The wrapper names, opt-in.** `[agents] presets` chooses ak's alias presets
+  (`DCK_AGENT_PRESETS`): `classic` (`claudex`, `codexx`, `cursorx`, `opencodex`,
+  `pix`, `clinex`, `grokx`) and `providers` (`claude-glm`, `codex-glm`,
+  `codex-azure`, `codex-xai`, …), loaded by every bash the dev user starts. New
+  renders write `presets = []` (none); a `dck.toml` without the key keeps both, as
+  before v0.3.3.
 
 ## Host accounts
 
@@ -145,7 +149,7 @@ the repository — that binds:
 | Host | Container | Mode |
 | --- | --- | --- |
 | each ak profile `$AGENTKIT_PROFILES_DIR/<cli>/<name>` (default root `~/.local/share/agentkit/profiles`) of the wired CLIs (`clis`, or `[agents] supported` in the advanced mode, installed or not; only profiles that exist on the host) — claude, codex, pi, cline, grok, opencode — or only those in `host_profile_names` | `~/.dck/host/agentkit/profiles/<cli>/<name>`; `AGENTKIT_PROFILES_DIR` points there | read-write: the CLI writes its state there |
-| `$CODEX_HOME` or `~/.codex` (the Codex `@default` login), when codex is installed and `codex@default` shared | `~/.dck/host/codex`; `~/.codex` links to it | read-write: token refresh in `auth.json` |
+| `$CODEX_HOME` or `~/.codex` (the Codex `@default` login), when codex is wired and `codex@default` shared | `~/.dck/host/codex`; `~/.codex` links to it | read-write: token refresh in `auth.json` |
 | the directory `~/.config/dck/agents/<project>/` (0700) holding the env file `env`, generated (0600) on the host | `~/.dck/host/agentkit/hostenv/`; `AGENTKIT_ENV` points at `hostenv/env` | read-only |
 
 The directory is bound, not the file: every `dck up` rewrites the env file atomically,
@@ -155,7 +159,7 @@ one until the container is recreated).
 Each read-write mount and its reason is listed in
 [SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles) and by `dck doctor`.
 
-- **Only the CLIs the repository installs**, and only file-portable profiles: cursor
+- **Only the CLIs the repository wires**, and only file-portable profiles: cursor
   (and antigravity) profiles hold absolute host symlinks and are skipped. The whole
   `AGENTKIT_HOME` is never mounted (it would shadow the ak the image pins), nor a whole
   CLI directory: profiles are bound one by one.
@@ -193,6 +197,13 @@ Each read-write mount and its reason is listed in
   coding-agents-kit v0.5.0+).
 - **Codex:** `auth.json` is shared read-write; keep one active writer per account
   (see [SECURITY.md](SECURITY.md#host-accounts-agents-host_profiles)).
+- **A default account inside:** `[agents] default_profile = { claude = "@work3" }` (host
+  profile) exports `AGENTKIT_DEFAULT_PROFILE_<CLI>` into the container when that profile
+  is shared, so a bare `ak claude` uses it; the login profile also exports
+  `CLAUDE_CONFIG_DIR` / `CODEX_HOME` as that profile's home (unless already set), so a
+  plain `claude --resume` or `codex resume` that Herdr restores without ak uses it too.
+  The macOS `@default` Claude login lives in the keychain and cannot be a default inside;
+  `dck doctor` shows the mapping and flags one it cannot apply.
 - **Compose backend:** the overlay is a compose file, so with the option on `dck up`
   uses compose even when the devcontainer CLI is installed; an editor that opens the
   container itself does not apply it.
@@ -238,24 +249,28 @@ config (`~/.config/dailybot`) is kept on the `state` volume.
 
 ## editor
 
-On by default: `EDITOR`, `VISUAL` and `GIT_EDITOR` are `nvim` with the
-deepworkplan-vim configuration. With `editor = false` the Dockerfile sets them
-to `nano` and compose passes `DCK_EDITOR=0`. The base image still contains
-nvim; the layer decides the default, not the presence.
+On by default: the rendered Dockerfile installs deepworkplan-vim in its own layer
+(`dck/editor.sh`) and `EDITOR`, `VISUAL` and `GIT_EDITOR` are `nvim` with that
+configuration. With `editor = false` that layer is not rendered, the Dockerfile sets
+the three to `nano` and compose passes `DCK_EDITOR=0`. The pinned Neovim binary is
+still installed (by `install.sh`); only deepworkplan-vim and the default change.
 
 ## How the layers are packaged
 
 The installers are scripts in `lib/layers/` (`common.sh`, `agents.sh`,
-`dailybot.sh`), baked into every base image at `/usr/local/lib/dck/layers/`
-with the dispatcher `/usr/local/bin/dck-layer`. They run only during the
-**repository's** image build. Every download goes through one verified
+`dailybot.sh`). `dck init` vendors them into `docker/local/<service>/dck/layers/`
+and the rendered Dockerfile copies them to `/usr/local/lib/dck/layers/` with the
+dispatcher `/usr/local/bin/dck-layer` (the published base images carry the same
+paths). They run only during the **repository's** image build and read their pins
+from the image's `/etc/dck/versions.env`. Every download goes through one verified
 `fetch`; nothing is piped into a shell.
 
 ## Status in v0.3.x
 
 The `agents` layer is verified end to end with coding-agents-kit `v0.7.1`
 (installed from its sha256-verified release tarball; `ak` interface 1, permissions
-`auto` by default; `ak install codex pi`, the `classic` and `providers` presets; the
-`docker` test scope builds a rendered node fixture with the layer on every CI run). Each
+`auto` by default; the `docker` test scope builds a rendered node fixture on every CI
+run: `--clis codex --supported all`, the host profile's `clis_extra = ["pi"]`, so
+`ak install codex pi`, with the `classic` and `providers` presets turned on). Each
 vendor CLI's own behaviour belongs to the ecosystem field test. The `dailybot`
 and `editor` layers are verified end to end.

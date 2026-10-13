@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DailybotHQ/devcontainer-kit/main/assets/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/DailybotHQ/devcontainer-kit/main/assets/logo-light.png">
+    <img alt="devcontainer-kit" src="https://raw.githubusercontent.com/DailybotHQ/devcontainer-kit/main/assets/logo-light.png" width="440">
+  </picture>
+</p>
+
 # devcontainer-kit
 
 A standard, agent-ready development container for any repository — rendered from one
@@ -34,6 +42,10 @@ safe defaults and tests. Built on the [Dev Containers](https://containers.dev) s
   container on request and proves it with a real build;
 - **an entrypoint library** (persistent volumes, SSH, environment for SSH sessions, git
   identity, agent trust) instead of a hand-copied entrypoint per repository.
+
+Every external input of the image is pinned — by digest, or by version and checksum — in
+[`images/versions.env`](images/versions.env): this release installs coding-agents-kit
+v0.7.1, herdr-peers v0.3.2, Herdr 0.9.3 and DeepWorkPlan Vim v0.7.0.
 
 ## Install
 
@@ -80,6 +92,7 @@ editor = true              # nvim + DeepWorkPlan Vim
 [agents]
 clis = ["claude", "codex"] # wired and installed for everyone; advanced: supported = "all"
                            # lets each developer choose (docs/config.md)
+presets = []               # ak alias presets: classic (claudex, …), providers (claude-glm, …)
 [herdr]
 machine = true             # register as a Herdr machine on `dev.sh up`
 layout = "standard"        # App · Editor · Development · Agents ("none" to skip)
@@ -107,7 +120,8 @@ each item is one check:
    shows your agent's keys and your identity; `ssh -T git@github.com` greets you, and your
    `~/.ssh/config` aliases (`git@github.com-work:…`) work the same inside.
 6. **Every coding agent** — `bash dev.sh shell -c 'ak doctor'` lists the CLIs your image
-   installs (`[agents].clis`, or your own list in the advanced mode), and `claudex` / `codex-glm` are shell functions.
+   installs (`[agents] clis`, or your own list: `dck doctor` shows requested and installed),
+   and with `[agents] presets` on, `claudex` / `codex-glm` are shell functions.
 7. **Autonomy by default, opt-out documented** — `ak doctor --json` → `"permissions":
    "auto"`; `AGENTKIT_PERMISSIONS=ask` in `docker/local/<service>/.env` makes agents ask.
 8. **Persistence** — after `bash dev.sh rebuild`, the CLIs' logins, `gh auth status`, the
@@ -122,12 +136,13 @@ each item is one check:
 
 | Command | What it does |
 | --- | --- |
-| `dck init [--agents --clis "claude codex"]` | renders or reconciles the layout; every change is a diff you accept |
+| `dck init [--agents --clis "claude codex"] [--supported all]` | renders or reconciles the layout; every change is a diff you accept |
 | `bash dev.sh up` / `dck up [--recreate]` | `.env` files and the dck key, then build and start; registers the Herdr machine and runs the mesh |
 | `bash dev.sh shell [-c CMD]` | a login shell (or one command) as the dev user in the app path |
 | `dck rebuild` | rebuild the images and recreate the containers; named volumes (logins, history) survive |
 | `dck agents` / `dck ask <machine>:<pane> "<prompt>"` | the live agents on every Herdr machine; ask one of them and get its reply (herdr-peers) |
 | `dck doctor [--json]` | environment and repository health, names of secrets only |
+| `dck --project P --compose-file F… --service S up` | a workspace satellite: one service of another compose project, with every host step ([docs/launcher.md](docs/launcher.md#workspace-satellites)); without `--service`, the main service through other compose files (PRIMARY mode) |
 
 ### The host's agent accounts inside the container
 
@@ -142,9 +157,10 @@ host_env_keys = []        # optional: exact env names to share besides Claude's 
 ```
 
 `dck up --recreate` then binds into the container, one by one, the host's
-coding-agents-kit profiles of the CLIs the repository installs (claude, codex, pi, cline,
-grok, opencode — never cursor; `host_profile_names = ["claude@work1"]` narrows them), the
-host's `~/.codex` when codex is installed, and a generated env file read-only. The env
+coding-agents-kit profiles of the CLIs the repository wires (claude, codex, pi, cline,
+grok, opencode — never cursor or antigravity; `host_profile_names = ["claude@work1"]`
+narrows them), the host's `~/.codex` when codex is wired, and a generated env file
+read-only. The env
 file holds no implicit secret: only the long-lived token of each shared Claude profile
 (`CLAUDE_CODE_OAUTH_TOKEN_<PROFILE>`, and `CLAUDE_CODE_OAUTH_TOKEN` for Claude's own home)
 plus the exact names you list. Mounts are read-write only where the CLI writes. Everything
