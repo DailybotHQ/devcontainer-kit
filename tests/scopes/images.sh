@@ -81,6 +81,55 @@ test_every_download_is_verified() {
   assert_not_contains "$(cat "$inst")" "git clone" "install.sh clones nothing (the editor has its own layer)"
 }
 
+# editor_retry <failures> <message> — runs editor.sh's install_with_retry (extracted,
+# no sleep) on a stub installer that fails <failures> times with <message> on stderr,
+# then succeeds; sets RUN_RC/RUN_OUT/RUN_ERR and EDITOR_RUNS (the stub's run count).
+editor_retry() {
+  local stub="$SANDBOX/installer" count="$SANDBOX/runs" fn="$SANDBOX/retry.sh"
+  printf '0\n' > "$count"
+  cat > "$stub" <<EOF
+#!/usr/bin/env bash
+n=\$((\$(cat "$count") + 1)); printf '%s\n' "\$n" > "$count"
+echo "attempt \$n"
+if [ "\$n" -le $1 ]; then printf 'install.sh: %s\n' "$2" >&2; exit 1; fi
+exit 0
+EOF
+  chmod +x "$stub"
+  sed -n '/^install_with_retry() {/,/^}/p' "$IMG/common/editor.sh" > "$fn"
+  run_cmd env DCK_EDITOR_RETRY_DELAY=0 TMPDIR="$SANDBOX" DWP_VIM_TAG=v9.9.9 \
+    bash -c '. "$1"; install_with_retry 3 "$2"' _ "$fn" "$stub"
+  EDITOR_RUNS="$(cat "$count")"
+}
+
+test_editor_install_retries_a_flaky_plugin_install() {
+  editor_retry 1 "--strict: plugins incomplete under /x — missing: nvim-cmp"
+  assert_rc 0 "one failed plugin install is retried and the build recovers"
+  assert_eq "$EDITOR_RUNS" "2" "the installer ran twice"
+  assert_contains "$RUN_ERR" "plugin install attempt 1/3 failed; retrying" "the retry is announced"
+  assert_contains "$RUN_ERR" "missing: nvim-cmp" "the failed attempt's own error stays visible"
+
+  editor_retry 2 "--strict: plugins differ from pckr/lockfile.lua — missing lualine.nvim"
+  assert_rc 0 "two failed plugin installs (lockfile check) still recover on the third"
+  assert_eq "$EDITOR_RUNS" "3" "the installer ran three times"
+
+  editor_retry 1 "--strict: the headless plugin install failed or timed out (rc=124)"
+  assert_rc 0 "a timed-out headless install is retried too"
+
+  editor_retry 9 "--strict: plugins incomplete under /x — missing: nvim-cmp"
+  assert_rc 1 "every attempt failing fails the build"
+  assert_eq "$EDITOR_RUNS" "3" "the attempts are bounded (3)"
+  assert_contains "$RUN_ERR" "still failed after 3 attempts" "the final failure says so"
+
+  editor_retry 9 "checksum mismatch for nvim-linux-x86_64.tar.gz"
+  assert_rc 1 "a failure that is not a plugin install fails at once"
+  assert_eq "$EDITOR_RUNS" "1" "and is not retried"
+  assert_contains "$RUN_ERR" "not a plugin install problem, not retried" "the reason is named"
+
+  editor_retry 9 "--strict: nvim is not on PATH, so the plugins cannot be installed"
+  assert_eq "$EDITOR_RUNS" "1" "a missing nvim is not retried (not transient)"
+  assert_contains "$(sed -n '/^# As the dev user/,$p' "$IMG/common/editor.sh")" 'install_with_retry 3 runuser -u "$DEV_USER"' "the build runs the installer through the bounded retry"
+}
+
 test_editor_layer_uses_the_verified_installer() {
   local ed="$IMG/common/editor.sh" f
   assert_eq "$(grep -cE '^[[:space:]]*curl ' "$ed")" "1" "editor.sh has exactly one curl call (inside fetch)"

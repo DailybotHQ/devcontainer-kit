@@ -2,10 +2,61 @@
 
 All notable changes to devcontainer-kit are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows
-[Semantic Versioning](https://semver.org/) (0.x: a breaking change bumps the minor version
-and the interface number).
+[Semantic Versioning](https://semver.org/): since 1.0.0 a breaking change to the public
+interface bumps the major version and the interface number (in 0.x it bumped the minor).
 
 ## [Unreleased]
+
+## [1.0.0] — 2026-10-13
+
+The first stable release. Interface stays **2**; nothing breaks from v0.3.7, so upgrade with
+`dck init` and `dck rebuild` so the image carries the new pins.
+
+### Stability commitment
+
+From 1.0.0 the public interface follows semver: a breaking change to it needs a new major
+version (and, for the files below, a new interface number). The public interface is:
+
+- **The `dck` verbs and flags:** `init`, `setup`, `up`, `down`, `stop`, `start`, `restart`,
+  `ps`, `logs`, `shell`, `exec`, `build`, `rebuild`, `config`, `ports`, `ssh`, `herdr`,
+  `host`, `agents`, `ask`, `doctor`, `--skill`, `help`, `--version`, their documented flags
+  (`--repo`, `--profile`, `--project`, `--trust`, `--compose-file`, `--service`, …) and the
+  exit codes (0 ok, 1 failed, 2 usage, 3 configuration, 4 environment, 5 refused).
+- **The schemas:** `dck.toml` and the host profile (`docs/schema/dck-config-v2.json`,
+  `dck-profile-v2.json`) and the `dck doctor --json` report (`dck-doctor-v2.json`).
+- **The render contract:** the files `dck init` writes and owns (`devcontainer.json` keys,
+  compose, `docker/local/<service>/`, `dev.sh`), the `dck:managed` markers and user blocks it
+  preserves, and the environment the entrypoint reads.
+
+Internals (`lib/`, the layer installers, the image's build steps) are not part of it.
+
+### Changed
+
+- **Pins:** herdr-peers **v1.0.0** (`HERDR_PEERS_TAG`, verified by the sha256 of its
+  `SHA256SUMS`, `11634ef2…`; tag commit `3bf118d`, 16 files), its first stable release
+  (protocol 1).
+- **Pins:** coding-agents-kit **v1.0.0** (`AGENTKIT_TAG`; tag commit `57b82fa`, tarball
+  sha256 `1fd86b4f…`, `SHA256SUMS` sha256 `8995e737…`), its first stable release; the
+  layer's install call (`install.sh --no-rc`) and its three skills are unchanged.
+- **Pins:** deepworkplan-vim **v1.0.0** (`DWP_VIM_TAG`; tag commit `f0929f9`, `install.sh`
+  sha256 `d1aaa207…`, the value its `SHA256SUMS` and `install.sh.sha256` publish), its first
+  stable release: visible selections, OSC 52 copy without a clipboard tool, no stray start
+  screen row.
+
+### Fixed
+
+- **A flaky editor layer no longer fails the image build.** The deepworkplan-vim installer
+  runs with `--strict`, and one plugin clone that lost a race with the network (seen as
+  `missing: nvim-cmp`, or `lualine.nvim` / `nvim-tree.lua` away from the lockfile) failed the
+  whole build. `editor.sh` now reruns the installer when `--strict` reports a plugin problem —
+  up to 3 attempts, with a growing pause — and then fails the build, loudly; any other
+  installer failure (a checksum, a refusal) still fails at once. The `images` scope runs the
+  retry against a stub installer: one or two flaky attempts recover, three fail, and a
+  non-plugin failure is never retried.
+- **Docs:** every user doc, `AGENTS.md`, `SECURITY.md`, `CONTRIBUTING.md` and the dck skill
+  re-verified against the code (init's base image and marker refusal, the App layout, doctor's
+  problem list, satellites, PRIMARY mode, presets, `dev_sh`, `node_first`, per-developer CLIs);
+  the README opens with a theme-aware logo (`assets/`).
 
 ## [0.3.7] — 2026-10-13
 

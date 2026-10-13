@@ -36,16 +36,20 @@ identical otherwise.
   `~/.config/herdr/config.toml` (login shell, `new_cwd` = the app path (dck.toml `workspace`, default `/app`),
   `allow_nested = true`);
 - Neovim **0.12.5** (`/opt/nvim-0.12.5`, `/usr/local/bin/nvim`, SHA-256
-  pinned per architecture) and deepworkplan-vim **v0.7.0** in `~/.config/nvim`,
+  pinned per architecture) and deepworkplan-vim **v1.0.0** in `~/.config/nvim`,
   installed in its own image layer (`images/common/editor.sh`) by the
   project's official installer — the one `https://vim.deepworkplan.com/install.sh`
   serves — downloaded from the versioned release asset, checked against its
   pinned SHA-256 and then run as `dev` in container mode:
-  `bash install.sh --version 0.7.0 --skip-packages --strict`. `--strict` fails
+  `bash install.sh --version 1.0.0 --skip-packages --strict`. `--strict` fails
   the build if the headless plugin install fails, leaves a required plugin
   missing, or leaves a plugin away from the commit deepworkplan-vim pins in
   `pckr/lockfile.lua`, so the plugins are **baked in**, pinned, and `nvim`
-  starts ready; the
+  starts ready. A plugin clone that loses a race with the network is the one
+  transient failure: when `--strict` reports a plugin problem, `editor.sh` runs
+  the installer again (a rerun updates in place and re-syncs only what is
+  missing), up to 3 attempts with a growing pause, then fails the build; any
+  other installer failure fails it at once. The
   configuration must resolve to the pinned commit. Plugin build steps that
   need pnpm get it on every flavour: `node-24` has it, `python-3.13` and
   `debian` get a build-only wrapper around Debian's corepack (no `pnpm` is
@@ -76,7 +80,7 @@ identical otherwise.
 The Dockerfile `dck init` renders runs the same `install.sh` and `editor.sh`
 (vendored into `docker/local/<service>/dck/` with a `VERSION` stamp) and adds:
 
-- **herdr-peers v0.3.2** (`images/common/peers.sh`): fetched from its tag's source,
+- **herdr-peers v1.0.0** (`images/common/peers.sh`): fetched from its tag's source,
   every file checked against that release's `SHA256SUMS`, itself pinned by sha256;
   installed at `/usr/local/share/dck/skills/herdr-peers` with `/usr/local/bin/herdr-peers`,
   next to Herdr's own skill (`herdr --skill`, matching the pinned binary). The
@@ -102,7 +106,7 @@ appears under `images/`.
 One file pins every input: base images (and the `uv` image) by tag **and** digest,
 each tool by version **and** SHA-256 per architecture (amd64, arm64),
 deepworkplan-vim by tag, commit **and** installer SHA-256, and the opt-in layers'
-inputs — coding-agents-kit **v0.7.1** (`AGENTKIT_TAG`, tarball `AGENTKIT_SHA256`),
+inputs — coding-agents-kit **v1.0.0** (`AGENTKIT_TAG`, tarball `AGENTKIT_SHA256`),
 Node **24.21.0** for the agents layer, the Dailybot CLI **3.27.0** wheel and uv
 **0.12.24** for the dailybot layer. `images/common/install.sh` and
 `images/common/editor.sh` download through a `fetch()` that refuses a checksum
