@@ -7,12 +7,98 @@ and the interface number).
 
 ## [Unreleased]
 
+## [0.3.6] — 2026-10-12
+
+Interface stays **2**.
+
+### Added
+
+- **Two modes for the coding-agent CLIs.** The default: the CLIs chosen at onboarding
+  (`[agents] clis`) are wired (home volume, `DCK_AGENTS` persistence, host-profile sharing,
+  `default_profile`) and installed for everyone; a developer may install fewer. The
+  **advanced** opt-in, `[agents] supported = "all" | [...]`, wires every supported CLI,
+  installed or not, and each developer chooses what to install; `dck init` offers it
+  (one interactive question for a new `dck.toml` with the agents layer, or
+  `dck init --supported all|"a b"`). What **your** image installs: env
+  `DCK_AGENT_CLIS` > `DCK_AGENT_CLIS` in `docker/local/.env` > host profile `[agents] clis`
+  (replace), then `clis_extra` (add) > dck.toml `clis` (`[]` = none), plus every
+  `INSTALL_<CLI>_CLI` that is exactly `true` (environment or `docker/local/.env`). An
+  unknown or unwired name stops `dck up` / `rebuild` (exit 3) with the list (in the default
+  mode, with the way to the advanced mode); the layer refuses it at build time too
+  (`DCK_AGENT_SUPPORTED`). See
+  [docs/config.md](docs/config.md#each-developers-coding-agent-clis).
+- The rendered compose passes `DCK_AGENT_CLIS: "${DCK_AGENT_CLIS:-<clis>}"` and one
+  `INSTALL_<CLI>_CLI: "${INSTALL_<CLI>_CLI:-false}"` per wired CLI as build args, so
+  plain compose and the editor's rebuild read `docker/local/.env` too; `dck init` creates
+  a create-only `docker/local/.env.example` that explains the repository's mode and its
+  options.
+  `dck up` / `rebuild` pass the effective list, through a fourth runtime overlay
+  (`<project>-clis.yml`, the build arg only) when it differs from dck.toml's.
+- The image records what it installed (`/opt/dck/agent-clis`): `dck up` warns and `dck
+  doctor` reports **rebuild needed: dck rebuild** when it differs from the requested list;
+  the doctor shows the mode, supported, requested (with its source) and installed
+  (`layers.clis_mode`, `clis_supported`, `clis_effective`, `clis_source`, `clis_image`).
+- **PRIMARY mode.** `dck [--project P] --compose-file F… <verb>` without `--service` runs
+  the main service through other compose files (a repository's own overlay, for example a
+  preview proxy's backend file): the files replace `dockerComposeFile` in order, dck's
+  runtime overlays still go last, with the same alias, label and Herdr machine as a plain
+  `up` and every host step (always the compose backend). For `up`, `rebuild`, `down`,
+  `ps`, `logs`, `shell`, `exec`, `ssh`, `stop`, `start`, `restart`, `config`, `herdr`,
+  `doctor` (which lists the files in use: `repo.compose_files`, `compose_override`).
+- **`antigravity` as a coding-agent CLI kind** (`[agents] clis`, `supported`, the host
+  profile's `clis` / `clis_extra`, `DCK_AGENT_CLIS`, `INSTALL_ANTIGRAVITY_CLI`): the agents
+  layer installs the Antigravity CLI (`agy`) through `ak install antigravity`, and the
+  entrypoint persists `~/.gemini` on an `antigravity` volume. Inside a container `agy`
+  reaches no OS keyring, so it keeps each Google login in a file under that home —
+  one login per ak profile (`ak antigravity @name`), several accounts side by side,
+  which the macOS Keychain's single slot never allowed. Its profiles stay unshareable
+  from the host (`[agents] host_profiles` skips them, as before). A state volume can no
+  longer be named `antigravity` (it is the CLI's home volume).
+
 ### Changed
 
+- An existing repository keeps its wiring (the default mode: its `clis`); its compose
+  file gains the build args, so `dck up` and `dck doctor` report it as stale until
+  `dck init` re-renders it.
+- `[agents] host_profiles` shares the ak profiles of the wired CLIs that exist on the host
+  (in the advanced mode, every supported CLI, installed or not); what it skips is reported
+  for the requested CLIs only.
+- `--service` needs `--project`; `--compose-file` without `--service` is PRIMARY mode
+  (it was a usage error).
 - Agent tooling: the vendored `deepworkplan` skill moves to v7.6.3 and the AI Diff Reviewer
   skill to v3.3.11, the pack's pin (`skills-lock.json`, AGENTS.md provenance), through the
   pack's own upgrade flow and addon planner; `.dwp/config.json` now also records the dev
   container addon (the repository's own dck container, v0.3.5).
+- **Pins:** coding-agents-kit **v0.7.0** (`AGENTKIT_TAG`; tag commit `d2b5b59`, tarball
+  sha256 `8bd2746b…`, `SHA256SUMS` sha256 `c30da1be…`): the `antigravity` kind, `ak usage`
+  for Antigravity, and ak's capacity and lease commands.
+
+### Fixed
+
+- With `[agents] host_profiles` on, an ak profile created inside for a CLI the host does not
+  share (antigravity, cursor, or a CLI with no host profile) was written to
+  `~/.dck/host/agentkit/profiles/<cli>/` in the container layer, so `dck rebuild` (or any
+  recreate) lost it and its login. The entrypoint now links that directory to the CLI's
+  directory on the `agentkit` volume (0700) — the one ak uses with the option off. Before
+  a recreate, `dck up --recreate` and `dck rebuild` run that step inside the old container,
+  so an older image's layer-only profiles move onto the volume first, without overwriting
+  the volume's copy (the rest is kept on the volume as `.<cli>.dck-pre-volume-<UTC>`,
+  logged by path). Shared CLIs' directories (the host's mounts) and anything on another
+  device are never moved; a link pointing outside the volume is refused. See
+  [docs/layers.md](docs/layers.md#host-accounts).
+- The preflight checked devcontainer.json's compose files even when `--compose-file`
+  (PRIMARY mode, satellites) replaced them, so a given file with `privileged`, the Docker
+  socket, host mounts or a path outside the repository started without `--trust`. It now
+  checks the files compose runs.
+- `dck up` reused an image dck did not build when one already had the service's tag (a
+  pre-dck image left by a repository's old tooling, with its own entrypoint), so no host
+  step ran until `dck rebuild`. `dck up` now inspects the image first: one without dck's
+  `DCK_IMAGE_VERSION` or `dck-entrypoint`, or built by another dck version than the
+  repository's render (`docker/local/<svc>/dck/VERSION`), is rebuilt and its container
+  replaced, with a note naming the image and why.
+- `dck down` left the primary's Herdr machine registered (only a satellite's `down`
+  removed it). It now removes the machine and SSH alias `dck up` registered whenever the
+  dev service goes down; the next `dck up` registers them again.
 
 ## [0.3.5] — 2026-10-12
 

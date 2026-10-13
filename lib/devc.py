@@ -136,6 +136,10 @@ def env_lines(repo, dck_tag, profile=None):
                 ("DCK_HOST_PROFILES", "1" if merged["host_profiles"] and merged["layers.agents"] else "0"),
                 ("DCK_SSH_HOST_CONFIG", "1" if merged["ssh_host_config"] else "0"),
                 ("DCK_SSH_COPY_KEYS", "1" if merged["ssh_copy_keys"] else "0"),
+                ("DCK_AGENT_CLIS_EFFECTIVE", " ".join(merged["clis_effective"])),
+                ("DCK_AGENT_CLIS_SOURCE", merged["clis_source"]),
+                ("DCK_AGENT_CLIS_DIFFERS", "1" if merged["layers.agents"]
+                 and merged["clis_effective"] != merged["agents.clis"] else "0"),
                 ("DCK_SSH_HOST_EXTRA", " ".join(merged["ssh_host_extra"])),
                 ("DCK_HERDR_LABEL", merged["herdr.label"]),
                 ("DCK_NETWORK", merged["network"]),
@@ -245,12 +249,15 @@ def _host_paths(text):
     return [p for p in out if p.startswith(("/", ".", "~", "$"))]
 
 
-def preflight(repo):
+def preflight(repo, compose_files=None):
     """Features of the repository's own configuration that act on the HOST
     when dck starts it (devcontainer.json / compose). dck-rendered setups have
-    none; anything listed needs the user's explicit --trust."""
+    none; anything listed needs the user's explicit --trust. compose_files (dck
+    --compose-file) replaces devcontainer.json's list, as it does for compose."""
     root = os.path.realpath(repo)
     info = read(repo)
+    if compose_files:
+        info["compose_files"] = list(compose_files)
     data = jsonc.load(info["file"])
     found = []
     # The agent socket bind is dck's own only while dck.toml asks for it.

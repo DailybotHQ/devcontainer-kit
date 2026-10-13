@@ -40,8 +40,18 @@ dailybot = {{layers_dailybot}}
 editor = {{layers_editor}}
 
 [agents]
-# Kinds passed to `ak install` when layers.agents is true.
+# The coding-agent CLIs installed — and wired (home volumes, host profiles) — for everyone.
 clis = [{{agents_clis_toml}}]
+{% if agents_supported_set %}
+# Advanced: every image is wired for these CLIs, installed or not; each developer
+# chooses what to install within them (DCK_AGENT_CLIS or INSTALL_<CLI>_CLI=true in
+# docker/local/.env, or [agents] clis / clis_extra in the host profile); clis is
+# the default set. See docs/config.md.
+supported = {{agents_supported_toml}}
+{% else %}
+# Advanced: supported = "all" wires every CLI ak knows and lets each developer
+# choose what to install (docs/config.md).
+{% endif %}
 # ak alias presets: "classic" (claudex, codexx, …) and "providers" (claude-glm, …).
 # [] = none; removing the key turns both on (the behaviour before v0.3.3).
 presets = [{{agents_presets_toml}}]

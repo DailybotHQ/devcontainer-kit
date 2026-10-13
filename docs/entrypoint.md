@@ -23,7 +23,7 @@ Set by the compose file `dck init` renders ([init.md](init.md)):
 | `DCK_AUTHORIZED_KEYS` | empty | public key(s) to authorize; `dck up` passes the dedicated dck key |
 | `DCK_PERSIST_ROOT` | `$DCK_HOME/.dck/volumes` | where named volumes are mounted, one directory per volume |
 | `DCK_REPO_HOOK` | `$DCK_WORKSPACE/docker/local/dev-setup-hook.sh` | the repository hook |
-| `DCK_HOST_PROFILES` | empty | the CLIs whose ak profiles are the host's (`[agents] host_profiles`, set by `dck up`'s runtime overlay) |
+| `DCK_HOST_PROFILES` | empty | the CLIs whose ak profiles are the host's (`[agents] host_profiles`, set by `dck up`'s runtime overlay); every other CLI in `DCK_AGENTS` gets `~/.dck/host/agentkit/profiles/<cli>` linked to its directory on the `agentkit` volume (`dck_host_volume_profiles`) |
 | `DCK_HOST_CODEX` | empty | the mounted host Codex home (`$DCK_HOME/.dck/host/codex`); `~/.codex` links to it. Ignored outside `$DCK_HOME/.dck/host/` |
 | `DCK_SSH_COPY_KEYS` | `0` | `1` copies the host's `~/.ssh/id_*` keys from `~/.ssh_host` (`[ssh] copy_keys`, set with that read-only bind by `dck up`'s runtime overlay); see `dck_ssh_copy_keys` |
 | `AGENTKIT_PERMISSIONS` | empty | `ask` turns autonomy off: `dck_agent_trust` then writes nothing |
@@ -109,7 +109,8 @@ entrypoint.
 ### `dck_agent_trust`
 
 Unattended agent launches ([layers.md](layers.md#unattended-agent-launches)): with
-autonomy on, the workspace is marked trusted for the CLIs in `DCK_AGENTS` — Claude's
+autonomy on, the workspace is marked trusted for the CLIs in `DCK_AGENTS` (the wired
+CLIs: `[agents] clis`, or every supported CLI in the advanced mode, installed or not) — Claude's
 `projects[<workspace>].hasTrustDialogAccepted` and Codex's
 `[projects."<workspace>"] trust_level = "trusted"` in the container's own homes and in
 the shared host profiles; Claude's bypass-permissions acknowledgement and onboarding

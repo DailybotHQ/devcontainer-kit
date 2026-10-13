@@ -68,8 +68,12 @@ test_node_fixture_end_to_end() {
   trap it_cleanup EXIT
   local port; port="$(free_port)"
   echo '{"name":"fixture","engines":{"node":">=24"}}' > "$IT_REPO/package.json"
-  run_cmd "$DCK" init --repo "$IT_REPO" --ssh-port "$port" --no-herdr --agents --clis "codex pi" --yes
+  run_cmd "$DCK" init --repo "$IT_REPO" --ssh-port "$port" --no-herdr --agents --clis "codex" --supported all --yes
   assert_rc 0 "dck init renders the node fixture with the agents layer"
+  # v0.3.6, the advanced mode: dck.toml wires every CLI and installs codex; this
+  # developer's host profile adds pi.
+  mkdir -p "$HOME/.config/dck"
+  printf 'interface = 2\n[agents]\nclis_extra = ["pi"]\n' > "$HOME/.config/dck/profile.toml"
   # A new render writes presets = [] (off); this fixture turns both on to test them.
   python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read(); open(p, "w").write(s.replace("presets = []", "presets = [\"classic\", \"providers\"]"))' "$IT_REPO/.devcontainer/dck.toml"
   run_cmd "$DCK" init --repo "$IT_REPO" --yes
@@ -159,8 +163,17 @@ test_node_fixture_end_to_end() {
   assert_contains "$RUN_OUT" "agentkit ${tag#v}" "the installed kit is the pinned $tag"
   assert_contains "$RUN_OUT" "1 auto True True" "ak runs in autonomy by default with the classic and providers presets"
   assert_match "$RUN_OUT" '/codex$' "codex is installed through ak"
-  assert_match "$RUN_OUT" '/pi$' "pi is installed through ak"
+  assert_match "$RUN_OUT" '/pi$' "pi is installed through ak (the host profile's clis_extra)"
   assert_contains "$RUN_OUT" "function" "the wrapper names are shell functions"
+  dev shell -c 'cat /opt/dck/agent-clis; for c in claude cursor-agent opencode cline grok agy; do command -v "$c" >/dev/null && echo "unexpected:$c"; done; echo "agents=$DCK_AGENTS"'
+  assert_contains "$RUN_OUT" "codex pi" "the image records the two CLIs it installed"
+  assert_not_contains "$RUN_OUT" "unexpected:" "no other CLI is installed"
+  assert_contains "$RUN_OUT" "agents=claude codex cursor opencode pi cline grok antigravity" "the entrypoint wires every supported CLI"
+  run_cmd docker inspect -f '{{range .Mounts}}{{.Name}} {{end}}' "${IT_PROJECT}-app-1"
+  local k
+  for k in claude codex cursor opencode pi cline grok antigravity; do
+    assert_contains "$RUN_OUT" "${IT_PROJECT}_$k " "the $k home volume is mounted (installed or not)"
+  done
   dev shell -c 'head -1 ~/.codex/config.toml; codex features list 2>/dev/null | grep "^daemon_auto_start "'
   assert_contains "$RUN_OUT" "check_for_update_on_startup = false" "Codex skips its startup update check inside (dck pins its version)"
   assert_match "$RUN_OUT" '^daemon_auto_start +[a-z ]+ +false$' "and Codex itself reads daemon_auto_start = false"
@@ -175,7 +188,7 @@ test_node_fixture_end_to_end() {
   # Host accounts: the env file is rewritten on every `dck up`; a running
   # container must see the new file without a recreate (the directory is bound).
   mkdir -p "$HOME/.config/dck"
-  printf 'interface = 2\n[agents]\nhost_profiles = true\nhost_env_keys = ["DCK_IT_HOSTENV"]\n' > "$HOME/.config/dck/profile.toml"
+  printf 'interface = 2\n[agents]\nclis_extra = ["pi"]\nhost_profiles = true\nhost_env_keys = ["DCK_IT_HOSTENV"]\n' > "$HOME/.config/dck/profile.toml"
   export DCK_IT_HOSTENV=dck-fake-value-first
   # dck up never recreates a running container on its own: --recreate applies the overlay.
   with_lock d up --recreate
@@ -191,7 +204,46 @@ test_node_fixture_end_to_end() {
   assert_eq "$cid2" "$cid1" "the second up keeps the running container"
   run_cmd docker exec -u root "${IT_PROJECT}-app-1" sh -c 'cat "$AGENTKIT_ENV"'
   assert_contains "$RUN_OUT" "DCK_IT_HOSTENV='dck-fake-value-second'" "the second up's value is visible inside without a recreate"
-  rm -f "$HOME/.config/dck/profile.toml"; unset DCK_IT_HOSTENV
+  unset DCK_IT_HOSTENV
+
+  # v0.3.6 PRIMARY mode: the main service recreated through an extra compose
+  # overlay (a repository's own script) keeps every host step.
+  mkdir -p "$HOME/.local/share/agentkit/profiles/codex/work1"
+  printf 'interface = 2\n[agents]\nclis_extra = ["pi"]\nhost_profiles = true\ndefault_profile = { codex = "@work1" }\n' > "$HOME/.config/dck/profile.toml"
+  printf 'services:\n  app:\n    environment:\n      IT_PRIMARY_BACKEND: "1"\n' > "$IT_REPO/docker/local/docker-compose.primary-backend.yaml"
+  local prim=(--compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.primary-backend.yaml)
+  with_lock d "${prim[@]}" up --recreate app
+  assert_rc 0 "PRIMARY mode: dck --compose-file A --compose-file B up --recreate app"
+  wait_port "$port" || fail "sshd answers after the PRIMARY-mode recreate"
+  d ssh 'echo "backend=$IT_PRIMARY_BACKEND default=$AGENTKIT_DEFAULT_PROFILE_CODEX"; git config --global user.name'
+  assert_rc 0 "the dck key is still authorized (dck ssh)"
+  assert_contains "$RUN_OUT" "backend=1" "the extra overlay applies"
+  assert_contains "$RUN_OUT" "default=@work1" "default_profile survives the extra overlay"
+  assert_contains "$RUN_OUT" "Fixture Dev" "and the git identity"
+  run_cmd docker ps --filter "label=com.docker.compose.project=$IT_PROJECT" --format '{{.Names}}'
+  assert_eq "$RUN_OUT" "${IT_PROJECT}-app-1" "the primary itself, in its own project (no satellite)"
+  d "${prim[@]}" doctor
+  assert_contains "$RUN_OUT" "docker/local/docker-compose.primary-backend.yaml (--compose-file)" "the doctor shows the compose files in use"
+  assert_contains "$RUN_OUT" "installed codex pi" "and the CLIs the image installed"
+  # v0.3.6: with host profiles shared (codex), a CLI the host does not share keeps its
+  # profiles on the agentkit volume: a login made inside (the token file agy writes)
+  # survives a recreate, and is the same profile with host_profiles off (below).
+  dev shell -c 'p=~/.dck/host/agentkit/profiles; mkdir -p "$p/antigravity/it1" && echo it-login > "$p/antigravity/it1/token"; readlink "$p/antigravity"; test -L "$p/codex" || echo codex-real'
+  assert_contains "$RUN_OUT" "/home/dev/.dck/volumes/agentkit/profiles/antigravity" "a non-shared CLI's profiles directory links to the agentkit volume"
+  assert_contains "$RUN_OUT" "codex-real" "a shared CLI's directory (the host's mounts) is not linked"
+  with_lock d "${prim[@]}" up --recreate app
+  assert_rc 0 "a recreate with host accounts on"
+  dev shell -c 'cat ~/.dck/host/agentkit/profiles/antigravity/it1/token'
+  assert_eq "$RUN_OUT" "it-login" "the non-shared profile's login survives the recreate"
+  # A container started from an older image kept such profiles in its layer: dck
+  # moves them onto the volume in the old container before it recreates it.
+  dev shell -c 'p=~/.dck/host/agentkit/profiles; unlink "$p/grok" && mkdir -p "$p/grok/old1" && echo old-login > "$p/grok/old1/token"'
+  with_lock d "${prim[@]}" up --recreate app
+  assert_rc 0 "a recreate of a container with layer-only profiles"
+  assert_contains "$RUN_OUT" "agents: grok profiles moved onto the agentkit volume" "dck reports the profiles it saved"
+  dev shell -c 'cat ~/.dck/host/agentkit/profiles/grok/old1/token'
+  assert_eq "$RUN_OUT" "old-login" "a layer-only profile survives the recreate"
+  printf 'interface = 2\n[agents]\nclis_extra = ["pi"]\n' > "$HOME/.config/dck/profile.toml"
 
   # 8. Persistence across rebuild: the state and agent volumes survive.
   dev shell -c 'mkdir -p ~/.config/gh ~/.codex && echo kept > ~/.config/gh/it-marker && echo kept > ~/.codex/it-marker && echo kept > ~/.config/agentkit/it-marker'
@@ -203,13 +255,15 @@ test_node_fixture_end_to_end() {
 kept
 kept
 Fixture Dev" "gh, a CLI home, agentkit and the git identity survive a rebuild"
+  dev shell -c 'cat "$AGENTKIT_PROFILES_DIR/antigravity/it1/token"'
+  assert_eq "$RUN_OUT" "it-login" "with host_profiles off, ak finds the same profile on the volume after a rebuild"
   d ssh true
   assert_rc 0 "after a rebuild the same host key is accepted (strict checking)"
 
   d doctor --json
   local ok
-  ok="$(printf '%s' "$RUN_OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["interface"], d["repo"]["container"]["state"], d["ssh"]["answering"], d["repo"]["vendored"], sorted({x["status"] for x in d["drift"] if x["name"] in ("gh","nvim","dwp_vim","kit")}))')"
-  assert_eq "$ok" "2 running True current ['ok']" "doctor sees the running container, sshd, current vendored scripts and no drift"
+  ok="$(printf '%s' "$RUN_OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["interface"], d["repo"]["container"]["state"], d["ssh"]["answering"], d["repo"]["vendored"], sorted({x["status"] for x in d["drift"] if x["name"] in ("gh","nvim","dwp_vim","kit")}), d["layers"]["clis_image"], d["layers"]["clis_source"])')"
+  assert_eq "$ok" "2 running True current ['ok'] ['codex', 'pi'] repo + profile" "doctor sees the running container, sshd, current vendored scripts, no drift and the installed CLIs"
   printf '%s' "$RUN_OUT" | python3 "$TESTS_DIR/py/minischema.py" "$DCK_REPO/docs/schema/dck-doctor-v2.json" >/dev/null
   assert_rc 0 "the live doctor report matches the schema"
 
@@ -634,8 +688,13 @@ SH
   git config --global user.email "fixture-host@example.invalid"
   run_cmd "$DCK" init --repo "$IT_REPO" --flavour debian --ssh-port "$port" --herdr --no-agents --no-editor --yes
   assert_rc 0 "dck init renders the fixture"
+  # v0.3.6: a pre-dck image already under the service's tag (the repository's
+  # old tooling) is rebuilt, not reused.
+  local base; base="$(sed -n 's/^ARG BASE_IMAGE=//p' "$IT_REPO/docker/local/app/Dockerfile" | head -n 1)"
+  printf 'FROM %s\nENTRYPOINT ["/entrypoint.sh"]\n' "$base" | with_lock docker build -q -t "${IT_PROJECT}-app" - >/dev/null
   with_lock d up
   assert_rc 0 "the main service is up"
+  assert_contains "$RUN_OUT" "image ${IT_PROJECT}-app: not built by dck" "a pre-dck image under the same tag is detected and rebuilt"
   # A login on the main service's state volume, to seed the satellite from.
   d shell -c 'mkdir -p ~/.config/gh && echo "github.com: {user: fixture}" > ~/.config/gh/hosts.yml'
   # In an overlay file, extends names the file of the service it extends.
@@ -662,7 +721,17 @@ SH
   run_cmd docker ps --filter "label=com.docker.compose.project=$IT_PROJECT" --format '{{.Names}}'
   assert_eq "$RUN_OUT" "${IT_PROJECT}-app-1" "the main service keeps running"
   assert_contains "$(herdr machine list --json)" "dck-${IT_PROJECT}" "and stays registered"
+  # v0.3.6 PRIMARY mode: the main service through an extra overlay keeps its machine.
+  local before; before="$(herdr machine list --json)"
+  printf 'services:\n  app:\n    environment:\n      IT_PRIMARY_BACKEND: "1"\n' > "$IT_REPO/docker/local/docker-compose.primary-backend.yaml"
+  with_lock d --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.primary-backend.yaml up --recreate
+  assert_rc 0 "PRIMARY mode recreates the main service"
+  assert_eq "$(herdr machine list --json)" "$before" "the same Herdr machine, alias and label (nothing added or removed)"
+  d ssh 'echo "backend=$IT_PRIMARY_BACKEND self=$HERDR_PEERS_SELF"'
+  assert_contains "$RUN_OUT" "backend=1" "the overlay applies and the dck key is authorized"
+  assert_match "$RUN_OUT" 'self=[0-9a-f]{32}$' "HERDR_PEERS_SELF is pushed again"
   d down
+  assert_not_contains "$(herdr machine list --json)" "dck-${IT_PROJECT}\"" "dck down removes the primary's Herdr machine"
 }
 
 test_zz_nothing_left_behind() {

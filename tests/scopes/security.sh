@@ -13,7 +13,7 @@ render_all() {
     i=$((i + 1))
     mkdir -p "$SANDBOX/r$i"; git -C "$SANDBOX/r$i" init -q
     "$DCK" init --repo "$SANDBOX/r$i" --flavour "$f" --ssh-port "2204$i" --port web=4321 --port api=8000 \
-      --agents --clis "claude codex cursor opencode pi cline grok" --yes >/dev/null 2>&1 || fail "fixture: init $f"
+      --agents --clis "claude codex cursor opencode pi cline grok antigravity" --yes >/dev/null 2>&1 || fail "fixture: init $f"
   done
   mkdir -p "$SANDBOX/r0"; git -C "$SANDBOX/r0" init -q
   "$DCK" init --repo "$SANDBOX/r0" --ssh-port 0 --yes >/dev/null 2>&1 || fail "fixture: init without ssh"
@@ -215,6 +215,25 @@ p = sys.argv[1]; d = jsonc.load(p); d["dockerComposeFile"] = sys.argv[2]; open(p
 PY
   in_repo "$r3" "$DCK" up
   assert_rc 5 "a compose file outside the repository needs --trust"
+}
+
+test_compose_file_override_needs_trust_too() {
+  local r; r="$(sec_repo prim)"
+  printf 'services:\n  app:\n    privileged: true\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock\n' > "$r/docker/local/docker-compose.extra.yaml"
+  : > "$DCK_FAKE_LOG"
+  in_repo "$r" "$DCK" --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.extra.yaml up
+  assert_rc 5 "PRIMARY mode: a --compose-file reaching the host needs --trust"
+  assert_contains "$RUN_ERR" "docker/local/docker-compose.extra.yaml: privileged: true" "the preflight checks the files compose will run"
+  assert_not_contains "$(fake_calls docker)" " up " "nothing was started"
+  in_repo "$r" "$DCK" --project prim2 --service app --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.extra.yaml up
+  assert_rc 5 "a satellite's --compose-file too"
+  mkdir -p "$SANDBOX/elsewhere-prim"; cp "$r/docker/local/docker-compose.yaml" "$SANDBOX/elsewhere-prim/c.yaml"
+  in_repo "$r" "$DCK" --compose-file "$SANDBOX/elsewhere-prim/c.yaml" up
+  assert_rc 5 "a --compose-file outside the repository needs --trust"
+  in_repo "$r" "$DCK" --compose-file docker/local/docker-compose.yaml up
+  assert_rc 0 "the repository's own dck-rendered file starts without --trust"
+  in_repo "$r" "$DCK" --trust --compose-file docker/local/docker-compose.yaml --compose-file docker/local/docker-compose.extra.yaml up
+  assert_rc 0 "--trust starts it after review"
 }
 
 test_agent_socket_bind_cannot_be_redirected() {

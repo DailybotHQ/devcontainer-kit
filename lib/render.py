@@ -677,6 +677,16 @@ def toml_drop(text, key):
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
+def supported_volumes(values):
+    """The kinds [agents] supported wires (home volumes, host profiles), in ak's order."""
+    return config.supported_kinds(values.get("agents.supported"), values.get("agents.clis") or [])
+
+
+def install_args(values):
+    """The Dockerfile ARGs of the INSTALL_<CLI>_CLI convention (v0.3.6)."""
+    return ["ARG %s=false" % config.install_var(k) for k in supported_volumes(values)]
+
+
 def layers_block(values):
     """Dockerfile lines for the opt-in layers (see docs/layers.md)."""
     lines = []
@@ -688,8 +698,12 @@ def layers_block(values):
             "# Agents layer (layers.agents = true): coding-agents-kit (ak) from its verified",
             "# release, the pinned Node when the flavour lacks a current one, `ak install`",
             "# (pinned, verified) and the classic + providers presets. Autonomy is ak's default.",
+            "# The CLIs installed: DCK_AGENT_CLIS plus each INSTALL_<CLI>_CLI=true (compose",
+            "# passes both from the developer's environment or docker/local/.env).",
             "ARG DCK_AGENT_CLIS=\"%s\"" % " ".join(values["agents.clis"]),
-            "RUN DCK_USER=%s dck-layer agents ${DCK_AGENT_CLIS}" % user,
+        ] + install_args(values) + [
+            "RUN DCK_USER=%s DCK_AGENT_SUPPORTED=\"%s\" dck-layer agents ${DCK_AGENT_CLIS}"
+            % (user, " ".join(supported_volumes(values))),
         ]
     elif values["layers.agents"]:
         lines += [
@@ -698,8 +712,12 @@ def layers_block(values):
             "# (pinned, verified) and the ak alias presets of [agents] presets (%s)."
             % (" + ".join(presets) or "none"),
             "# Autonomy is ak's default.",
+            "# The CLIs installed: DCK_AGENT_CLIS plus each INSTALL_<CLI>_CLI=true (compose",
+            "# passes both from the developer's environment or docker/local/.env).",
             "ARG DCK_AGENT_CLIS=\"%s\"" % " ".join(values["agents.clis"]),
-            "RUN DCK_USER=%s DCK_AGENT_PRESETS=\"%s\" dck-layer agents ${DCK_AGENT_CLIS}" % (user, " ".join(presets)),
+        ] + install_args(values) + [
+            "RUN DCK_USER=%s DCK_AGENT_SUPPORTED=\"%s\" DCK_AGENT_PRESETS=\"%s\" dck-layer agents ${DCK_AGENT_CLIS}"
+            % (user, " ".join(supported_volumes(values)), " ".join(presets)),
         ]
     if values["layers.dailybot"]:
         lines += [
@@ -723,7 +741,7 @@ def layers_block(values):
     return "\n".join(lines)
 
 
-AGENT_VOLUMES = ("claude", "codex", "cursor", "opencode", "pi", "cline", "grok")
+AGENT_VOLUMES = ("claude", "codex", "cursor", "opencode", "pi", "cline", "grok", "antigravity")
 
 
 def release_sums_sha256(dck_tag):
@@ -798,7 +816,7 @@ def context(values, repo_name, project, network, base_image, dck_tag, pins=None,
                     if v not in top_vols]
     user_networks = [n for n in (user or {}).get("networks") or [] if n not in top_nets]
     nets = network_names(values, network, user_networks)
-    dck_vols = [values["compose.state_volume"]] + (["agentkit"] + [k for k in AGENT_VOLUMES if k in values["agents.clis"]]
+    dck_vols = [values["compose.state_volume"]] + (["agentkit"] + supported_volumes(values)
                                                    if values["layers.agents"] else [])
     for name in top_vols:
         if name in dck_vols or name in (values.get("compose.volumes") or []):
@@ -820,7 +838,9 @@ def context(values, repo_name, project, network, base_image, dck_tag, pins=None,
     vols = [(values["compose.state_volume"], "state")]
     if values["layers.agents"]:
         vols.append(("agentkit", "agentkit"))
-        vols += [(k, k) for k in AGENT_VOLUMES if k in values["agents.clis"]]
+        # Every SUPPORTED CLI's home, installed or not (v0.3.6): a CLI a developer
+        # installs later finds its volume; an unused one stays empty.
+        vols += [(k, k) for k in supported_volumes(values)]
     bind = values["bind"]
     port_lines = []
     if values["ssh_port"]:
@@ -872,6 +892,13 @@ def context(values, repo_name, project, network, base_image, dck_tag, pins=None,
         "layers_editor": toml_value(values["layers.editor"]),
         "agents_clis_toml": ", ".join(json.dumps(c) for c in values["agents.clis"]),
         "agents_clis_space": " ".join(values["agents.clis"]),
+        "agents_supported_space": " ".join(supported_volumes(values)),
+        "agents_supported_set": values.get("agents.supported") is not None,
+        "agents_supported_toml": ('"all"' if values.get("agents.supported") == "all"
+                                  else "[%s]" % ", ".join(json.dumps(c) for c in values.get("agents.supported") or [])),
+        "install_arg_lines": "\n".join('        %s: "${%s:-false}"' % (config.install_var(k), config.install_var(k))
+                                       for k in supported_volumes(values)),
+        "install_env_lines": "\n".join("# %s=false" % config.install_var(k) for k in supported_volumes(values)),
         "agents_presets_toml": ", ".join(json.dumps(p) for p in (values.get("agents.presets") or [])),
         "herdr_machine": toml_value(values["herdr.machine"]),
         "herdr_layout": values["herdr.layout"],
@@ -1054,6 +1081,13 @@ def plan(repo, values, ctx, toml_overrides, toml_exists, drop=()):
         changes.append(Change(rel, "unchanged" if new == old else "update", new, old, "managed block"))
 
     # Create-only files.
+    if values["layers.agents"]:
+        # The compose directory's .env.example: each developer's CLIs (v0.3.6).
+        rel = "docker/local/.env.example"
+        if _read(os.path.join(repo, rel)) is None:
+            changes.append(Change(rel, "create", render_text(read_template("docker/env.example.tmpl"), ctx, rel)))
+        else:
+            changes.append(Change(rel, "unchanged", note="create-only"))
     rel = "docker/local/%s/.env.example" % svc
     if _read(os.path.join(repo, rel)) is None:
         changes.append(Change(rel, "create", render_text(read_template("docker/service/env.example.tmpl"), ctx, rel)))
@@ -1233,7 +1267,7 @@ def init(opts, dck_tag, env=None, out=sys.stdout, err=sys.stderr):
     # Flag values → dotted keys. They override dck.toml and are written into it.
     flag_map = (("flavour", "flavour"), ("service", "service"), ("user", "user"),
                 ("workspace", "workspace"), ("ssh_port", "ssh_port"),
-                ("agents", "layers.agents"), ("clis", "agents.clis"), ("editor", "layers.editor"),
+                ("agents", "layers.agents"), ("clis", "agents.clis"), ("supported", "agents.supported"), ("editor", "layers.editor"),
                 ("herdr_machine", "herdr.machine"), ("ports", "ports"),
                 ("state_volume", "compose.state_volume"), ("dev_sh", "dev_sh"))
     if opts.get("ports") is not None:
@@ -1254,6 +1288,15 @@ def init(opts, dck_tag, env=None, out=sys.stdout, err=sys.stderr):
             doc.setdefault(table, {})[key] = value
         else:
             doc[key] = value
+    if (not toml_exists and opts.get("supported") is None and opts.get("interactive")
+            and (doc.get("layers") or {}).get("agents")):
+        # The default wires and installs the CLIs chosen here; the advanced mode
+        # wires every CLI and lets each developer choose what to install.
+        if ask("Coding-agent CLIs: dck wires and installs %s for everyone (the default).\n"
+               "Advanced: wire every CLI ak knows and let each developer choose what to install "
+               "(DCK_AGENT_CLIS, INSTALL_<CLI>_CLI, their host profile)? [y/N] "
+               % (" ".join((doc.get("agents") or {}).get("clis") or []) or "no CLI")):
+            doc.setdefault("agents", {})["supported"] = "all"
     if not toml_exists and opts.get("herdr_machine") is None:
         # Default: a Herdr machine when Herdr is installed and sshd is on.
         doc.setdefault("herdr", {})["machine"] = which("herdr") is not None and doc.get("ssh_port", 0) != 0

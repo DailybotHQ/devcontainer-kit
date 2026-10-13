@@ -173,6 +173,9 @@
         "vendored"
       ],
       "properties": {
+        "compose_files": {"type": "array", "items": {"type": "string"},
+          "description": "the compose files in use, in order (repository-relative when inside it): devcontainer.json's dockerComposeFile, or dck --compose-file"},
+        "compose_override": {"type": "boolean", "description": "true when dck --compose-file replaced devcontainer.json's list (PRIMARY mode)"},
         "path": {
           "type": "string"
         },
@@ -319,10 +322,20 @@
               "opencode",
               "pi",
               "cline",
-              "grok"
+              "grok",
+              "antigravity"
             ]
           }
-        }
+        },
+        "clis_mode": {"enum": ["default", "advanced"],
+          "description": "default: the CLIs chosen at onboarding (dck.toml clis) are wired and installed; advanced: [agents] supported is set, each developer chooses what to install within it"},
+        "clis_supported": {"type": "array", "items": {"enum": ["claude", "codex", "cursor", "opencode", "pi", "cline", "grok", "antigravity"]},
+          "description": "dck.toml [agents] supported: the CLIs every image is wired for (home volumes, host profiles), installed or not"},
+        "clis_effective": {"type": "array", "items": {"enum": ["claude", "codex", "cursor", "opencode", "pi", "cline", "grok", "antigravity"]},
+          "description": "the CLIs this developer requests (installs at the next build): DCK_AGENT_CLIS, the host profile's [agents] clis / clis_extra or dck.toml's clis, plus each INSTALL_<CLI>_CLI=true"},
+        "clis_source": {"type": "string", "description": "where clis_effective comes from, joined by \" + \": env, env (docker/local/.env), profile, repo, INSTALL_* (env), INSTALL_* (docker/local/.env)"},
+        "clis_image": {"type": ["array", "null"], "items": {"enum": ["claude", "codex", "cursor", "opencode", "pi", "cline", "grok", "antigravity"]},
+          "description": "the CLIs the running image was built with; null when no container runs or the image predates v0.3.6"}
       }
     },
     "ssh": {

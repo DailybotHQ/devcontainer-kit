@@ -20,7 +20,7 @@ PROFILES="$HOME/.local/share/agentkit/profiles"
 mk_repo() {
   mkdir -p "$REPO"
   git -C "$REPO" init -q
-  "$DCK" init --repo "$REPO" --flavour node-24 --agents --clis "${1:-claude codex cursor pi}" --no-herdr --yes >/dev/null 2>&1 \
+  "$DCK" init --repo "$REPO" --flavour node-24 --agents --clis "${1:-claude codex cursor pi}" "${@:2}" --no-herdr --yes >/dev/null 2>&1 \
     || { fail "fixture: dck init failed"; return 1; }
   : > "$DCK_FAKE_LOG"
 }
@@ -383,6 +383,33 @@ test_doctor_without_profiles_json() {
   assert_contains "$RUN_OUT" "ak profiles --json" "without a host ak the doctor says logins were not checked"
 }
 
+test_recreate_saves_layer_profiles_first() {
+  mk_repo || return 0
+  mk_host
+  profile 'host_profiles = true'
+  printf 'proj-app-1\n' > "$DCK_FAKE_STATE/ps"
+  printf 'dck-entrypoint: agents: pi profiles moved onto the agentkit volume\ndck-entrypoint: other\n' > "$DCK_FAKE_STATE/exec_out"
+  local verb log save rec
+  for verb in "up --recreate" "rebuild"; do
+    : > "$DCK_FAKE_LOG"
+    # shellcheck disable=SC2086  # the verb and its flag
+    run_cmd bash -c 'cd "$1" && shift && env TMPDIR="$1" "$2" $3' _ "$REPO" "$SANDBOX/tmp" "$DCK" "$verb"
+    assert_rc 0 "dck $verb with a running container"
+    log="$(fake_calls docker)"
+    save="$(printf '%s\n' "$log" | grep -n "exec -T --user root app bash -c . /dev/stdin && dck_host_volume_profiles" | head -1 | cut -d: -f1)"
+    rec="$(printf '%s\n' "$log" | grep -n "up -d --force-recreate" | head -1 | cut -d: -f1)"
+    assert_ne "$save" "" "dck $verb runs this version's dck_host_volume_profiles in the old container"
+    assert_eq "$([ -n "$save" ] && [ -n "$rec" ] && [ "$save" -lt "$rec" ] && echo before)" "before" "before it is recreated"
+    assert_contains "$RUN_OUT" "agents: pi profiles moved onto the agentkit volume" "what it moved is reported"
+    assert_not_contains "$RUN_OUT" "other" "and nothing else from the container"
+  done
+  : > "$DCK_FAKE_STATE/ps"
+  : > "$DCK_FAKE_LOG"
+  run_cmd bash -c 'cd "$1" && shift && env TMPDIR="$1" "$2" up --recreate' _ "$REPO" "$SANDBOX/tmp" "$DCK"
+  assert_rc 0 "dck up --recreate with nothing running"
+  assert_not_contains "$(fake_calls docker)" "dck_host_volume_profiles" "no container: nothing to save"
+}
+
 # ---------------------------------------------------------------------------
 # Entrypoint: Codex home, skills, unattended-launch trust
 # ---------------------------------------------------------------------------
@@ -432,6 +459,102 @@ print("ok")' "$SANDBOX/h"
   after="$(cat "$SANDBOX/h/.dck/host/codex/config.toml")"
   assert_eq "$after" "$before" "a second start changes nothing"
   assert_contains "$RUN_ERR" "(0 file(s) updated)" "and says so"
+}
+
+# ---------------------------------------------------------------------------
+# Entrypoint: non-shared CLI profiles on the agentkit volume (host_profiles on)
+# ---------------------------------------------------------------------------
+
+hvp() {  # hvp [VAR=value...] — dck_host_volume_profiles with shared claude profiles
+  EP_FUNCS=dck_host_volume_profiles ep DCK_AGENTS="claude codex antigravity pi" DCK_HOST_PROFILES="claude" \
+    AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/host/agentkit/profiles" "$@"
+}
+
+test_non_shared_profiles_live_on_the_volume() {
+  mk_container_home
+  local root="$SANDBOX/h/.dck/host/agentkit/profiles" vol="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  hvp
+  assert_rc 0 "the step succeeds"
+  local k
+  for k in codex antigravity pi; do
+    assert_eq "$(readlink "$root/$k")" "$vol/$k" "$k (not shared) is a link to its directory on the agentkit volume"
+    assert_mode "$vol/$k" 700 "the $k volume directory is created 0700"
+  done
+  if [ -L "$root/claude" ]; then fail "a shared CLI's directory (the host's bind mounts) is never linked" "linked"
+  else pass "a shared CLI's directory (the host's bind mounts) is never linked"; fi
+  assert_eq "$(ls "$root/claude")" "work1" "nor changed"
+  mkdir "$root/antigravity/g1"
+  assert_dir "$vol/antigravity/g1" "a profile ak creates there lands on the volume"
+  hvp
+  assert_eq "$(readlink "$root/antigravity")" "$vol/antigravity" "a second start keeps the link"
+  assert_eq "$(ls -a "$vol" | grep -c dck-pre-volume)" "0" "and moves nothing aside (idempotent)"
+  assert_not_contains "$RUN_ERR" "refusing" "nor refuses its own link"
+}
+
+test_non_shared_profiles_off_without_host_profiles() {
+  mk_container_home
+  EP_FUNCS=dck_host_volume_profiles ep DCK_AGENTS="antigravity" AGENTKIT_PROFILES_DIR="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  assert_absent "$SANDBOX/h/.dck/host/agentkit/profiles/antigravity" "without host_profiles ak already uses the volume: nothing is linked"
+}
+
+test_non_shared_profiles_migrate_without_overwriting() {
+  mk_container_home
+  local root="$SANDBOX/h/.dck/host/agentkit/profiles" vol="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  # A container started by an older dck: profiles in the layer; the volume has one of the same name.
+  mkdir -p "$root/antigravity/g1" "$root/antigravity/g2" "$root/pi/p1" "$vol/antigravity/g2" "$vol/pi"
+  printf 'layer-g1\n' > "$root/antigravity/g1/token"
+  printf 'layer-g2\n' > "$root/antigravity/g2/token"
+  printf 'volume-g2\n' > "$vol/antigravity/g2/token"
+  printf 'layer-p1\n' > "$root/pi/p1/token"
+  printf 'layer-state\n' > "$root/pi/.state"
+  printf 'volume-state\n' > "$vol/pi/.state"
+  hvp
+  assert_eq "$(cat "$vol/antigravity/g1/token")" "layer-g1" "a layer-only profile moves onto the volume"
+  assert_eq "$(cat "$vol/antigravity/g2/token")" "volume-g2" "the volume's copy is never overwritten"
+  assert_eq "$(cat "$vol/pi/p1/token")" "layer-p1" "every non-shared CLI is migrated"
+  assert_eq "$(cat "$vol/pi/.state")" "volume-state" "a file of the same name is not overwritten either"
+  local bak; bak="$(ls -a "$vol" | grep '^\.antigravity\.dck-pre-volume-[0-9]\{8\}T[0-9]\{6\}Z$')"
+  assert_ne "$bak" "" "the layer's conflicting copy is kept aside on the volume (a recreate keeps it), timestamped"
+  assert_eq "$(cat "$vol/$bak/g2/token")" "layer-g2" "with its content intact"
+  assert_eq "$(cat "$vol"/.pi.dck-pre-volume-*/.state)" "layer-state" "the layer's conflicting file is kept aside too"
+  assert_contains "$RUN_ERR" "kept in $vol/$bak" "the backup is logged by path"
+  assert_not_contains "$RUN_ERR" "layer-g2" "never by content"
+  assert_eq "$(readlink "$root/antigravity")" "$vol/antigravity" "then the link is made"
+  hvp
+  assert_eq "$(ls -a "$vol" | grep -c dck-pre-volume)" "2" "a second start migrates nothing again"
+}
+
+test_non_shared_profiles_never_move_a_mount() {
+  mk_container_home
+  local root="$SANDBOX/h/.dck/host/agentkit/profiles" vol="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  mkdir -p "$root/pi/p1" "$root/pi/mounted" "$root/cline/c1"
+  printf 'host\n' > "$root/pi/mounted/token"
+  # A bind mount cannot be made here: _dck_dev reports another device for it.
+  run_cmd env DCK_USER="$(id -un)" DCK_HOME="$SANDBOX/h" DCK_AGENTS="pi cline" DCK_HOST_PROFILES="claude" \
+    AGENTKIT_PROFILES_DIR="$root" bash -c '. "$1"
+_dck_dev() { case "$1" in */mounted|*/cline) echo 99 ;; *) echo 1 ;; esac; }
+dck_host_volume_profiles' _ "$DCK_REPO/lib/entrypoint.sh"
+  assert_eq "$(cat "$root/pi/mounted/token")" "host" "an entry on another device (a bind mount) is never moved"
+  assert_absent "$vol/pi/mounted" "nor copied to the volume"
+  if [ -L "$root/pi" ]; then fail "a directory holding a mount is not replaced by the link" "linked"
+  else pass "a directory holding a mount is not replaced by the link"; fi
+  assert_contains "$RUN_ERR" "$root/pi/mounted is a mount point" "and it is logged"
+  assert_dir "$root/cline/c1" "a CLI directory that is itself a mount point is left as is"
+  assert_contains "$RUN_ERR" "refusing $root/cline (a mount point)" "and logged"
+}
+
+test_non_shared_profiles_refuse_foreign_links() {
+  mk_container_home
+  local root="$SANDBOX/h/.dck/host/agentkit/profiles" vol="$SANDBOX/h/.dck/volumes/agentkit/profiles"
+  mkdir -p "$SANDBOX/elsewhere" "$SANDBOX/elsewhere2"
+  ln -s "$SANDBOX/elsewhere" "$root/antigravity"
+  ln -s "$SANDBOX/elsewhere2" "$vol/pi"
+  hvp
+  assert_eq "$(readlink "$root/antigravity")" "$SANDBOX/elsewhere" "a link outside the agentkit volume is refused, left as is"
+  assert_contains "$RUN_ERR" "refusing $root/antigravity" "and logged"
+  assert_absent "$root/pi" "a volume path that is a symlink is refused"
+  assert_contains "$RUN_ERR" "$vol/pi is not a directory" "and logged"
+  assert_eq "$(readlink "$root/codex")" "$vol/codex" "the other CLIs are still linked"
 }
 
 test_own_profiles_get_the_acknowledgement() {
@@ -584,4 +707,100 @@ test_login_profile_points_plain_clis_at_the_default_profile() {
   assert_eq "$RUN_OUT" "unset" "a malformed name is refused"
   run_cmd env HOME="$SANDBOX/lh" sh -c '. "$1"; printf "%s" "${CLAUDE_CONFIG_DIR:-unset}"' _ "$DCK_REPO/images/common/profile.sh"
   assert_eq "$RUN_OUT" "unset" "without default_profile, nothing changes"
+}
+
+# v0.3.6: each developer's coding-agent CLIs through dck up.
+clis_overlay() { printf '%s/tmp/dck-%s/proj-clis.yml' "$SANDBOX" "$(id -u)"; }
+
+# The advanced mode: [agents] supported = "all", each developer chooses.
+test_developer_clis_reach_the_build() {
+  mk_repo "claude codex" --supported all || return 0
+  up
+  assert_rc 0 "up with dck.toml's list"
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_clis")" "claude codex" "compose sees dck.toml's list as DCK_AGENT_CLIS"
+  assert_not_file "$(clis_overlay)" "no CLI overlay when the list is the repository's"
+  local c; c="$(cat "$REPO/docker/local/docker-compose.yaml")"
+  assert_contains "$c" "- grok:/home/dev/.dck/volumes/grok" "every supported CLI is wired (grok, not installed)"
+  assert_contains "$c" "- antigravity:/home/dev/.dck/volumes/antigravity" "every supported CLI is wired (antigravity, not installed)"
+  assert_contains "$c" 'DCK_AGENTS: "claude codex cursor opencode pi cline grok antigravity"' "the entrypoint persists every supported CLI's home"
+  profile 'clis_extra = ["grok"]'
+  : > "$DCK_FAKE_LOG"
+  up
+  assert_rc 0 "up with the host profile's clis_extra"
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_clis")" "claude codex grok" "dck up exports the effective list as DCK_AGENT_CLIS"
+  assert_contains "$(fake_calls docker)" "proj-clis.yml" "compose is given the CLI overlay"
+  local o; o="$(cat "$(clis_overlay)")"
+  assert_contains "$o" 'DCK_AGENT_CLIS: "claude codex grok"' "the overlay carries the build arg (a compose rendered before v0.3.6 too)"
+  assert_not_contains "$o" "volumes:" "no volume in the overlay: the rendered compose wires every supported CLI"
+  assert_contains "$RUN_OUT" "agent CLIs: installing claude codex grok (from repo + profile" "up says which list applies and why"
+  printf 'claude codex\n' > "$DCK_FAKE_STATE/image_agent_clis"
+  up
+  assert_contains "$RUN_ERR" "the image was built with 'claude codex', your list is 'claude codex grok' (repo + profile) — rebuild needed: dck rebuild" "a stale image is reported after the start"
+  printf 'grok codex claude\n' > "$DCK_FAKE_STATE/image_agent_clis"
+  up
+  assert_not_contains "$RUN_ERR" "rebuild needed" "an image built with the same CLIs (any order) is current"
+  run_cmd bash -c 'cd "$1" && shift && env "$@"' _ "$REPO" TMPDIR="$SANDBOX/tmp" DCK_AGENT_CLIS="opencode" "$DCK" up
+  assert_rc 0 "DCK_AGENT_CLIS in the shell"
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_clis")" "opencode" "the environment wins over the host profile"
+  printf 'INSTALL_CURSOR_CLI=true\nINSTALL_PI_CLI=yes\n' >> "$REPO/docker/local/.env"
+  up
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_clis")" "claude codex grok cursor" "INSTALL_<CLI>_CLI=true in docker/local/.env adds a CLI (only an exact true)"
+  assert_contains "$RUN_OUT" "(from repo + profile + INSTALL_* (docker/local/.env)" "and the source says so"
+  run_cmd bash -c 'cd "$1" && shift && env "$@"' _ "$REPO" TMPDIR="$SANDBOX/tmp" DCK_AGENT_CLIS="opencode gemini" "$DCK" up
+  assert_rc 3 "an unknown CLI stops dck up"
+  assert_contains "$RUN_ERR" "unknown coding-agent CLI 'gemini'" "with the CLI named"
+  rm -f "$HOME/.config/dck/profile.toml"
+  python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read(); open(p, "w").write(s.replace("INSTALL_CURSOR_CLI=true", ""))' "$REPO/docker/local/.env"
+  up
+  assert_not_file "$(clis_overlay)" "back to dck.toml's list: the overlay is removed"
+  assert_eq "$(cat "$DCK_FAKE_STATE/last_agent_clis")" "claude codex" "and compose sees dck.toml's list again"
+}
+
+test_requested_clis_must_be_supported() {
+  mk_repo "claude" --supported "claude codex" || return 0
+  assert_not_contains "$(cat "$REPO/docker/local/docker-compose.yaml")" "grok:" "an unsupported CLI is not wired"
+  profile 'clis_extra = ["codex"]'
+  up
+  assert_rc 0 "a supported extra CLI"
+  profile 'clis_extra = ["grok"]'
+  up
+  assert_rc 3 "an unsupported CLI is refused"
+  assert_contains "$RUN_ERR" "grok not in [agents] supported (claude, codex)" "with the supported list"
+  profile ''
+  run_cmd bash -c 'cd "$1" && shift && env "$@"' _ "$REPO" TMPDIR="$SANDBOX/tmp" INSTALL_CURSOR_CLI=true "$DCK" up
+  assert_rc 3 "INSTALL_<CLI>_CLI for an unsupported CLI too"
+  assert_contains "$RUN_ERR" "cursor not in [agents] supported" "named"
+}
+
+test_host_profiles_follow_the_effective_clis() {
+  mk_repo "claude" --supported all || return 0
+  mk_host
+  profile 'host_profiles = true
+clis_extra = ["codex"]'
+  up
+  assert_rc 0 "up with host profiles and an extra CLI"
+  assert_match "$(binds "$(overlay)")" '^/home/dev/\.dck/host/agentkit/profiles/codex/work1 rw$' "the extra CLI's ak profiles are shared"
+  assert_match "$(binds "$(overlay)")" '^/home/dev/\.dck/host/codex rw$' "and the host's Codex home"
+  profile 'host_profiles = true'
+  up
+  assert_match "$(binds "$(overlay)")" '^/home/dev/\.dck/host/agentkit/profiles/codex/work1 rw$' "a supported CLI nobody installs is shared too (installed later, it just works)"
+  assert_no_match "$(binds "$(overlay)")" 'profiles/(pi|grok|opencode|cline)/' "no mount for a profile that does not exist on the host"
+}
+
+# The default mode: only the CLIs chosen at onboarding are wired and installed.
+test_default_mode_wires_only_the_chosen_clis() {
+  mk_repo "claude codex" || return 0
+  local c; c="$(cat "$REPO/docker/local/docker-compose.yaml")"
+  assert_contains "$c" 'DCK_AGENTS: "claude codex"' "the chosen CLIs are wired"
+  assert_not_contains "$c" "grok:" "no other CLI's volume"
+  mk_host
+  profile 'host_profiles = true'
+  up
+  assert_rc 0 "up in the default mode"
+  assert_no_match "$(binds "$(overlay)")" 'profiles/cursor/' "host profiles of a CLI not chosen are not shared"
+  assert_not_file "$(clis_overlay)" "no CLI overlay"
+  profile 'clis_extra = ["grok"]'
+  up
+  assert_rc 3 "a developer's CLI outside the chosen ones is refused"
+  assert_contains "$RUN_ERR" 'set [agents] supported = "all" in dck.toml (advanced mode' "with the way to the advanced mode"
 }

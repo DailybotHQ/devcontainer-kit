@@ -3,7 +3,7 @@ name: dck-dockerfile
 description: Create or regenerate a repository's own development container with devcontainer-kit — .devcontainer/devcontainer.json, docker/local/<service>/Dockerfile (official runtime image pinned by digest, DeepWorkPlan Vim, Herdr, coding agents through agentkit), docker/local/docker-compose.yaml and dev.sh — then prove it with a real build. Use only when the user asks for a dev container, a devcontainer, a docker/local/<service>/Dockerfile or a `dev.sh up` container for a repository, or to regenerate or upgrade one made by devcontainer-kit. Do not use for production images, deployment, Kubernetes, CI runners, or merely because a repository contains a Dockerfile.
 license: MIT
 metadata:
-  version: 0.3.5
+  version: 0.3.6
   interface: 2
   homepage: https://github.com/DailybotHQ/devcontainer-kit
 ---
@@ -28,7 +28,7 @@ It speaks devcontainer-kit **interface 2**. Read `interface` in
 pinned install line. Do not install it without being asked:
 
 ```bash
-git clone --branch v0.3.5 https://github.com/DailybotHQ/devcontainer-kit
+git clone --branch v0.3.6 https://github.com/DailybotHQ/devcontainer-kit
 ./devcontainer-kit/install.sh
 ```
 
@@ -43,7 +43,7 @@ Read the repository and propose these values:
 | another runtime version | `engines.node`, `.nvmrc`, `.python-version` that the flavour does not match | ask for an official image **pinned by digest** (`base_image = "node:22…@sha256:…"`); never a floating tag |
 | ports | the existing compose, framework config (`astro.config.*`, `vite.config.*`, `next.config.*`), dev-script flags (`--port`) | none |
 | ssh / Herdr | — | `ssh_port` derived from the repository name; Herdr machine on when Herdr is installed |
-| agents | — | **none**, unless the user names them (`claude`, `codex`, `cursor`, `opencode`, `pi`, `cline`, `grok`) |
+| agents | — | **none**, unless the user names them (`claude`, `codex`, `cursor`, `opencode`, `pi`, `cline`, `grok`, `antigravity`) |
 | extras | `lighthouse`, `playwright`, `puppeteer` in `package.json` → chromium | none |
 
 Show the values once, and ask for confirmation before writing anything.

@@ -23,25 +23,33 @@ test_off_by_default() {
   assert_contains "$(dockerfile)" "No opt-in layer is enabled" "the layers block says so"
   assert_not_contains "$(compose)" "DCK_AGENTS" "no agents environment by default"
   assert_not_contains "$(compose)" "AGENTKIT" "no coding-agents-kit setting by default"
+  assert_not_contains "$(compose)" "DCK_AGENT_CLIS" "no agent CLI build arg by default"
   assert_eq "$(sed -n '/>>> dck:volumes >>>/,/<<< dck:volumes <<</p' "$REPO/docker/local/docker-compose.yaml" | grep -c ': {}')" "1" "only the state volume is declared"
   assert_contains "$(cat "$REPO/.devcontainer/dck.toml")" "agents = false" "dck.toml records the layer off"
 }
 
 test_agents_layer_enabled() {
+  # The default mode: wire and install the CLIs chosen at onboarding (clis).
   render --flavour node-24 --agents --clis "claude codex"
   assert_rc 0 "init renders with the agents layer"
   local d c
   d="$(dockerfile)"; c="$(compose)"
   assert_contains "$d" 'ARG DCK_AGENT_CLIS="claude codex"' "the requested kinds reach the build"
-  assert_contains "$d" 'RUN DCK_USER=dev DCK_AGENT_PRESETS="" dck-layer agents ${DCK_AGENT_CLIS}' "the Dockerfile runs the agents layer installer (a new render: no ak preset)"
-  assert_contains "$c" 'DCK_AGENTS: "claude codex"' "the entrypoint learns the kinds"
+  assert_contains "$d" 'RUN DCK_USER=dev DCK_AGENT_SUPPORTED="claude codex" DCK_AGENT_PRESETS="" dck-layer agents ${DCK_AGENT_CLIS}' "the Dockerfile runs the agents layer installer (a new render: no ak preset), wired for the chosen CLIs"
+  assert_contains "$d" 'ARG INSTALL_CODEX_CLI=false' "the INSTALL_<CLI>_CLI convention reaches the build"
+  assert_not_contains "$d" 'INSTALL_GROK_CLI' "only for the wired CLIs"
+  assert_contains "$c" 'DCK_AGENTS: "claude codex"' "the entrypoint wires the chosen kinds"
+  assert_contains "$c" 'DCK_AGENT_CLIS: "${DCK_AGENT_CLIS:-claude codex}"' "the build arg defaults to dck.toml's list and takes DCK_AGENT_CLIS"
+  assert_contains "$c" 'INSTALL_CLAUDE_CLI: "${INSTALL_CLAUDE_CLI:-false}"' "each INSTALL_<CLI>_CLI is a build arg, false by default"
+  assert_eq "$(printf '%s\n' "$c" | grep -c 'args:')" "1" "one build args block"
   assert_contains "$c" "AGENTKIT_PROFILES_DIR: /home/dev/.dck/volumes/agentkit/profiles" "ak profiles live on the agentkit volume"
   local v
   for v in agentkit claude codex; do
     assert_contains "$c" "      - $v:/home/dev/.dck/volumes/$v" "volume $v is mounted"
     assert_contains "$c" "  $v: {}" "volume $v is declared (per compose project)"
   done
-  assert_not_contains "$c" "  cursor: {}" "kinds not requested get no volume"
+  assert_not_contains "$c" "  cursor: {}" "a CLI not chosen gets no volume (the default mode)"
+  assert_contains "$(cat "$REPO/docker/local/.env.example")" "wires only the CLIs chosen at onboarding" "docker/local/.env.example explains the default mode"
   assert_no_match "$d$c" '--dangerously|--yolo|--always-approve|--force' "the template spells no CLI autonomy flag (they live in coding-agents-kit)"
   assert_contains "$c" "set AGENTKIT_PERMISSIONS=ask in ./app/.env" "compose documents the opt-out (through the service .env)"
   assert_no_match "$c" '^[[:space:]]*#[[:space:]]*AGENTKIT_PERMISSIONS=' "no commented line that would be invalid YAML when uncommented"
@@ -49,6 +57,33 @@ test_agents_layer_enabled() {
   local t; t="$(cat "$REPO/.devcontainer/dck.toml")"
   assert_contains "$t" "agents = true" "dck.toml records the layer on"
   assert_contains "$t" 'clis = ["claude", "codex"]' "dck.toml records the kinds"
+  assert_no_match "$t" '^supported' "the default mode writes no supported key"
+  assert_contains "$t" '# Advanced: supported = "all"' "and names the advanced mode"
+}
+
+test_agents_layer_advanced_mode() {
+  # The advanced opt-in: wire every CLI, each developer chooses what to install.
+  render --flavour node-24 --agents --clis "" --supported all
+  assert_rc 0 "init --supported all renders"
+  local d c v
+  d="$(dockerfile)"; c="$(compose)"
+  assert_contains "$d" 'DCK_AGENT_SUPPORTED="claude codex cursor opencode pi cline grok antigravity"' "the layer accepts every kind"
+  assert_contains "$d" 'ARG INSTALL_GROK_CLI=false' "every INSTALL_<CLI>_CLI reaches the build"
+  assert_contains "$c" 'DCK_AGENTS: "claude codex cursor opencode pi cline grok antigravity"' "the entrypoint wires every kind"
+  assert_contains "$c" 'DCK_AGENT_CLIS: "${DCK_AGENT_CLIS:-}"' "nothing installed by default (clis = [])"
+  assert_contains "$c" 'INSTALL_CURSOR_CLI: "${INSTALL_CURSOR_CLI:-false}"' "a developer turns one on in docker/local/.env"
+  for v in claude codex cursor opencode pi cline grok antigravity; do
+    assert_contains "$c" "      - $v:/home/dev/.dck/volumes/$v" "volume $v is mounted (installed or not)"
+  done
+  assert_contains "$(cat "$REPO/docker/local/.env.example")" "# INSTALL_OPENCODE_CLI=false" "docker/local/.env.example lists each developer's options"
+  assert_contains "$(cat "$REPO/.devcontainer/dck.toml")" 'supported = "all"' "dck.toml records the advanced mode"
+  render --flavour node-24 --agents --clis "claude" --supported "claude codex"
+  assert_rc 0 "a supported list renders"
+  c="$(compose)"
+  assert_not_contains "$c" "  cursor: {}" "an unsupported kind gets no volume"
+  assert_not_contains "$c" "INSTALL_CURSOR_CLI" "nor an INSTALL arg"
+  assert_contains "$c" "      - codex:/home/dev/.dck/volumes/codex" "a supported CLI not installed by default is wired"
+  assert_contains "$(cat "$REPO/.devcontainer/dck.toml")" 'supported = ["claude", "codex"]' "dck.toml records the list"
 }
 
 test_agents_layer_toggles_off_cleanly() {
@@ -125,9 +160,27 @@ test_agents_installer_follows_the_kit_contract() {
   : > "$DCK_FAKE_LOG"
   run_cmd env DCK_VERSIONS="$SANDBOX/akrel/versions.env" DCK_USER="$(id -un)" FAKE_CURL_FILE="$SANDBOX/akrel/agentkit.tar.gz" \
     DCK_SKILLS_DIR="$SANDBOX/skills" DCK_LAYER_PREFIX="$SANDBOX/prefix" PATH="$LFIX/bin:$EXTRA_PATH$PATH" bash "$DCK_REPO/lib/layers/agents.sh" claude
+  assert_eq "$(cat "$SANDBOX/prefix/agent-clis")" "claude" "the image records the CLIs it installed (dck up / doctor compare it)"
   assert_eq "$(grep -c '^prefix=' "$HOME/.npmrc")" "1" "the npm prefix is written once"
   assert_eq "$(grep -c 'agentkit/aliases.sh' "$HOME/.bashrc")" "1" "the presets line is written once"
   assert_not_contains "$(fake_calls curl)" "nodejs.org" "Node is not downloaded when present"
+  : > "$DCK_FAKE_LOG"
+  run_cmd env DCK_VERSIONS="$SANDBOX/akrel/versions.env" DCK_USER="$(id -un)" FAKE_CURL_FILE="$SANDBOX/akrel/agentkit.tar.gz" \
+    DCK_SKILLS_DIR="$SANDBOX/skills" DCK_LAYER_PREFIX="$SANDBOX/prefix" PATH="$LFIX/bin:$EXTRA_PATH$PATH" bash "$DCK_REPO/lib/layers/agents.sh" "grok,opencode" grok
+  assert_rc 0 "a developer's comma list (DCK_AGENT_CLIS=\"grok,opencode\" in .env) installs"
+  assert_contains "$(fake_calls ak)" "ak install grok opencode npm_prefix=" "commas separate kinds; a repeated kind is installed once"
+  assert_eq "$(cat "$SANDBOX/prefix/agent-clis")" "grok opencode" "the record follows the list"
+  : > "$DCK_FAKE_LOG"
+  run_cmd env DCK_VERSIONS="$SANDBOX/akrel/versions.env" DCK_USER="$(id -un)" FAKE_CURL_FILE="$SANDBOX/akrel/agentkit.tar.gz" \
+    DCK_SKILLS_DIR="$SANDBOX/skills" DCK_LAYER_PREFIX="$SANDBOX/prefix" PATH="$LFIX/bin:$EXTRA_PATH$PATH" \
+    INSTALL_CURSOR_CLI=true INSTALL_PI_CLI=TRUE INSTALL_CLINE_CLI=1 INSTALL_CLAUDE_CLI=true bash "$DCK_REPO/lib/layers/agents.sh" claude
+  assert_rc 0 "INSTALL_<CLI>_CLI build args"
+  assert_contains "$(fake_calls ak)" "ak install claude cursor npm_prefix=" "only an exact \"true\" installs; a CLI also listed is installed once"
+  run_cmd env DCK_VERSIONS="$SANDBOX/akrel/versions.env" DCK_USER="$(id -un)" FAKE_CURL_FILE="$SANDBOX/akrel/agentkit.tar.gz" \
+    DCK_SKILLS_DIR="$SANDBOX/skills" DCK_LAYER_PREFIX="$SANDBOX/prefix" PATH="$LFIX/bin:$EXTRA_PATH$PATH" \
+    DCK_AGENT_SUPPORTED="claude codex" INSTALL_GROK_CLI=true bash "$DCK_REPO/lib/layers/agents.sh" claude
+  assert_rc 2 "a CLI outside [agents] supported is refused at build time"
+  assert_contains "$RUN_ERR" "'grok' is not supported by this repository ([agents] supported: claude codex)" "with the supported list"
   run_layer agents gemini
   assert_rc 2 "an unknown kind is refused"
   run_layer agents claude

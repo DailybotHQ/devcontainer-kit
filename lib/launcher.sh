@@ -26,13 +26,18 @@ dck — devcontainer-kit: a repository's dev container from a plain terminal
 
 usage: dck [--repo DIR] [--profile NAME] [--project NAME] [--trust] <verb> [args]
        dck --project P --compose-file F... --service S <verb> [args]   (a satellite)
+       dck --compose-file F... <verb> [args]                          (the primary, other files)
 
   --trust               start a repository whose own config reaches the host
                         (initializeCommand, privileged, Docker socket, host mounts)
   --service S           a workspace satellite: one service of another compose project
-  --compose-file F      (repeatable) that project's compose files; needs --project
-                        and --service. up/down/ps/logs/shell/exec/ssh/stop/start/
-                        restart/config/herdr act on S only, with every host step
+  --compose-file F      (repeatable) the compose files, in order, instead of
+                        devcontainer.json's (dck's runtime overlays still go last).
+                        With --service and --project: a satellite; up/down/ps/logs/
+                        shell/exec/ssh/stop/start/restart/config/herdr act on S only.
+                        Without --service: the primary service (PRIMARY mode) — same
+                        alias, label and Herdr machine as a plain up, every host
+                        step; also rebuild and doctor
 
   init [flags]          render the Dev Container template into this repository
   setup                 .env files from their examples (0600), external networks,
@@ -105,6 +110,7 @@ is written and dck exits 5.
   --port NAME=N        a named loopback port (repeatable)
   --agents | --no-agents       the agents layer (coding-agents-kit)
   --clis "claude codex"        kinds for `ak install` when agents is on
+  --supported all|"claude codex"  kinds every image is wired for (volumes, host profiles)
   --editor | --no-editor       the editor layer
   --herdr | --no-herdr         register as a Herdr machine on `dck up`
   --no-dev-sh          never create or touch dev.sh (a repository with its own); written
@@ -152,12 +158,15 @@ load_context() {
   DCK_HOST_PROFILES="0"  # [agents] host_profiles (host profile) with the agents layer on
   DCK_SSH_COPY_KEYS="0"  # [ssh] copy_keys (host profile)
   DCK_COMPOSE_PROJECT=""  # [compose] project (dck.toml): wins over COMPOSE_PROJECT_NAME
+  # This developer's coding-agent CLIs (v0.3.6): DCK_AGENT_CLIS, the host profile's
+  # [agents] clis / clis_extra, or dck.toml; DIFFERS when not dck.toml's list.
+  DCK_AGENT_CLIS_EFFECTIVE=""; DCK_AGENT_CLIS_SOURCE="repo"; DCK_AGENT_CLIS_DIFFERS="0"
   while IFS= read -r line; do
     k="${line%%=*}"; v="${line#*=}"
     case "$k" in
       DC_COMPOSE_FILE) DC_COMPOSE_FILES+=("$v") ;;
       DC_REPO|DC_FILE|DC_SERVICE|DC_RUNSERVICES|DC_USER|DC_WORKSPACE|DC_SHUTDOWN|DC_MOUNTS|DC_ENVS|DC_COMPOSE_NAME) printf -v "$k" '%s' "$v" ;;
-      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HOST_LISTENER|DCK_HOST_PORT|DCK_HOST_KEY|DCK_HOST_LABEL|DCK_HOST_CONFIGURED|DCK_MESH_EXTERNAL|DCK_SSH_AUTHORIZED_EXTRA|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_HOST_PROFILES|DCK_SSH_COPY_KEYS|DCK_PORTS|DCK_TOML_USER|DCK_COMPOSE_PROJECT) printf -v "$k" '%s' "$v" ;;
+      DCK_HAS_TOML|DCK_SSH_PORT|DCK_BIND|DCK_ALIAS|DCK_SSH_IDENTITY|DCK_HERDR_MACHINE|DCK_HERDR_LABEL|DCK_NETWORK|DCK_FLAVOUR|DCK_HOST_MACHINE|DCK_HOST_LISTENER|DCK_HOST_PORT|DCK_HOST_KEY|DCK_HOST_LABEL|DCK_HOST_CONFIGURED|DCK_MESH_EXTERNAL|DCK_SSH_AUTHORIZED_EXTRA|DCK_HERDR_LAYOUT|DCK_HERDR_MESH|DCK_SSH_AGENT|DCK_SSH_HOST_CONFIG|DCK_SSH_HOST_EXTRA|DCK_HOST_PROFILES|DCK_SSH_COPY_KEYS|DCK_PORTS|DCK_TOML_USER|DCK_COMPOSE_PROJECT|DCK_AGENT_CLIS_EFFECTIVE|DCK_AGENT_CLIS_SOURCE|DCK_AGENT_CLIS_DIFFERS) printf -v "$k" '%s' "$v" ;;
     esac
   done <<EOF
 $out
@@ -165,7 +174,14 @@ EOF
   DC_COMPOSE="${DC_COMPOSE_FILES[0]}"
   COMPOSE_DIR="$(cd -P "$(dirname "$DC_COMPOSE")" && pwd)"
   DCK_SATELLITE=0
-  [ -n "${DCK_SERVICE_OVERRIDE:-}" ] && satellite_context
+  if [ -n "${DCK_SERVICE_OVERRIDE:-}" ]; then
+    satellite_context
+  elif [ "${#DCK_COMPOSE_OVERRIDE[@]}" -gt 0 ]; then
+    # PRIMARY mode: the main service through other compose files (an extra
+    # overlay of the repository's own scripts), with its own alias, label and
+    # Herdr machine and every host step.
+    override_compose_files
+  fi
   resolve_project
   # A running satellite's sshd port (dck ssh, herdr add/status/remove).
   if [ "$DCK_SATELLITE" = "1" ] && command -v docker >/dev/null 2>&1; then satellite_ssh_port; fi
@@ -177,18 +193,8 @@ EOF
 # every dck host step. Its Herdr alias and label come from project and service;
 # its sshd port is read from compose once it runs.
 satellite_context() {
-  local f abs files=()
   DCK_SATELLITE=1
-  if [ "${#DCK_COMPOSE_OVERRIDE[@]}" -gt 0 ]; then
-    for f in "${DCK_COMPOSE_OVERRIDE[@]}"; do
-      [ -f "$f" ] && [ ! -L "$f" ] || die "$DCK_EXIT_CONFIG" "compose file not found (or a symlink): $f"
-      abs="$(cd -P "$(dirname "$f")" && pwd)/$(basename "$f")"
-      files+=("$abs")
-    done
-    DC_COMPOSE_FILES=("${files[@]}")
-    DC_COMPOSE="${DC_COMPOSE_FILES[0]}"
-    COMPOSE_DIR="$(cd -P "$(dirname "$DC_COMPOSE")" && pwd)"
-  fi
+  [ "${#DCK_COMPOSE_OVERRIDE[@]}" -gt 0 ] && override_compose_files
   DC_SERVICE="$DCK_SERVICE_OVERRIDE"
   DC_RUNSERVICES="$DCK_SERVICE_OVERRIDE"
   local slug
@@ -197,6 +203,20 @@ satellite_context() {
   case "$DCK_ALIAS" in -*) DCK_ALIAS="dck$DCK_ALIAS" ;; esac
   DCK_HERDR_LABEL="${DCK_SATELLITE_LABEL:-$DCK_PROJECT_OVERRIDE · $DCK_SERVICE_OVERRIDE}"
   DCK_SSH_PORT=0
+}
+
+# override_compose_files — --compose-file (repeatable) replaces the compose
+# file list of devcontainer.json, in order; dck's runtime overlays still go last.
+override_compose_files() {
+  local f abs files=()
+  for f in "${DCK_COMPOSE_OVERRIDE[@]}"; do
+    [ -f "$f" ] && [ ! -L "$f" ] || die "$DCK_EXIT_CONFIG" "compose file not found (or a symlink): $f"
+    abs="$(cd -P "$(dirname "$f")" && pwd)/$(basename "$f")"
+    files+=("$abs")
+  done
+  DC_COMPOSE_FILES=("${files[@]}")
+  DC_COMPOSE="${DC_COMPOSE_FILES[0]}"
+  COMPOSE_DIR="$(cd -P "$(dirname "$DC_COMPOSE")" && pwd)"
 }
 
 # satellite_ssh_port — the host port the running satellite publishes for its sshd.
@@ -261,8 +281,8 @@ resolve_backend() {
       command -v devcontainer >/dev/null 2>&1 || die "$DCK_EXIT_ENV" "DCK_BACKEND=devcontainer but the devcontainer CLI is not installed"
       BACKEND=devcontainer ;;
     auto)
-      if [ -z "$DCK_PROJECT_OVERRIDE" ] && [ "${DCK_HOST_PROFILES:-0}" != "1" ] && [ "${DCK_SSH_COPY_KEYS:-0}" != "1" ] \
-        && [ "${DCK_SATELLITE:-0}" != "1" ] \
+      if [ -z "$DCK_PROJECT_OVERRIDE" ] && [ "${#DCK_COMPOSE_OVERRIDE[@]}" -eq 0 ] && [ "${DCK_HOST_PROFILES:-0}" != "1" ] && [ "${DCK_SSH_COPY_KEYS:-0}" != "1" ] \
+        && [ "${DCK_SATELLITE:-0}" != "1" ] && [ "${DCK_AGENT_CLIS_DIFFERS:-0}" != "1" ] \
         && command -v devcontainer >/dev/null 2>&1; then
         BACKEND=devcontainer
       else
@@ -276,6 +296,12 @@ resolve_backend() {
   fi
   if [ "$BACKEND" = devcontainer ] && [ "${DCK_SSH_COPY_KEYS:-0}" = "1" ]; then
     warn "ssh keys: DCK_BACKEND=devcontainer does not apply [ssh] copy_keys (use the compose backend)"
+  fi
+  if [ "$BACKEND" = devcontainer ] && [ "${#DCK_COMPOSE_OVERRIDE[@]}" -gt 0 ]; then
+    warn "--compose-file: DCK_BACKEND=devcontainer reads devcontainer.json's compose files, not these (use the compose backend)"
+  fi
+  if [ "$BACKEND" = devcontainer ] && [ "${DCK_AGENT_CLIS_DIFFERS:-0}" = "1" ]; then
+    warn "agent CLIs: DCK_BACKEND=devcontainer builds dck.toml's list unless DCK_AGENT_CLIS is in docker/local/.env (use the compose backend)"
   fi
 }
 
@@ -309,6 +335,7 @@ ensure_overlay_dir() {
 write_overlay() {
   write_agents_overlay
   write_sshkeys_overlay
+  write_clis_overlay
   if [ "$DC_MOUNTS" = "0" ] && [ "$DC_ENVS" = "0" ]; then return 0; fi
   ensure_overlay_dir
   dckpy devc overlay --repo "$DC_REPO" --project "$PROJECT" --out "$(overlay_path)" --service "$DC_SERVICE" >/dev/null
@@ -376,6 +403,48 @@ OUT
   return 0
 }
 
+# This developer's coding-agent CLIs, when they are not dck.toml's [agents] clis:
+# a fourth runtime overlay with the build arg (every supported CLI is already
+# wired by the rendered compose). Written when the lists differ, removed otherwise.
+clis_overlay_path() {
+  local base="${TMPDIR:-/tmp}"
+  printf '%s/dck-%s/%s-clis.yml' "${base%/}" "$(id -u)" "$PROJECT"
+}
+
+write_clis_overlay() {
+  local f out line k v args eff="" src=""
+  f="$(clis_overlay_path)"
+  if [ "${DCK_AGENT_CLIS_DIFFERS:-0}" != "1" ] && [ ! -f "$f" ]; then return 0; fi
+  ensure_overlay_dir
+  args=(clis overlay --repo "$DC_REPO" --out "$f" --service "$DC_SERVICE")
+  [ -n "${DCK_PROFILE_NAME:-}" ] && args+=(--profile "$DCK_PROFILE_NAME")
+  out="$(dckpy "${args[@]}")" || die "$DCK_EXIT_REFUSED" "agent CLIs: the overlay could not be written"
+  [ "${DCK_AGENT_CLIS_DIFFERS:-0}" = "1" ] || return 0
+  while IFS= read -r line; do
+    k="${line%%=*}"; v="${line#*=}"
+    case "$k" in
+      effective) eff="$v" ;;
+      source) src="$v" ;;
+    esac
+  done <<OUT
+$out
+OUT
+  note "agent CLIs: installing ${eff:-none} (from $src; dck.toml installs its own list)"
+  return 0
+}
+
+# agent_clis_check — after a start: the CLIs the running image was built with
+# (recorded by the agents layer) against this developer's list. A difference
+# means the image predates the change: `dck rebuild` installs the new list.
+agent_clis_check() {
+  [ -n "${DCK_AGENT_CLIS_EFFECTIVE:-}" ] || [ "${DCK_AGENT_CLIS_DIFFERS:-0}" = "1" ] || return 0
+  local built
+  built="$(dc exec -T "$DC_SERVICE" cat /opt/dck/agent-clis </dev/null 2>/dev/null | head -n 1)" || return 0
+  [ -n "$built" ] || return 0
+  [ "$(printf '%s' "$built" | tr ' ' '\n' | sort | tr '\n' ' ')" = "$(printf '%s' "$DCK_AGENT_CLIS_EFFECTIVE" | tr ' ' '\n' | sort | tr '\n' ' ')" ] && return 0
+  warn "agent CLIs: the image was built with '$built', your list is '${DCK_AGENT_CLIS_EFFECTIVE}' ($DCK_AGENT_CLIS_SOURCE) — rebuild needed: dck rebuild"
+}
+
 # NOTE: --remove-orphans is never passed and must not be added. A compose
 # project may be shared, or declare services beyond runServices; with the flag,
 # starting the declared services would delete containers someone else uses.
@@ -392,7 +461,16 @@ dc() {
   if [ "${DCK_SSH_COPY_KEYS:-0}" = "1" ] && [ -f "$(sshkeys_overlay_path)" ]; then
     args+=(-f "$(sshkeys_overlay_path)")
   fi
-  docker compose "${args[@]}" "$@"
+  if [ "${DCK_AGENT_CLIS_DIFFERS:-0}" = "1" ] && [ -f "$(clis_overlay_path)" ]; then
+    args+=(-f "$(clis_overlay_path)")
+  fi
+  # The effective list, for the rendered ${DCK_AGENT_CLIS:-...} (build arg and
+  # DCK_AGENTS); only this command's environment, never dck's own.
+  if [ -n "${DCK_AGENT_CLIS_EFFECTIVE:-}" ]; then
+    DCK_AGENT_CLIS="$DCK_AGENT_CLIS_EFFECTIVE" docker compose "${args[@]}" "$@"
+  else
+    docker compose "${args[@]}" "$@"
+  fi
 }
 
 selected_services() {
@@ -759,8 +837,12 @@ $line" ;;
 # mounts). Those need an explicit --trust (or DCK_TRUST=1) once you have read them.
 preflight_check() {
   [ "${DCK_TRUST:-0}" = "1" ] && return 0
-  local found
-  if found="$(dckpy devc preflight --repo "$DC_REPO")"; then return 0; fi
+  local found f files=()
+  # --compose-file replaces devcontainer.json's list: the files compose will run are checked.
+  if [ "${#DCK_COMPOSE_OVERRIDE[@]}" -gt 0 ]; then
+    for f in "${DC_COMPOSE_FILES[@]}"; do files+=(--compose-file "$f"); done
+  fi
+  if found="$(dckpy devc preflight --repo "$DC_REPO" ${files[@]+"${files[@]}"})"; then return 0; fi
   [ -n "$found" ] || exit "$DCK_EXIT_CONFIG"
   printf 'dck: this repository'"'"'s container configuration reaches the host:\n' >&2
   printf '%s\n' "$found" | sed 's/^/  - /' >&2
@@ -896,6 +978,7 @@ cmd_up() {
   if [ "$BACKEND" = devcontainer ] && [ "${#args[@]}" -eq 0 ]; then
     note "starting ${SERVICES[*]} with the devcontainer CLI (project $PROJECT)"
     if [ "$recreate" -eq 1 ]; then
+      save_layer_profiles
       devcontainer up --workspace-folder "$DC_REPO" --remove-existing-container
     else
       devcontainer up --workspace-folder "$DC_REPO"
@@ -903,8 +986,17 @@ cmd_up() {
   else
     write_overlay
     [ -n "$seed" ] && seed_state "$seed"
+    # An image under this service's tag that dck did not build (a pre-dck image
+    # left by the repository's old tooling), or built from an older render: no
+    # host step would run in it. Rebuild it and replace the container.
+    if stale_service_image; then
+      note "image $STALE_IMAGE: $STALE_WHY — rebuilding $DC_SERVICE"
+      dc build "$DC_SERVICE"
+      recreate=1
+    fi
     note "starting ${SERVICES[*]} (project $PROJECT)"
     if [ "$recreate" -eq 1 ]; then
+      save_layer_profiles
       dc up -d --force-recreate "${SERVICES[@]}"
     else
       # --no-recreate: a second `up` is a no-op, not a replacement. A container
@@ -915,6 +1007,61 @@ cmd_up() {
     fi
   fi
   after_start
+}
+
+# save_layer_profiles — before a recreate. With [agents] host_profiles, a
+# running container may keep ak profiles of a CLI the host does not share in
+# its layer (an image of dck v0.3.5 or earlier never linked them to the
+# volume): the recreate would drop them and their logins. This dck version's
+# dck_host_volume_profiles runs in the old container first and moves them onto
+# its agentkit volume (never overwriting; logged by path). Best effort: a
+# container that is not running, or cannot run it, is left as is.
+save_layer_profiles() {
+  container_running || return 0
+  local out line
+  out="$(dc exec -T --user root "$DC_SERVICE" bash -c '. /dev/stdin && dck_host_volume_profiles' \
+           < "$DCK_LIB/entrypoint.sh" 2>&1)" || true
+  while IFS= read -r line; do
+    case "$line" in "dck-entrypoint: agents: "*) note "${line#dck-entrypoint: }" ;; esac
+  done <<EOF
+$out
+EOF
+  return 0
+}
+
+# stale_service_image — true when the image compose would run for the dev
+# service exists but is not this render's: no DCK_IMAGE_VERSION or no
+# dck-entrypoint (built by something else under the same tag), or another
+# version than docker/local/<svc>/dck/VERSION. Sets STALE_IMAGE and STALE_WHY.
+# A missing image is not stale: compose builds it.
+stale_service_image() {
+  STALE_IMAGE=""; STALE_WHY=""
+  case " ${SERVICES[*]} " in *" $DC_SERVICE "*) ;; *) return 1 ;; esac
+  local img cfg ver want stamp
+  img="$(dc config --format json 2>/dev/null | python3 -I -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    print(d["services"][sys.argv[1]].get("image") or "")
+except Exception:
+    pass' "$DC_SERVICE" 2>/dev/null || true)"
+  [ -n "$img" ] || img="${PROJECT}-${DC_SERVICE}"
+  cfg="$(docker image inspect -f '{{range .Config.Env}}{{println .}}{{end}}entrypoint={{json .Config.Entrypoint}}' "$img" 2>/dev/null)" || return 1
+  STALE_IMAGE="$img"
+  ver="$(printf '%s\n' "$cfg" | sed -n 's/^DCK_IMAGE_VERSION=//p' | head -n 1)"
+  if [ -z "$ver" ]; then
+    STALE_WHY="not built by dck (no DCK_IMAGE_VERSION; a pre-dck image under the same tag)"; return 0
+  fi
+  case "$cfg" in *dck-entrypoint*) ;; *) STALE_WHY="its entrypoint is not dck's"; return 0 ;; esac
+  stamp="$COMPOSE_DIR/$DC_SERVICE/dck/VERSION"
+  if [ -f "$stamp" ] && [ ! -L "$stamp" ]; then
+    # "devcontainer-kit v0.3.6": the version the repository was rendered with.
+    want="$(head -n 1 "$stamp" | sed -n 's/^devcontainer-kit v\([0-9][0-9.]*[0-9A-Za-z.-]*\)[[:space:]]*$/\1/p')"
+    if [ -n "$want" ] && [ "$want" != "$ver" ]; then
+      STALE_WHY="built by dck $ver, the repository is rendered with $want"; return 0
+    fi
+  fi
+  return 1
 }
 
 # seed_state <volume> — a satellite starts logged in: copy the login state only
@@ -970,6 +1117,7 @@ STATUS
 # peers without a manual `dck herdr mesh`.
 after_start() {
   satellite_ssh_port
+  agent_clis_check
   host_ssh_identities
   push_git_identity
   if [ "${DCK_HERDR_MACHINE:-0}" = "1" ] && declare -F dck_herdr_after_up >/dev/null 2>&1; then
@@ -986,6 +1134,12 @@ cmd_down() {
   if [ "${DCK_SATELLITE:-0}" = "1" ] && declare -F herdr_remove >/dev/null 2>&1; then
     # A satellite is a temporary instance: its Herdr machine and SSH alias go too.
     ( herdr_remove ) || warn "the satellite is down, but its Herdr machine was not removed (dck herdr status)"
+  elif [ "${DCK_HERDR_MACHINE:-0}" = "1" ] && declare -F herdr_remove >/dev/null 2>&1; then
+    # The primary: the machine `dck up` registered goes with its container (the
+    # next `dck up` registers it again), so Herdr never lists a dead machine.
+    case " ${SERVICES[*]} " in
+      *" $DC_SERVICE "*) ( herdr_remove ) || warn "the container is down, but its Herdr machine was not removed (dck herdr status)" ;;
+    esac
   fi
   note "named volumes were kept; list them with: docker volume ls --filter name=${PROJECT}_"
 }
@@ -1114,6 +1268,7 @@ cmd_rebuild() {
   selected_services ${BUILD_SERVICES[@]+"${BUILD_SERVICES[@]}"}
   if [ "$BACKEND" = devcontainer ] && [ "${#BUILD_SERVICES[@]}" -eq 0 ]; then
     note "rebuilding with the devcontainer CLI (project $PROJECT)"
+    save_layer_profiles
     if [ "$NO_CACHE" -eq 1 ]; then
       devcontainer up --workspace-folder "$DC_REPO" --remove-existing-container --build-no-cache
     else
@@ -1130,6 +1285,7 @@ cmd_rebuild() {
       dc build "${SERVICES[@]}"
     fi
     note "recreating ${SERVICES[*]} with the new images"
+    save_layer_profiles
     dc up -d --force-recreate "${SERVICES[@]}"
   fi
   after_start
@@ -1299,9 +1455,16 @@ dck_main() {
   [ -n "$verb" ] || verb="help"
   # A satellite: one service of another compose project (its own project, files
   # and ports). It must name its project, so the main service is never touched.
-  if [ -n "$DCK_SERVICE_OVERRIDE" ] || [ "${#DCK_COMPOSE_OVERRIDE[@]}" -gt 0 ]; then
-    [ -n "$DCK_PROJECT_OVERRIDE" ] || die "$DCK_EXIT_USAGE" "--service and --compose-file need --project (a satellite runs in its own compose project)"
-    [ -n "$DCK_SERVICE_OVERRIDE" ] || die "$DCK_EXIT_USAGE" "--compose-file needs --service (the one service to act on)"
+  # PRIMARY mode: --compose-file without --service — the main service through
+  # other compose files (same alias, label and machine as a plain up).
+  if [ -z "$DCK_SERVICE_OVERRIDE" ] && [ "${#DCK_COMPOSE_OVERRIDE[@]}" -gt 0 ]; then
+    case "$verb" in
+      up|rebuild|down|ps|logs|shell|exec|ssh|stop|start|restart|config|herdr|doctor) ;;
+      *) die "$DCK_EXIT_USAGE" "$verb does not take --compose-file (it works with up, rebuild, down, ps, logs, shell, exec, ssh, stop, start, restart, config, herdr, doctor)" ;;
+    esac
+  fi
+  if [ -n "$DCK_SERVICE_OVERRIDE" ]; then
+    [ -n "$DCK_PROJECT_OVERRIDE" ] || die "$DCK_EXIT_USAGE" "--service needs --project (a satellite runs in its own compose project)"
     case "$DCK_SERVICE_OVERRIDE" in [A-Za-z0-9]*) ;; *) die "$DCK_EXIT_USAGE" "invalid --service '$DCK_SERVICE_OVERRIDE'" ;; esac
     case "$DCK_SERVICE_OVERRIDE" in *[!A-Za-z0-9_.-]*) die "$DCK_EXIT_USAGE" "invalid --service '$DCK_SERVICE_OVERRIDE'" ;; esac
     case "$verb" in

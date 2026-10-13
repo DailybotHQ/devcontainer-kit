@@ -323,3 +323,128 @@ test_invalid_host_and_extra_keys() {
   assert_contains "$RUN_ERR" "invalid public key file '../x.pub'" "a parent path is refused"
   assert_contains "$RUN_ERR" "invalid public key file '~/.ssh/*.pub'" "a glob is refused"
 }
+
+# v0.3.6: each developer's coding-agent CLIs. DCK_AGENT_CLIS (environment, then
+# docker/local/.env) > host profile [agents] clis, then clis_extra > dck.toml.
+test_developer_agent_clis() {
+  local repo
+  repo="$(make_repo 'interface = 2
+service = "app"
+flavour = "node-24"
+[layers]
+agents = true
+[agents]
+supported = "all"
+clis = ["claude", "codex"]' clirepo)"
+  mkdir -p "$XDG_CONFIG_HOME/dck" "$repo/docker/local"
+  clis() { printf '%s' "$RUN_OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(" ".join(d["clis_effective"]) + "|" + d["clis_source"] + "|" + " ".join(d["agents.clis"]))'; }
+  run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(clis)" "claude codex|repo|claude codex" "without a setting the repository's list applies"
+  printf '[agents]\nclis_extra = ["grok", "codex"]\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(clis)" "claude codex grok|repo + profile|claude codex" "clis_extra adds to the repository's list (once each)"
+  printf '[agents]\nclis = ["grok", "opencode"]\nclis_extra = ["cursor"]\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(clis)" "grok opencode cursor|profile|claude codex" "the profile's clis replace the repository's; clis_extra adds to them"
+  printf '[agents]\nclis = []\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(clis)" "|profile|claude codex" "clis = [] installs no CLI"
+  printf '[agents]\nclis = ["grok"]\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  printf 'DCK_AGENT_CLIS="pi,cline"\n' > "$repo/docker/local/.env"
+  run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(clis)" "pi cline|env (docker/local/.env)|claude codex" "DCK_AGENT_CLIS in docker/local/.env wins over the profile"
+  run_cmd env DCK_AGENT_CLIS="codex claude" "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(clis)" "codex claude|env|claude codex" "DCK_AGENT_CLIS in the environment wins over everything"
+  run_cmd env DCK_AGENT_CLIS="" "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(clis)" "pi cline|env (docker/local/.env)|claude codex" "an empty DCK_AGENT_CLIS counts as unset (as in compose)"
+  run_cmd env DCK_AGENT_CLIS="claude gemini" "${PYCFG[@]}" show --repo "$repo"
+  assert_rc 3 "an unknown CLI in DCK_AGENT_CLIS is a configuration error"
+  assert_contains "$RUN_ERR" "unknown coding-agent CLI 'gemini' (one of: claude, codex, cursor, opencode, pi, cline, grok, antigravity)" "the error names the CLI and the kinds"
+  printf 'DCK_AGENT_CLIS=aider\n' > "$repo/docker/local/.env"
+  run_cmd "${PYCFG[@]}" show --repo "$repo"
+  assert_rc 3 "an unknown CLI in docker/local/.env is refused"
+  assert_contains "$RUN_ERR" "DCK_AGENT_CLIS (docker/local/.env)" "the error names where the list came from"
+  rm -f "$repo/docker/local/.env"
+  printf '[agents]\nclis = ["gemini"]\nclis_extra = ["aider"]\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  run_cmd "${PYCFG[@]}" show --repo "$repo"
+  assert_rc 3 "unknown CLIs in the host profile are refused"
+  assert_contains "$RUN_ERR" "agents.clis: unknown kind 'gemini' (one of: claude, codex, cursor, opencode, pi, cline, grok, antigravity)" "clis is checked against the kinds"
+  assert_contains "$RUN_ERR" "agents.clis_extra: unknown kind 'aider'" "clis_extra too"
+  rm -f "$XDG_CONFIG_HOME/dck/profile.toml"
+  repo="$(make_repo 'interface = 2
+service = "app"
+flavour = "node-24"
+[agents]
+clis = ["claude"]
+clis_extra = ["grok"]' clirepo2)"
+  run_cmd env DCK_AGENT_CLIS="grok" "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(clis)" "|repo|claude" "with layers.agents off no CLI is effective, whatever the environment says"
+  assert_contains "$RUN_ERR" "agents.clis_extra is a host-profile setting" "a repository cannot set clis_extra"
+}
+
+# The default mode (no [agents] supported): wire and install the onboarding choice.
+test_default_mode_wires_the_chosen_clis() {
+  local repo
+  repo="$(make_repo 'interface = 2
+service = "app"
+flavour = "node-24"
+[layers]
+agents = true
+[agents]
+clis = ["claude", "codex"]' defrepo)"
+  mkdir -p "$XDG_CONFIG_HOME/dck" "$repo/docker/local"
+  dm() { printf '%s' "$RUN_OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(" ".join(d["clis_supported"]) + "|" + " ".join(d["clis_effective"]) + "|" + d["clis_source"])'; }
+  run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(dm)" "claude codex|claude codex|repo" "supported defaults to the chosen clis"
+  run_cmd env DCK_AGENT_CLIS="codex" "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(dm)" "claude codex|codex|env" "a developer can install fewer"
+  printf '[agents]\nclis_extra = ["grok"]\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  run_cmd "${PYCFG[@]}" show --repo "$repo"
+  assert_rc 3 "a CLI outside the chosen ones is refused in the default mode"
+  assert_contains "$RUN_ERR" "grok not in [agents] supported (claude, codex): this repository wires only the CLIs chosen at onboarding" "the error explains the default mode"
+  assert_contains "$RUN_ERR" 'set [agents] supported = "all" in dck.toml (advanced mode' "and names the advanced opt-in"
+  rm -f "$XDG_CONFIG_HOME/dck/profile.toml"
+}
+
+test_supported_and_install_convention() {
+  local repo
+  repo="$(make_repo 'interface = 2
+service = "app"
+flavour = "node-24"
+[layers]
+agents = true
+[agents]
+supported = ["claude", "codex", "grok"]
+clis = ["claude"]' suprepo)"
+  mkdir -p "$repo/docker/local"
+  sup() { printf '%s' "$RUN_OUT" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(" ".join(d["clis_supported"]) + "|" + " ".join(d["clis_effective"]) + "|" + d["clis_source"])'; }
+  run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(sup)" "claude codex grok|claude|repo" "a supported list; dck.toml's clis installed"
+  printf 'INSTALL_GROK_CLI=true\nINSTALL_CODEX_CLI=false\n' > "$repo/docker/local/.env"
+  run_cmd "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(sup)" "claude codex grok|claude grok|repo + INSTALL_* (docker/local/.env)" "INSTALL_GROK_CLI=true in .env adds grok; false adds nothing"
+  run_cmd env INSTALL_GROK_CLI=false INSTALL_CODEX_CLI=true "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(sup)" "claude codex grok|claude codex|repo + INSTALL_* (env)" "the environment's INSTALL_* wins over .env's, per variable"
+  run_cmd env DCK_AGENT_CLIS="codex" "${PYCFG[@]}" show --repo "$repo" --format json
+  assert_eq "$(sup)" "claude codex grok|codex grok|env + INSTALL_* (docker/local/.env)" "INSTALL_* adds to DCK_AGENT_CLIS too"
+  run_cmd env INSTALL_CURSOR_CLI=true "${PYCFG[@]}" show --repo "$repo"
+  assert_rc 3 "a requested CLI outside supported is refused"
+  assert_contains "$RUN_ERR" "cursor not in [agents] supported (claude, codex, grok)" "with the supported list"
+  rm -f "$repo/docker/local/.env"
+  invalid_case "clis outside supported" "agents.clis: cursor not in agents.supported (claude, codex)" 'interface = 2
+service = "app"
+flavour = "node-24"
+[agents]
+supported = ["claude", "codex"]
+clis = ["cursor"]'
+  invalid_case "supported is \"all\" or a list" 'agents.supported: expected "all" or an array' 'interface = 2
+service = "app"
+flavour = "node-24"
+[agents]
+supported = "some"'
+  invalid_case "supported names known kinds" "agents.supported: unknown kind 'aider'" 'interface = 2
+service = "app"
+flavour = "node-24"
+[agents]
+supported = ["aider"]'
+}

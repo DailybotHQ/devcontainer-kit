@@ -18,7 +18,7 @@ in your images, and your Herdr machines.
 | --- | --- | --- |
 | you → dck on your host | yes | dck acts with your permissions, inside the write scope below |
 | the repository's files → dck | **no** — you may run dck on a repository you just cloned | dck parses them (JSONC, TOML, compose); never writes or reads secrets through a symlink they plant; never imports a module from them; never forwards your agent to an address they choose |
-| the repository's container configuration → your Docker daemon | **only after review** | `up`/`start`/`build`/`rebuild` hand the repository's compose file and `devcontainer.json` to Docker (and the devcontainer CLI). Anything in them that reaches the host — `initializeCommand`, `privileged`, `cap_add`, host namespaces, devices, the Docker socket, bind mounts outside the repository, a compose file outside it — is refused until you pass `--trust` (or `DCK_TRUST=1`). dck-rendered setups contain none of these. Treat `--trust` like "trust this folder" in an editor |
+| the repository's container configuration → your Docker daemon | **only after review** | `up`/`start`/`build`/`rebuild` hand the repository's compose file and `devcontainer.json` to Docker (and the devcontainer CLI). Anything in them that reaches the host — `initializeCommand`, `privileged`, `cap_add`, host namespaces, devices, the Docker socket, bind mounts outside the repository, a compose file outside it, in devcontainer.json's list or given with `--compose-file` — is refused until you pass `--trust` (or `DCK_TRUST=1`). dck-rendered setups contain none of these. Treat `--trust` like "trust this folder" in an editor |
 | the repository → its own container | yes, by design | the container exists to run the repository's code; its hook and its Dockerfile run there, with the dev user's sudo |
 | the container → your host | **no** | the container reaches the host through what you publish (loopback ports) and through your SSH agent: forwarded on the sessions you open, and — with `ssh_agent = true`, the default — its socket mounted for the container's lifetime. Code in the container can *use* the agent's keys (sign, never read them) while it runs: for git that is the point; for sensitive keys use `ssh-add -c` (confirm each use) or set `ssh_agent = false`. With the host as a mesh peer (`[host] machine = true`) that also means a shell on the host — see the next row |
 | a dck container → your host's shell | **only with the host listener (opt-in)** | `dck host listener enable` (or a yes to the one question `dck setup` asks) runs a user-level sshd on **127.0.0.1** only (default port 22033, its own ed25519 host key, `AllowUsers` you, no passwords, no PAM, no root, no TCP forwarding (`PermitOpen none`), no agent forwarding, no `~/.ssh/rc`, only the local stream forward Herdr's client uses) that authorizes **only the dck key** (`no-agent-forwarding,no-X11-forwarding,no-user-rc`), kept alive by a launchd agent. While it runs, any process that can use the dck key through your agent — code in any running dck container with the agent socket — can open a shell on your host as you. That is what lets agents inside answer agents on the host. Turn it off with `dck host listener disable` (removes the launchd agent and its files), `[host] machine = false`, `ssh_agent = false` per repository, or `ssh-add -d ~/.config/dck/ssh/id_ed25519`. With `listener = "external"` dck reuses a listener you already run and writes nothing on the host; with `"remote-login"` it relies on the system sshd and your own `authorized_keys` |
@@ -155,8 +155,10 @@ second runtime compose overlay (`$TMPDIR/dck-<uid>/<project>-agents.yml`, 0600 i
 0700 directory you own — never written into the repository) that binds, one by one:
 
 - each host ak profile `$AGENTKIT_PROFILES_DIR/<cli>/<name>` (default root
-  `~/.local/share/agentkit/profiles`) of the CLIs in the repository's `[agents] clis`
-  with file-portable profiles — claude, codex, pi, cline, grok, opencode — and points
+  `~/.local/share/agentkit/profiles`) of the CLIs the repository wires (`[agents] clis`, or
+  `[agents] supported` in the advanced mode, installed or not; only profiles that exist on
+  the host are bound) with file-portable
+  profiles — claude, codex, pi, cline, grok, opencode — and points
   `AGENTKIT_PROFILES_DIR` at them. `[agents] host_profile_names` (for example
   `["claude@work1", "codex@default"]`) limits the share to the profiles listed; empty
   means every profile of those CLIs. A whole CLI directory is never bound. cursor (and
@@ -168,6 +170,15 @@ second runtime compose overlay (`$TMPDIR/dck-<uid>/<project>-agents.yml`, 0600 i
 - an env file generated on the host, `~/.config/dck/agents/<project>/env` (0600 in a
   0700 directory; the directory is bound read-only, so a rewrite on the next `dck up`
   reaches a running container), with `AGENTKIT_ENV` pointing at it.
+
+**The CLIs not shared stay in the container.** A profile created inside for a CLI the
+host does not share (antigravity, cursor, a CLI with no host profile) is the container's:
+the entrypoint links `~/.dck/host/agentkit/profiles/<cli>` to that CLI's directory on the
+project's `agentkit` volume (0700, the container user's), never to a host path. It refuses a
+link there that points anywhere else, a volume directory that is a symlink, and moving
+anything on another device (a bind mount); migrating an older container's profiles (run
+inside it by `dck up --recreate` / `dck rebuild`, as root, with this dck version's
+library) never overwrites the volume's copy and logs paths, never content.
 
 **Least privilege.** Every mount is read-only unless the CLI must write there; each
 read-write mount and its reason (the same table the code uses, shown by `dck doctor`):

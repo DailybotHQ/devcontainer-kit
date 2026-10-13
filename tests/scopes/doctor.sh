@@ -42,7 +42,7 @@ test_inside_a_repository() {
   assert_eq "$(j 'd["repo"]["flavour"]')" '"node-24"' "the flavour is reported"
   assert_eq "$(j 'd["repo"]["kit_version"]')" "\"v$VERSION\"" "the kit version is reported"
   assert_eq "$(j 'd["repo"]["project"]')" '"proj"' "the compose project is reported"
-  assert_eq "$(j 'd["layers"]')" '{"agents": false, "clis": [], "dailybot": false, "editor": true}' "the layers are reported"
+  assert_eq "$(j 'd["layers"]')" '{"agents": false, "clis": [], "clis_effective": [], "clis_image": null, "clis_mode": "default", "clis_source": "repo", "clis_supported": [], "dailybot": false, "editor": true}' "the layers are reported"
   assert_eq "$(j '[d["ssh"]["enabled"], d["ssh"]["port"], d["ssh"]["bind"]]')" '[true, 22040, "127.0.0.1"]' "ssh port and bind are reported"
   assert_eq "$(j 'd["repo"]["digest_pinned"]')" "true" "the Dockerfile's digest pin is reported"
   assert_not_contains "$(j 'd["problems"]')" "not pinned by digest" "a digest-pinned base is no problem"
@@ -316,4 +316,39 @@ test_doctor_reports_user_block_overrides_and_compose_version() {
   doc
   valid "doctor --json with compose_render matches its schema"
   assert_eq "$(j 'd["compose_render"]["overrides"]')" '["command", "environment.DCK_SSH"]' "doctor --json lists them"
+}
+
+# v0.3.6: supported, requested (and why) and installed in the running image.
+test_doctor_reports_agent_clis() {
+  mk_repo --agents --clis "claude codex" --supported all || return 0
+  local proj; proj="$(sed -n 's/^name: //p' "$REPO/docker/local/docker-compose.yaml")"
+  printf '%s-app-1\trunning\n' "$proj" > "$DCK_FAKE_STATE/ps"
+  mkdir -p "$XDG_CONFIG_HOME/dck"
+  printf '[agents]\nclis_extra = ["grok"]\n' > "$XDG_CONFIG_HOME/dck/profile.toml"
+  printf 'claude codex\n' > "$DCK_FAKE_STATE/image_agent_clis"
+  doc
+  valid "doctor --json with the agent CLIs matches its schema"
+  assert_eq "$(j 'd["layers"]["clis_supported"]')" '["claude", "codex", "cursor", "opencode", "pi", "cline", "grok", "antigravity"]' "supported: every kind (advanced mode)"
+  assert_eq "$(j 'd["layers"]["clis_mode"]')" '"advanced"' "the mode is reported"
+  assert_eq "$(j 'd["layers"]["clis_effective"]')" '["claude", "codex", "grok"]' "requested: dck.toml's plus the profile's extra"
+  assert_eq "$(j 'd["layers"]["clis_source"]')" '"repo + profile"' "and where that comes from"
+  assert_eq "$(j 'd["layers"]["clis_image"]')" '["claude", "codex"]' "installed: what the running image recorded"
+  assert_contains "$(j 'd["problems"]')" "rebuild needed: dck rebuild" "a difference is a problem with the fix"
+  run_cmd bash -c 'cd "$1" && "$2" doctor' _ "$REPO" "$DCK"
+  assert_contains "$RUN_OUT" "mode advanced ([agents] supported: each developer chooses what to install)" "the text report names the mode"
+  assert_contains "$RUN_OUT" "requested claude codex grok (from repo + profile)" "the text report shows the request"
+  assert_contains "$RUN_OUT" "installed claude codex — rebuild needed: dck rebuild" "and the stale image"
+  printf 'grok claude codex\n' > "$DCK_FAKE_STATE/image_agent_clis"
+  doc
+  assert_not_contains "$(j 'd["problems"]')" "rebuild needed" "the same CLIs in any order are current"
+}
+
+test_doctor_reports_the_default_mode() {
+  mk_repo --agents --clis "claude codex" || return 0
+  doc
+  valid "doctor --json in the default mode matches its schema"
+  assert_eq "$(j 'd["layers"]["clis_mode"]')" '"default"' "no [agents] supported: the default mode"
+  assert_eq "$(j 'd["layers"]["clis_supported"]')" '["claude", "codex"]' "the chosen CLIs are the supported ones"
+  run_cmd bash -c 'cd "$1" && "$2" doctor' _ "$REPO" "$DCK"
+  assert_contains "$RUN_OUT" "mode default (the CLIs chosen at onboarding, dck.toml clis, are wired and installed)" "the text report explains it"
 }

@@ -169,6 +169,9 @@ def cmd_init(args):
     clis = opt(args, "--clis")
     if clis is not None:
         opts["clis"] = [c for c in clis.replace(",", " ").split() if c]
+    supported = opt(args, "--supported")
+    if supported is not None:
+        opts["supported"] = "all" if supported.strip() == "all" else [c for c in supported.replace(",", " ").split() if c]
     for on, off, key in (("--agents", "--no-agents", "agents"), ("--editor", "--no-editor", "editor"),
                          ("--herdr", "--no-herdr", "herdr_machine"), ("--dev-sh", "--no-dev-sh", "dev_sh")):
         if flag(args, on):
@@ -219,7 +222,11 @@ def cmd_devc(args):
                 print(p)
             return EXIT_OK
         if sub == "preflight":
-            found = devc.preflight(opt(args, "--repo"))
+            repo = opt(args, "--repo")
+            files = []
+            while "--compose-file" in args:
+                files.append(opt(args, "--compose-file"))
+            found = devc.preflight(repo, files)
             for f in found:
                 print(f)
             return EXIT_REFUSED if found else EXIT_OK
@@ -403,6 +410,34 @@ def cmd_agents(args):
     return EXIT_OK
 
 
+def cmd_clis(args):
+    """`clis overlay --repo DIR --out FILE [--service NAME] [--profile NAME]`:
+    the runtime overlay of this developer's coding-agent CLIs (written when the
+    effective list differs from dck.toml's, removed otherwise)."""
+    import agentclis
+    import devc
+    import hostagents
+    if not args or args[0] != "overlay":
+        return usage("clis overlay --repo DIR --out FILE [--service NAME] [--profile NAME]")
+    args = args[1:]
+    repo, out, profile = opt(args, "--repo"), opt(args, "--out"), opt(args, "--profile")
+    if not (repo and out):
+        return usage("clis overlay --repo DIR --out FILE")
+    try:
+        merged, _ = config.effective(repo, default_tag(), profile)
+        p = agentclis.write(merged, opt(args, "--service") or devc.read(repo)["service"], out)
+    except (hostagents.HostAgentsError, devc.DevcError, OSError) as exc:
+        sys.stderr.write("dck: agent CLIs: %s\n" % exc)
+        return EXIT_REFUSED
+    except config.ConfigError as exc:
+        sys.stderr.write("dck: invalid configuration\n%s\n" % exc)
+        return EXIT_CONFIG
+    print("differs=%s" % ("1" if p["differs"] else "0"))
+    print("effective=%s" % " ".join(p["effective"]))
+    print("source=%s" % p["source"])
+    return EXIT_OK
+
+
 def cmd_sshkeys(args):
     """`sshkeys overlay --repo DIR --out FILE [--profile NAME]`: the runtime
     overlay of [ssh] copy_keys (written, or removed when off)."""
@@ -451,7 +486,7 @@ def cmd_doctor(args):
     return doctor.main(args)
 
 
-GROUPS = {"agents": cmd_agents, "sshkeys": cmd_sshkeys, "compose": cmd_compose, "doctor": cmd_doctor, "config": cmd_config, "init": cmd_init, "devc": cmd_devc, "sshconf": cmd_sshconf, "herdr": cmd_herdr}
+GROUPS = {"agents": cmd_agents, "clis": cmd_clis, "sshkeys": cmd_sshkeys, "compose": cmd_compose, "doctor": cmd_doctor, "config": cmd_config, "init": cmd_init, "devc": cmd_devc, "sshconf": cmd_sshconf, "herdr": cmd_herdr}
 
 
 def main(argv):
