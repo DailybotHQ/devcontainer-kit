@@ -7,6 +7,13 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+### Changed
+
+- **Dogfood:** DeepWorkPlan pack **v7.8.1** (tag `1974640`; `SHA256SUMS` sha256
+  `5b288fad…`; the installed tree matches the tag). The addon registry records
+  the dev container at **v1.0.1**. herdr-peers and DeepWorkPlan Vim stay v1.0.0;
+  the AI Diff Reviewer stays v3.3.14, the version the pack pins.
+
 ## [1.0.1] — 2026-10-13
 
 Interface stays **2**. Patch: coding-agents-kit **v1.0.1** so `@default` stays its own
