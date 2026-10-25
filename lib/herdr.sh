@@ -294,7 +294,7 @@ herdr_peers_cli() {
   if declare -F dck_host_peers_bin >/dev/null 2>&1 && HERDR_PEERS_CLI="$(dck_host_peers_bin)"; then return 0; fi
   die "$DCK_EXIT_ENV" "herdr-peers is not installed on this host. Install dck's verified copy:
   dck host peers install
-(or the skill, pinned: npx --yes skills add DailybotHQ/herdr-peers@${HERDR_PEERS_TAG:-v0.1.0} --skill herdr-peers -g)"
+(or the skill, pinned: npx --yes skills add https://github.com/DailybotHQ/herdr-peers/tree/${HERDR_PEERS_TAG:-v1.1.0} --skill herdr-peers -g)"
 }
 
 dck_cmd_agents() {
