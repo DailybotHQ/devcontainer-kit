@@ -11,8 +11,13 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 - **Dogfood:** DeepWorkPlan pack **v7.8.1** (tag `1974640`; `SHA256SUMS` sha256
   `5b288fad…`; the installed tree matches the tag). The addon registry records
-  the dev container at **v1.0.1**. herdr-peers and DeepWorkPlan Vim stay v1.0.0;
+  the dev container at **v1.0.1**. DeepWorkPlan Vim stays v1.0.0;
   the AI Diff Reviewer stays v3.3.14, the version the pack pins.
+- **Pins:** herdr-peers **v1.1.0** (`HERDR_PEERS_TAG`; tag commit `4f5ae5a`,
+  `SHA256SUMS` sha256 `ba37ea34…`). Additive: protocol 1 is unchanged; it adds
+  native debates (`herdr-peers debate tally|claims|anon|filings|panel`, with
+  templates) and `--wait-blocked` on `reply` / `notify`. The host fallback hint
+  (`dck agents` / `dck ask` without herdr-peers) now pins the tree URL of the tag.
 
 ## [1.0.1] — 2026-10-13
 

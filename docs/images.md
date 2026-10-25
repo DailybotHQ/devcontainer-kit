@@ -80,7 +80,7 @@ identical otherwise.
 The Dockerfile `dck init` renders runs the same `install.sh` and `editor.sh`
 (vendored into `docker/local/<service>/dck/` with a `VERSION` stamp) and adds:
 
-- **herdr-peers v1.0.0** (`images/common/peers.sh`): fetched from its tag's source,
+- **herdr-peers v1.1.0** (`images/common/peers.sh`): fetched from its tag's source,
   every file checked against that release's `SHA256SUMS`, itself pinned by sha256;
   installed at `/usr/local/share/dck/skills/herdr-peers` with `/usr/local/bin/herdr-peers`,
   next to Herdr's own skill (`herdr --skill`, matching the pinned binary). The
