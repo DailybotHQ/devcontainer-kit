@@ -36,7 +36,7 @@ identical otherwise.
   `~/.config/herdr/config.toml` (login shell, `new_cwd` = the app path (dck.toml `workspace`, default `/app`),
   `allow_nested = true`);
 - Neovim **0.12.5** (`/opt/nvim-0.12.5`, `/usr/local/bin/nvim`, SHA-256
-  pinned per architecture) and deepworkplan-vim **v1.0.0** in `~/.config/nvim`,
+  pinned per architecture) and deepworkplan-vim **v1.0.1** in `~/.config/nvim`,
   installed in its own image layer (`images/common/editor.sh`) by the
   project's official installer — the one `https://vim.deepworkplan.com/install.sh`
   serves — downloaded from the versioned release asset, checked against its
@@ -106,7 +106,7 @@ appears under `images/`.
 One file pins every input: base images (and the `uv` image) by tag **and** digest,
 each tool by version **and** SHA-256 per architecture (amd64, arm64),
 deepworkplan-vim by tag, commit **and** installer SHA-256, and the opt-in layers'
-inputs — coding-agents-kit **v1.0.1** (`AGENTKIT_TAG`, tarball `AGENTKIT_SHA256`),
+inputs — coding-agents-kit **v1.1.0** (`AGENTKIT_TAG`, tarball `AGENTKIT_SHA256`),
 Node **24.21.0** for the agents layer, the Dailybot CLI **3.27.0** wheel and uv
 **0.12.24** for the dailybot layer. `images/common/install.sh` and
 `images/common/editor.sh` download through a `fetch()` that refuses a checksum

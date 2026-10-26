@@ -7,6 +7,27 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-10-25
+
+Interface stays **2**. Patch: the image bakes the current coding-agents-kit and
+DeepWorkPlan Vim releases and the vendored reviewer matches the pack's pin;
+nothing in dck's own surface changes.
+
+### Changed
+
+- **Pins:** coding-agents-kit **v1.1.0** (`AGENTKIT_TAG`; tag commit `ec6d1c5`,
+  tarball sha256 `abfa36d3…`, `SHA256SUMS` sha256 `0de0d54a…`, verified from the
+  release assets). Minor upstream, additive: `ak usage` lists measurable blocks
+  first; interface 1 unchanged.
+- **Pins:** DeepWorkPlan Vim **v1.0.1** (`DWP_VIM_TAG`; peeled tag commit `69a4d84`,
+  installer sha256 `24a55023…`, `SHA256SUMS` sha256 `304667a4…`, verified from the
+  release assets). Maintenance release.
+- **Vendored skill:** ai-diff-reviewer **v3.3.16** — the version the DeepWorkPlan
+  pack v7.9.0 pins. Installed through the pinned tree-URL channel; the release
+  `SHA256SUMS` sha256 `af29e326…` verified from the asset, the bundle digest
+  checked against it, and the installed tree byte-compared against the verified
+  bundle. `skills-lock.json`, the addon registry and AGENTS.md re-stamped.
+
 ## [1.1.0] — 2026-10-25
 
 Interface stays **2**. Minor: herdr-peers **v1.1.0** inside every container —
@@ -953,7 +974,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.1
 [1.1.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.0
 [1.0.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.0.1
 [1.0.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.0.0
