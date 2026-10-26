@@ -7,6 +7,14 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+### Changed
+
+- **Vendored skill:** ai-diff-reviewer **v3.3.16** — the version the DeepWorkPlan
+  pack v7.9.0 pins. Installed through the pinned tree-URL channel; the release
+  `SHA256SUMS` sha256 `af29e326…` verified from the asset, the bundle digest
+  checked against it, and the installed tree byte-compared against the verified
+  bundle. `skills-lock.json`, the addon registry and AGENTS.md re-stamped.
+
 ## [1.1.0] — 2026-10-25
 
 Interface stays **2**. Minor: herdr-peers **v1.1.0** inside every container —
