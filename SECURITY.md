@@ -4,7 +4,8 @@
 
 | Version | Supported |
 | --- | --- |
-| `v1.1.0` (latest) | yes |
+| `v1.1.1` (latest) | yes |
+| `v1.1.0` | yes |
 | `v1.0.1` | yes |
 | `v1.0.0` | yes |
 | `v0.3.7` | yes |

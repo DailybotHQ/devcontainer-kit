@@ -4,7 +4,7 @@
 # base block copies live next to this file in dck/ (vendored by `dck init`,
 # devcontainer-kit v0.3.2); no shared base image is involved.
 # >>> dck:base >>>
-# dck:managed v1.1.0 base
+# dck:managed v1.1.1 base
 # Both ARGs come before any FROM, so they are global (an ARG after a FROM is
 # scoped to that stage).
 ARG BASE_IMAGE=python:3.13.16-slim-trixie@sha256:bf44cdfcb76cd3b41e879bc058fc37ec5872002ccfde7fcb765e218cde0cd79c
@@ -48,7 +48,7 @@ ENV LANG=en_US.UTF-8 \
     VISUAL=nvim \
     GIT_EDITOR=nvim \
     DCK_IMAGE_FLAVOUR=python-3.13 \
-    DCK_IMAGE_VERSION=1.1.0
+    DCK_IMAGE_VERSION=1.1.1
 WORKDIR /app
 ENTRYPOINT ["/usr/local/bin/dck-entrypoint"]
 CMD ["sleep", "infinity"]
