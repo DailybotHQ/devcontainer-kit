@@ -7,6 +7,21 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+## [1.1.2] — 2026-11-15
+
+Interface stays **2**. Patch: the image bakes the current herdr-peers release;
+nothing in dck's own surface changes.
+
+### Changed
+
+- **Pins:** herdr-peers **v1.2.1** (`HERDR_PEERS_TAG`; peeled tag commit `6c493ec`,
+  `SHA256SUMS` sha256 `aef2c64c…`, verified from the release asset; 32 skill
+  files, two more than v1.1.0: `autopilot.md` and `scripts/autopilot.py`).
+  Additive upstream: protocol 1 is unchanged; 1.2 adds `herdr-peers autopilot`,
+  an optional daemon only a human starts that accepts the recommended option on
+  agents' waiting screens. dck never starts it. The host fallback hint
+  (`dck agents` / `dck ask` without herdr-peers) pins the tree URL of the new tag.
+
 ## [1.1.1] — 2026-10-25
 
 Interface stays **2**. Patch: the image bakes the current coding-agents-kit and
@@ -974,7 +989,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.2
 [1.1.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.1
 [1.1.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.0
 [1.0.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.0.1
