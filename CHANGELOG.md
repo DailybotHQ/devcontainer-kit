@@ -7,6 +7,21 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+### Changed
+
+- **Pins:** herdr-peers **v2.1.0** (`HERDR_PEERS_TAG`; peeled tag commit `49e6ab2`,
+  `SHA256SUMS` sha256 `02837b81…`, verified from the release asset; 37 skill files,
+  one more than v1.3.1). Protocol 2: 2.0.0 adds lead appointment on the human's
+  explicit word, the opt-in fail-closed autopilot brain and the plan queue; asks,
+  notices and replies stay compatible with 1.x peers. The 2.0.x patches record why
+  a brain was retired, default the brain to Claude only and accept coding-agents-kit
+  1.5.0's trailing `--ask`. 2.1.0 adds the `fleet ui` views (Attention, Active,
+  Waiting, Done, All), denies a permission the daemon cannot accept instead of
+  leaving the agent waiting (an agent's own question still waits for the human),
+  and reads pack 8.0.0's blocker classes. dck never starts the daemon. The host
+  fallback hint (`dck agents` / `dck ask` without herdr-peers) pins the tree URL of
+  the new tag.
+
 ## [1.3.0] — 2026-11-15
 
 Interface stays **2**. Minor: the new opt-in `[compose] container_only` key renders
