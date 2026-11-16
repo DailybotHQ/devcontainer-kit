@@ -657,6 +657,40 @@ test_container_only_volumes() {
   init_repo "$r" --yes
   assert_rc 3 "a long-form user mount at the same path is refused too"
   assert_contains "$RUN_ERR" "the user block mounts /app/node_modules too" "its target read as well"
+  # A short entry whose source is named like a long-form keyword is still short:
+  # a volume may be called "source", and its target must be seen.
+  r="$(new_repo conly-name)"
+  init_repo "$r" --flavour debian --ssh-port 0 --yes
+  set_toml "$r" 's = s.replace("[compose]\n", "[compose]\ncontainer_only = [\"/app/node_modules\"]\n", 1)'
+  add_user_block "$r" '    x-dck-merge:
+      volumes:
+        - source:/app/node_modules
+'
+  init_repo "$r" --yes
+  assert_rc 3 "a user mount whose volume is named 'source' is refused too"
+  assert_contains "$RUN_ERR" "the user block mounts /app/node_modules too" "not bypassed as unreadable"
+  # An entry whose mount target cannot be read blocks the feature outright: it
+  # could be a second mount at the container-only path.
+  r="$(new_repo conly-dark)"
+  init_repo "$r" --flavour debian --ssh-port 0 --yes
+  set_toml "$r" 's = s.replace("[compose]\n", "[compose]\ncontainer_only = [\"/app/node_modules\"]\n", 1)'
+  add_user_block "$r" '    x-dck-merge:
+      volumes:
+        - type: volume
+          source: mine
+'
+  init_repo "$r" --yes
+  assert_rc 3 "an unreadable mount target is refused"
+  assert_contains "$RUN_ERR" "cannot read every mount target" "naming the entry's fix"
+  r="$(new_repo conly-dark-ok)"
+  init_repo "$r" --flavour debian --ssh-port 0 --yes
+  add_user_block "$r" '    x-dck-merge:
+      volumes:
+        - type: volume
+          source: mine
+'
+  init_repo "$r" --yes
+  assert_rc 0 "without container_only an unreadable target is not dck's problem"
 }
 
 # --- v0.3.3: compose keys, the user block, markers ------------------------

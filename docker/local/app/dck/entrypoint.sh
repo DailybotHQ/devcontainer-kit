@@ -443,17 +443,24 @@ dck_repo_hook() {
 # --------------------------------------------------------------------------
 # Each path in DCK_CONTAINER_ONLY is a named volume mounted over a workspace
 # subpath (the workspace bind stays underneath it). Docker creates the mount
-# point root-owned, so at each start it is given to the user: the mount point
+# point root-owned, so at every start it is given to the user: the mount point
 # only, never recursively (what the volume already holds keeps its owner) and
-# never the workspace bind itself. A path outside the workspace, or one with
-# no directory there, is skipped: the compose file that set the variable did
-# not mount a volume at it after all.
+# never the workspace bind itself. Only normalised paths under the workspace
+# are accepted (no '..', no '.', no '//', no glob characters — the variable is
+# split with globbing off); a path outside the workspace, or one with no
+# directory there, is skipped: the compose file that set the variable did not
+# mount a volume at it after all. Runs as root in the standard start; as the
+# user (a repository's own entrypoint), it says so and changes nothing.
 
 dck_container_only() {
   _dck_env
   local p given=0
+  set -f
   for p in ${DCK_CONTAINER_ONLY:-}; do
     case "$p" in
+      */../*|*/..|*/./*|*//*|*.)
+        dck_log "container-only: skipping '$p' (not a normalised path)"
+        continue ;;
       "$DCK_WORKSPACE"|"$DCK_WORKSPACE"/)
         dck_log "container-only: refusing '$p' (the workspace itself is never taken over)"
         continue ;;
@@ -463,10 +470,18 @@ dck_container_only() {
         continue ;;
     esac
     [ -d "$p" ] || continue
-    if _dck_is_root && chown "$DCK_USER:$(_dck_group)" "$p" 2>/dev/null; then
-      given=$((given + 1))
+    if _dck_is_root; then
+      if chown "$DCK_USER:$(_dck_group)" "$p" 2>/dev/null; then
+        given=$((given + 1))
+      else
+        dck_log "container-only: could not give '$p' to $DCK_USER"
+      fi
     fi
   done
+  set +f
+  if ! _dck_is_root; then
+    dck_log "container-only: not root; the mount point(s) are only given to $DCK_USER by the standard start"
+  fi
   [ "$given" -gt 0 ] && dck_log "container-only: $given mount point(s) given to $DCK_USER"
   return 0
 }

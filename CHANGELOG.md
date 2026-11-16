@@ -15,9 +15,10 @@ interface bumps the major version and the interface number (in 0.x it bumped the
   host's checkout. The case it exists for: the workspace is a bind mount and an
   in-container `npm`/`pnpm` install on a macOS or Windows host purges `node_modules`
   for its own platform, destroying the host's install. The entrypoint gives each mount
-  point to the configured user at the container's first start (`DCK_CONTAINER_ONLY`);
-  a path the user block also mounts, and a derived volume name already used by
-  `compose.state_volume` or `[compose] volumes`, are refused (one mount per path).
+  point to the configured user at every container start (a no-op once it is the user's,
+  `DCK_CONTAINER_ONLY`); a path the user block also mounts, and a derived volume name
+  already used by `compose.state_volume` or `[compose] volumes`, are refused (one mount
+  per path).
   Interface stays **2** (`dck-config-v2.json` gained the key).
 
 ## [1.2.0] — 2026-11-15

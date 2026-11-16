@@ -59,7 +59,7 @@ services:
       DCK_WORKSPACE: {{workspace}}
 {% if has_container_only %}
       # The container-only mount points ([compose] container_only); the
-      # entrypoint gives each to the user on first up (Docker creates them
+      # entrypoint gives each to the user at every start (Docker creates them
       # root-owned).
       DCK_CONTAINER_ONLY: "{{container_only_env}}"
 {% endif %}
