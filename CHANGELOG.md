@@ -32,12 +32,14 @@ so semver puts it at 1.2.0; nothing in dck's own surface changes.
   `--model` as a head flag mapped to each CLI's own flag; v1.4.0 adds `ak update`,
   documented human-invoked only.
 - **Vendored pack:** the `deepworkplan` skill is refreshed from v7.9.0 to
-  **v7.12.0** (`skills-lock.json` and `.agents/skills/deepworkplan/`; release
-  `SHA256SUMS` sha256 `388cf53a…`, all 182 files verified against it). It ships
-  the v7 hardening (#88) and the plan registration with the herdr-peers loop and
-  the Dailybot notifier (#91), and pins herdr-peers v1.3.1 and coding-agents-kit
-  v1.3.0 — matching the image. Delegators unchanged (9/9 routes intact); repo
-  conformance re-run: CONFORMANT (17 passed, 0 advisory).
+  **v7.12.1** (`skills-lock.json` and `.agents/skills/deepworkplan/`; release
+  `SHA256SUMS` sha256 `a8b737d9…`, all 182 files verified against it). It carries
+  the v7 hardening (#88), the plan registration with the herdr-peers loop and the
+  Dailybot notifier (#91) and the notifier hotfix in 7.12.1 (`notify-dailybot.py`
+  now accepts `herdr-peers/plan-event-v1`, stdin capped at 64 KiB), and pins
+  herdr-peers v1.3.1 and coding-agents-kit v1.4.0 — matching the image. Delegators
+  unchanged (9/9 routes intact); repo conformance re-run: CONFORMANT (17 passed,
+  0 advisory).
 
 ## [1.1.2] — 2026-11-15
 
