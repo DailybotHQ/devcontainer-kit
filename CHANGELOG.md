@@ -7,6 +7,12 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-11-16
+
+Interface stays **2**. Minor: the image bakes herdr-peers v2.1.0 (protocol 2),
+coding-agents-kit v1.5.0 and DeepWorkPlan Vim v1.1.0, and the repository dogfoods
+DeepWorkPlan 8.0.1; dck's own surface is unchanged.
+
 ### Changed
 
 - **Pins:** herdr-peers **v2.1.0** (`HERDR_PEERS_TAG`; peeled tag commit `49e6ab2`,
@@ -1081,7 +1087,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.0
 [1.3.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.3.0
 [1.2.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.2.0
 [1.1.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.2
