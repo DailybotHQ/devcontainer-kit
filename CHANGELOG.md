@@ -15,13 +15,16 @@ so semver puts it at 1.2.0; nothing in dck's own surface changes.
 
 ### Changed
 
-- **Pins:** herdr-peers **v1.3.0** (`HERDR_PEERS_TAG`; peeled tag commit `645d028`,
-  `SHA256SUMS` sha256 `135abb69…`, verified from the release asset; 34 skill files,
-  two more than v1.2.1). Protocol 1 is unchanged. 1.2.4 added background autopilot;
-  1.3.0 adds `autopilot --loop` — the human-started daemon keeps open plans running
-  to their end across machines, with the read-only `plans` and `fleet` verbs, the
-  fleet map/UI and `--notify` plan events. dck never starts it. The host fallback
-  hint (`dck agents` / `dck ask` without herdr-peers) pins the tree URL of the new tag.
+- **Pins:** herdr-peers **v1.3.1** (`HERDR_PEERS_TAG`; peeled tag commit `b6ffe529`,
+  `SHA256SUMS` sha256 `c90bce90…`, verified from the release asset; 36 skill files,
+  two more than v1.3.0 — the `fleet-v1` and `plan-event-v1` schemas now ship inside
+  the skill). Protocol 1 is unchanged. 1.2.4 added background autopilot; 1.3.0 adds
+  `autopilot --loop` — the human-started daemon keeps open plans running to their
+  end across machines, with the read-only `plans` and `fleet` verbs, the fleet
+  map/UI and `--notify` plan events. 1.3.1 documents the reply-route address alias,
+  bounds a pass's notify budget and fixes the installed skill's schema links. dck
+  never starts it. The host fallback hint (`dck agents` / `dck ask` without
+  herdr-peers) pins the tree URL of the new tag.
 - **Pins:** coding-agents-kit **v1.3.0** (`AGENTKIT_TAG`; tag commit `b4d3ba4`,
   tarball sha256 `3c0cac0b…`, release `SHA256SUMS` sha256 `5d9b215f…`, verified from
   the release assets). ak interface stays 1: pick-v2 (`ak pick --kinds` with
