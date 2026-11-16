@@ -30,6 +30,11 @@ interface bumps the major version and the interface number (in 0.x it bumped the
   move together), and adds reported token counts to `ak run --json` (`null` when the
   CLI does not report a field, never imputed). The layer still spells no autonomy
   flag.
+- **Pins:** DeepWorkPlan Vim **v1.1.0** (`DWP_VIM_TAG`; peeled tag commit `20dcf80`,
+  `install.sh` sha256 `a3303af1…`, release `SHA256SUMS` sha256 `b6942c21…`, all four
+  assets verified against it). Same Neovim (0.12.5). 1.1.0 renders the pack 8.0
+  surfaces read-only: the plan queue, structured-blocker badges (class C1–C7 and
+  resolver) and the v8 contract's autonomy posture; a v7 plan renders as before.
 
 ## [1.3.0] — 2026-11-15
 
