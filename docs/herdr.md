@@ -130,11 +130,13 @@ entrypoint's `dck_herdr_config` ([entrypoint.md](entrypoint.md)).
 
 An agent in the container can list and ask Herdr agents on the host and in
 other dck containers, and get the reply back, through
-[herdr-peers](https://github.com/DailybotHQ/herdr-peers) (**v1.2.1**: asks, one-way
+[herdr-peers](https://github.com/DailybotHQ/herdr-peers) (**v1.3.0**: asks, one-way
 notices, a plan's lead records and native debates — `herdr-peers debate
-tally|claims|anon|filings|panel` and their templates — on protocol 1; 1.2 adds
-`herdr-peers autopilot`, an optional daemon only a human starts that accepts the
-recommended option on agents' waiting screens — dck never starts it). The repository's rendered image installs it
+tally|claims|anon|filings|panel` and their templates — on protocol 1; `herdr-peers
+autopilot` is an optional daemon only a human starts that accepts the recommended
+option on agents' waiting screens and, with `--loop`, keeps every open plan running
+to its end across machines (`plans` and `fleet` read the map, `--notify` reports
+plan events — dck never starts it). The repository's rendered image installs it
 (`dck/peers.sh`; `herdr-peers` on PATH) from its tag's source, verifying every file
 against that release's `SHA256SUMS`, which is itself pinned by sha256 in
 `versions.env`. Herdr's own skill, matching the pinned binary, is installed next to
