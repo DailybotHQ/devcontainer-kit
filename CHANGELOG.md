@@ -35,6 +35,16 @@ interface bumps the major version and the interface number (in 0.x it bumped the
   assets verified against it). Same Neovim (0.12.5). 1.1.0 renders the pack 8.0
   surfaces read-only: the plan queue, structured-blocker badges (class C1–C7 and
   resolver) and the v8 contract's autonomy posture; a v7 plan renders as before.
+- **Vendored pack:** the `deepworkplan` skill is refreshed from v7.12.1 to **v8.0.1**
+  (`skills-lock.json` and `.agents/skills/deepworkplan/`; tag commit `82bc1fd`,
+  release `SHA256SUMS` sha256 `0a49c301…`, all 188 files verified against it, no
+  extra or missing file). 8.0 carries DWP standard 8.0.0: new plans write
+  plan-contract/v8 (v7, v6 and v5 plans keep their generation), and the v8 schemas
+  (plan-contract, journal-event, plan-snapshot) are frozen; 8.0.1 moves the pack's
+  vim pin to v1.1.0. Its addon descriptors pin herdr-peers v2.1.0,
+  coding-agents-kit v1.5.0 and DeepWorkPlan Vim v1.1.0, matching the image.
+  `AGENTS.md` now declares `DWP standard: 8.0.0`; delegators unchanged (9/9 routes
+  intact); repo conformance re-run: CONFORMANT (17 passed, 0 advisory).
 
 ## [1.3.0] — 2026-11-15
 
