@@ -45,7 +45,7 @@ safe defaults and tests. Built on the [Dev Containers](https://containers.dev) s
 
 Every external input of the image is pinned — by digest, or by version and checksum — in
 [`images/versions.env`](images/versions.env): this release installs coding-agents-kit
-v1.4.0, herdr-peers v2.1.0, Herdr 0.9.3 and DeepWorkPlan Vim v1.0.1.
+v1.5.0, herdr-peers v2.1.0, Herdr 0.9.3 and DeepWorkPlan Vim v1.0.1.
 
 ## Install
 

@@ -21,6 +21,15 @@ interface bumps the major version and the interface number (in 0.x it bumped the
   and reads pack 8.0.0's blocker classes. dck never starts the daemon. The host
   fallback hint (`dck agents` / `dck ask` without herdr-peers) pins the tree URL of
   the new tag.
+- **Pins:** coding-agents-kit **v1.5.0** (`AGENTKIT_TAG`; tag commit `c2158fc`,
+  tarball sha256 `6a128e70…`, release `SHA256SUMS` sha256 `d8057636…`, verified from
+  the release assets). ak interface stays 1. 1.5.0 forces each CLI's own ask mode under
+  `AGENTKIT_PERMISSIONS=ask` / `--ask` (an account whose settings default to an
+  autonomous mode no longer starts autonomous), ends an ask-mode pick-v2
+  `launch.argv` with `--ask` (herdr-peers 2.0.2 and later accept it, which is why both pins
+  move together), and adds reported token counts to `ak run --json` (`null` when the
+  CLI does not report a field, never imputed). The layer still spells no autonomy
+  flag.
 
 ## [1.3.0] — 2026-11-15
 
