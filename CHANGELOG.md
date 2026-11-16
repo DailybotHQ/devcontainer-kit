@@ -7,6 +7,11 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-11-15
+
+Interface stays **2**. Minor: the new opt-in `[compose] container_only` key renders
+container-only named volumes for workspace subpaths; the default render is unchanged.
+
 ### Added
 
 - **`[compose] container_only`** (opt-in): workspace subpaths mounted as project-scoped
@@ -19,7 +24,7 @@ interface bumps the major version and the interface number (in 0.x it bumped the
   `DCK_CONTAINER_ONLY`); a path the user block also mounts, and a derived volume name
   already used by `compose.state_volume` or `[compose] volumes`, are refused (one mount
   per path).
-  Interface stays **2** (`dck-config-v2.json` gained the key).
+  (`dck-config-v2.json` gained the key.)
 
 ## [1.2.0] — 2026-11-15
 
@@ -1037,7 +1042,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.3.0
 [1.2.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.2.0
 [1.1.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.2
 [1.1.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.1
