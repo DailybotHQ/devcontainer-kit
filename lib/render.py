@@ -359,8 +359,23 @@ def _keys(lines):
     return out
 
 
+def _mount_target(chunk):
+    """The container path one compose volume entry mounts at (None when it
+    cannot be read): a long entry's target: value, a short entry's second
+    field (a one-field entry is itself the target)."""
+    first = chunk[0][2:].strip().strip("\"'")
+    if re.match(r"^(type|source|target|read_only|bind|volume|tmpfs|consistency):", first):
+        m = re.search(r"target:\s*['\"]?([^'\"#\s]+)", "\n".join(chunk))
+        return m.group(1) if m else None
+    parts = first.split(":")
+    if len(parts) == 1:
+        return first if first.startswith("/") else None
+    return parts[1] or None
+
+
 def parse_user_block(block):
-    """{"lines", "plain": {key}, "merge": {key: (kind, payload)}, "volumes", "networks"}."""
+    """{"lines", "plain": {key}, "merge": {key: (kind, payload)}, "volumes",
+    "volume_targets", "networks"}."""
     inner = block[1:-1]
     plain, merge = {}, {}
     for key, rest, body in _keys(inner):
@@ -371,7 +386,7 @@ def parse_user_block(block):
                 merge[k] = ("raw", (r, b)) if k in REPLACE_KEYS else _value(r, b)
         else:
             plain[key] = True
-    volumes, networks = [], []
+    volumes, targets, networks = [], [], []
     kind, items = merge.get("volumes", ("list", []))
     if kind == "list":
         for chunk in items:
@@ -386,6 +401,9 @@ def parse_user_block(block):
                     src = m.group(1) if m else None
             if src and src not in volumes:
                 volumes.append(src)
+            tgt = _mount_target(chunk)
+            if tgt and tgt not in targets:
+                targets.append(tgt)
     kind, items = merge.get("networks", ("list", []))
     if kind == "list":
         for chunk in items:
@@ -394,7 +412,8 @@ def parse_user_block(block):
                 networks.append(name)
     elif kind == "map":
         networks += [k for k, _ in items if k != "default" and k not in networks]
-    return {"lines": block, "plain": plain, "merge": merge, "volumes": volumes, "networks": networks}
+    return {"lines": block, "plain": plain, "merge": merge, "volumes": volumes, "volume_targets": targets,
+            "networks": networks}
 
 
 def apply_user_block(rendered, service, user):
@@ -537,7 +556,7 @@ def load_user_block(repo, service):
     if not block and not top:
         return None
     user = parse_user_block(block) if block else {"lines": None, "plain": {}, "merge": {}, "volumes": [],
-                                                    "networks": []}
+                                                    "volume_targets": [], "networks": []}
     user["top"] = top
     user["top_volumes"] = top_declared(top["volumes"]) if "volumes" in top else []
     user["top_networks"] = top_declared(top["networks"]) if "networks" in top else []
@@ -815,9 +834,20 @@ def context(values, repo_name, project, network, base_image, dck_tag, pins=None,
     user_volumes = [v for v in list(values.get("compose.volumes") or []) + ((user or {}).get("volumes") or [])
                     if v not in top_vols]
     user_networks = [n for n in (user or {}).get("networks") or [] if n not in top_nets]
+    # [compose] container_only: a project-scoped named volume over each workspace
+    # subpath (the mount point of the workspace bind stays underneath). A path the
+    # user block also mounts would be a duplicate mount point: refuse, one mount
+    # per path (the config validator refuses the same volume name twice).
+    co_paths = list(values.get("compose.container_only") or [])
+    co_names = [config.container_volume_name(p) for p in co_paths]
+    for p in co_paths:
+        if p in ((user or {}).get("volume_targets") or []):
+            raise UserBlockError("the user block mounts %s too; [compose] container_only also mounts a volume "
+                                 "at that path — keep one mount for it: remove it from the user block's "
+                                 "volumes or from [compose] container_only" % p)
     nets = network_names(values, network, user_networks)
     dck_vols = [values["compose.state_volume"]] + (["agentkit"] + supported_volumes(values)
-                                                   if values["layers.agents"] else [])
+                                                   if values["layers.agents"] else []) + co_names
     for name in top_vols:
         if name in dck_vols or name in (values.get("compose.volumes") or []):
             raise UserBlockError("volume %r is declared in the user:volumes block and by dck (%s); declare it once: "
@@ -875,7 +905,12 @@ def context(values, repo_name, project, network, base_image, dck_tag, pins=None,
         "port_lines": "\n".join(port_lines),
         "volume_mounts": "\n".join("      - %s:/home/%s/.dck/volumes/%s" % (v, user, d) for v, d in vols),
         "volume_decls": "\n".join("  %s: {}" % v for v in
-                                   [v for v, _ in vols] + [u for u in user_volumes if u not in [v for v, _ in vols]]),
+                                   [v for v, _ in vols] + [u for u in user_volumes
+                                                           if u not in [v for v, _ in vols] + co_names]),
+        "has_container_only": bool(co_paths),
+        "container_only_mounts": "\n".join("      - %s:%s" % (n, p) for n, p in zip(co_names, co_paths)),
+        "container_only_decls": "\n".join("  %s: {}" % n for n in co_names),
+        "container_only_env": " ".join(co_paths),
         "state_volume": values["compose.state_volume"],
         "has_network": bool(nets),
         "has_network_decls": has_net_decls,

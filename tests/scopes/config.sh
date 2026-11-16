@@ -93,6 +93,66 @@ layers = true"
 service = "app'
 }
 
+# [compose] container_only: absolute, normalised workspace subpaths, one derived
+# volume name each, never the workspace itself or a name another key declares.
+test_container_only_paths() {
+  local base='interface = 2
+service = "app"
+flavour = "debian"
+workspace = "/app"'
+  printf '%s\n' "$base
+[compose]
+container_only = [\"/app/node_modules\", \"/app/.cache/pnpm\"]" > "$SANDBOX/co.toml"
+  run_cmd "${PYCFG[@]}" validate "$SANDBOX/co.toml"
+  assert_rc 0 "valid container-only paths"
+  assert_eq "$RUN_ERR" "" "a clean container_only prints no warning"
+  run_cmd "${PYCFG[@]}" show --repo "$(make_repo "$base
+[compose]
+container_only = [\"/app/node_modules\"]")" --format env
+  assert_contains "$RUN_OUT" "DCK_COMPOSE_CONTAINER_ONLY=/app/node_modules" "the env output lists the paths"
+  invalid_case "a relative container-only path" "invalid path 'node_modules'" "$base
+[compose]
+container_only = [\"node_modules\"]"
+  invalid_case "a trailing slash" "invalid path '/app/node_modules/'" "$base
+[compose]
+container_only = [\"/app/node_modules/\"]"
+  invalid_case "a .. segment" "invalid path '/app/../etc'" "$base
+[compose]
+container_only = [\"/app/../etc\"]"
+  invalid_case "a . segment" "invalid path '/app/./x'" "$base
+[compose]
+container_only = [\"/app/./x\"]"
+  invalid_case "an empty segment" "invalid path '/app//x'" "$base
+[compose]
+container_only = [\"/app//x\"]"
+  invalid_case "a path given as a string" "expected an array of absolute paths" "$base
+[compose]
+container_only = \"/app/node_modules\""
+  invalid_case "duplicated paths" "compose.container_only: duplicate entries" "$base
+[compose]
+container_only = [\"/app/a\", \"/app/a\"]"
+  invalid_case "more than 16 paths" "at most 16 paths" "$base
+[compose]
+container_only = [\"/app/a\", \"/app/b\", \"/app/c\", \"/app/d\", \"/app/e\", \"/app/f\", \"/app/g\", \"/app/h\", \"/app/i\", \"/app/j\", \"/app/k\", \"/app/l\", \"/app/m\", \"/app/n\", \"/app/o\", \"/app/p\", \"/app/q\"]"
+  invalid_case "a path outside the workspace" "is not a subpath of the workspace" "$base
+[compose]
+container_only = [\"/srv/node_modules\"]"
+  invalid_case "a path equal to the workspace" "would shadow the repository mount itself" "$base
+[compose]
+container_only = [\"/app\"]"
+  invalid_case "two paths deriving one volume name" "derive the same volume name" "$base
+[compose]
+container_only = [\"/app/a-b\", \"/app/a/b\"]"
+  invalid_case "a derived name that is the state volume" "is already compose.state_volume" "$base
+[compose]
+container_only = [\"/app/node_modules\"]
+state_volume = \"co-app-node_modules\""
+  invalid_case "a derived name also in compose.volumes" "also declared by [compose] volumes" "$base
+[compose]
+volumes = [\"co-app-node_modules\"]
+container_only = [\"/app/node_modules\"]"
+}
+
 test_every_problem_reported_at_once() {
   printf '%s\n' 'interface = 1
 flavour = "alpine"

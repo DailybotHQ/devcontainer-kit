@@ -591,6 +591,74 @@ test_state_volume_default_and_per_service() {
   assert_rc 3 "an invalid volume name is refused"
 }
 
+# [compose] container_only: a project-scoped named volume over each workspace
+# subpath; taking the key out restores the earlier render byte for byte.
+test_container_only_volumes() {
+  local r c real
+  r="$(new_repo conly)"
+  init_repo "$r" --flavour node-24 --ssh-port 0 --yes
+  cp "$r/docker/local/docker-compose.yaml" "$SANDBOX/compose-default"
+  set_toml "$r" 's = s.replace("[compose]\n", "[compose]\ncontainer_only = [\"/app/node_modules\"]\n", 1)'
+  init_repo "$r" --yes
+  assert_rc 0 "container_only is accepted"
+  c="$(cat "$r/docker/local/docker-compose.yaml")"
+  assert_contains "$c" "      - co-app-node_modules:/app/node_modules" "the volume mounts read-write at the path"
+  assert_contains "$c" "  co-app-node_modules: {}" "and is declared per project (compose prefixes it)"
+  assert_contains "$c" 'DCK_CONTAINER_ONLY: "/app/node_modules"' "the entrypoint learns the paths"
+  assert_eq "$(grep -c '^volumes:' "$r/docker/local/docker-compose.yaml")" "1" "one top-level volumes:"
+  init_repo "$r" --dry-run
+  assert_contains "$RUN_OUT" "unchanged docker/local/docker-compose.yaml" "idempotent across re-renders"
+  real="$(real_compose)"
+  if [ -n "$real" ]; then
+    run_cmd env DOCKER_HOST=unix:///nonexistent "$real" compose -f "$r/docker/local/docker-compose.yaml" config -q
+    assert_rc 0 "docker compose config accepts the container-only volumes"
+  fi
+  set_toml "$r" 'import re; s = re.sub(r"container_only = .*\n", "", s)'
+  init_repo "$r" --yes
+  assert_rc 0 "the key can be taken out again"
+  assert_eq "$(cat "$r/docker/local/docker-compose.yaml")" "$(cat "$SANDBOX/compose-default")" "without the key the render is unchanged byte for byte"
+  set_toml "$r" 's = s.replace("[compose]\n", "[compose]\ncontainer_only = [\"node_modules\"]\n", 1)'
+  init_repo "$r" --yes
+  assert_rc 3 "an invalid path is refused"
+  assert_contains "$RUN_ERR" "invalid path 'node_modules'" "naming the fix"
+  # Several paths, one volume each, named after the path whatever the workspace.
+  r="$(new_repo conly-many)"
+  init_repo "$r" --flavour debian --user node --workspace /srv --ssh-port 0 --yes
+  set_toml "$r" 's = s.replace("[compose]\n", "[compose]\ncontainer_only = [\"/srv/node_modules\", \"/srv/.next/cache\"]\n", 1)'
+  init_repo "$r" --yes
+  c="$(cat "$r/docker/local/docker-compose.yaml")"
+  assert_contains "$c" "      - co-srv-node_modules:/srv/node_modules" "one volume per path"
+  assert_contains "$c" "      - co-srv-next-cache:/srv/.next/cache" "named after the path, safely"
+  assert_contains "$c" "  co-srv-node_modules: {}
+  co-srv-next-cache: {}" "both declared, in order"
+  assert_contains "$c" 'DCK_CONTAINER_ONLY: "/srv/node_modules /srv/.next/cache"' "the entrypoint gets every path"
+  assert_contains "$(cat "$r/.devcontainer/devcontainer.json")" '"workspaceFolder": "/srv"' "the workspace is unchanged"
+  # A path the user block mounts too would be a duplicate mount point: refused.
+  r="$(new_repo conly-clash)"
+  init_repo "$r" --flavour debian --ssh-port 0 --yes
+  set_toml "$r" 's = s.replace("[compose]\n", "[compose]\ncontainer_only = [\"/app/node_modules\"]\n", 1)'
+  add_user_block "$r" '    x-dck-merge:
+      volumes:
+        - my_cache:/app/node_modules
+'
+  init_repo "$r" --yes
+  assert_rc 3 "a user mount at a container-only path is refused"
+  assert_contains "$RUN_ERR" "the user block mounts /app/node_modules too" "naming the path"
+  assert_contains "$RUN_ERR" "keep one mount for it" "and the way out"
+  r="$(new_repo conly-long)"
+  init_repo "$r" --flavour debian --ssh-port 0 --yes
+  set_toml "$r" 's = s.replace("[compose]\n", "[compose]\ncontainer_only = [\"/app/node_modules\"]\n", 1)'
+  add_user_block "$r" '    x-dck-merge:
+      volumes:
+        - type: volume
+          source: mine
+          target: /app/node_modules
+'
+  init_repo "$r" --yes
+  assert_rc 3 "a long-form user mount at the same path is refused too"
+  assert_contains "$RUN_ERR" "the user block mounts /app/node_modules too" "its target read as well"
+}
+
 # --- v0.3.3: compose keys, the user block, markers ------------------------
 
 # real_compose — the real docker CLI (not the fake), or "" when unavailable.

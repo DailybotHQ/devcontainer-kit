@@ -47,13 +47,16 @@ The rendered service:
   at `/home/<user>/.dck/volumes/state`, plus `agentkit` and one per wired CLI with the
   agents layer ([layers.md](layers.md)), and, with `ssh_agent`, the host's SSH agent
   socket (`${DCK_HOST_SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}`, never created
-  when missing);
+  when missing). With `[compose] container_only`, a project-scoped named volume
+  (`co-<path-slug>`) is mounted read-write over each listed workspace subpath, so what
+  the container builds there never reaches the host's checkout ([config.md](config.md));
 - publishes `ssh_port` → 22 and every named port on `bind` (default
   `127.0.0.1`) only;
 - reads `docker/local/<service>/.env` (optional; `dck setup` creates it 0600
   from the example) and passes `DCK_USER`, `DCK_WORKSPACE`, `DCK_SSH`,
   `DCK_EDITOR` and `DCK_AUTHORIZED_KEYS` (plus `SSH_AUTH_SOCK`, `DCK_AGENTS`,
-  `AGENTKIT_PROFILES_DIR` and `DCK_DAILYBOT` when their option is on) to the image's
+  `AGENTKIT_PROFILES_DIR`, `DCK_DAILYBOT` and `DCK_CONTAINER_ONLY` when their
+  option is on) to the image's
   entrypoint ([entrypoint.md](entrypoint.md)); `host.docker.internal` resolves to
   the host;
 - names its compose project (`name:`: `[compose] project`, else

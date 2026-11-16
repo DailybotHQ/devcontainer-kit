@@ -650,6 +650,31 @@ open(p, "w").write(s)' "$IT_REPO/docker/local/docker-compose.yaml"
   d down postgres app
 }
 
+# [compose] container_only: the workspace subpath is a named volume in the real
+# container — never the bind — owned by the user on first up, so what the
+# container writes there never lands in the host's checkout.
+test_container_only_volume_shadows_the_bind() {
+  require_docker "a container-only volume at /app/node_modules instead of the bind" || return 0
+  export DCK_BACKEND=compose DCK_NONINTERACTIVE=1 DCK_SSH_CONFIG=/dev/null
+  new_fixture dckco
+  trap it_cleanup EXIT
+  run_cmd "$DCK" init --repo "$IT_REPO" --flavour debian --ssh-port 0 --no-herdr --no-editor --yes
+  assert_rc 0 "dck init renders the fixture"
+  python3 -I -c 'import sys; p = sys.argv[1]; s = open(p).read(); open(p, "w").write(s.replace("[compose]\n", "[compose]\ncontainer_only = [\"/app/node_modules\"]\n", 1))' "$IT_REPO/.devcontainer/dck.toml"
+  run_cmd "$DCK" init --repo "$IT_REPO" --yes
+  assert_rc 0 "dck init renders the container-only volume"
+  with_lock d up
+  assert_rc 0 "the stack starts"
+  run_cmd docker inspect -f '{{range .Mounts}}{{.Type}} {{.Destination}};{{end}}' "${IT_PROJECT}-app-1"
+  assert_contains "$RUN_OUT" "volume /app/node_modules;" "the path is a named volume"
+  assert_contains "$RUN_OUT" "bind /app;" "the workspace bind stays underneath"
+  d exec app sh -c 'stat -c %U /app/node_modules; echo inside > /app/node_modules/inside.txt'
+  assert_contains "$RUN_OUT" "dev" "the mount point belongs to the container user (first up)"
+  assert_not_file "$IT_REPO/node_modules/inside.txt" "what the container writes there never reaches the host checkout"
+  d down
+  assert_rc 0 "down"
+}
+
 # v0.3.5: a workspace under the renamed user's home (a product that keeps its
 # node image's user and /home/node/app): the image builds and the user lands there.
 test_workspace_under_the_renamed_home() {

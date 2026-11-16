@@ -94,6 +94,35 @@ test_persist_refusals() {
   assert_absent "$V/state" "a refused call creates nothing"
 }
 
+# DCK_CONTAINER_ONLY ([compose] container_only): mount points under the workspace
+# are given to the user; anything else is skipped, the workspace itself refused.
+test_container_only_mount_points() {
+  local p="$DCK_WORKSPACE/node_modules"
+  mkdir -p "$p"
+  export DCK_CONTAINER_ONLY="$p"
+  ep dck_container_only
+  assert_rc 0 "a mount point under the workspace is taken (chown is root-only here)"
+  export DCK_CONTAINER_ONLY="$p $DCK_WORKSPACE"
+  ep dck_container_only
+  assert_rc 0 "the workspace itself is never taken over"
+  assert_contains "$RUN_ERR" "refusing '$DCK_WORKSPACE' (the workspace itself is never taken over)" "and says so"
+  export DCK_CONTAINER_ONLY="$DCK_ROOT/etc"
+  ep dck_container_only
+  assert_rc 0 "a path outside the workspace is skipped"
+  assert_contains "$RUN_ERR" "not a subpath of" "with a note in the log"
+  export DCK_CONTAINER_ONLY="$DCK_WORKSPACE/missing"
+  ep dck_container_only
+  assert_rc 0 "a path with no directory there is skipped"
+  assert_contains "$RUN_ERR" "" "silently: the compose file mounts no volume at it"
+  export DCK_CONTAINER_ONLY="$DCK_WORKSPACE/node_modules $DCK_WORKSPACE/.cache"
+  mkdir -p "$DCK_WORKSPACE/.cache"
+  ep dck_container_only
+  assert_rc 0 "several paths, one pass"
+  unset DCK_CONTAINER_ONLY
+  ep dck_container_only
+  assert_rc 0 "unset: nothing to do"
+}
+
 test_env_profile_is_private_and_exact() {
   run_cmd env 'DCK_TEST_SECRET_API_KEY=s3cr3t value $HOME "q"'"'"'s' 'MULTI=a
 b' bash -c '. "$1"; dck_env_profile' _ "$LIB"
