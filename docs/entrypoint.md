@@ -27,6 +27,7 @@ Set by the compose file `dck init` renders ([init.md](init.md)):
 | `DCK_AUTHORIZED_KEYS` | empty | public key(s) to authorize; `dck up` passes the dedicated dck key |
 | `DCK_PERSIST_ROOT` | `$DCK_HOME/.dck/volumes` | where named volumes are mounted, one directory per volume |
 | `DCK_REPO_HOOK` | `$DCK_WORKSPACE/docker/local/dev-setup-hook.sh` | the repository hook |
+| `DCK_CONTAINER_ONLY` | empty | workspace subpaths on named volumes (`[compose] container_only`, set by the rendered compose): `dck_container_only` gives each mount point to the user at the start |
 | `DCK_HOST_PROFILES` | empty | the CLIs whose ak profiles are the host's (`[agents] host_profiles`, set by `dck up`'s runtime overlay); every other CLI in `DCK_AGENTS` gets `~/.dck/host/agentkit/profiles/<cli>` linked to its directory on the `agentkit` volume (`dck_host_volume_profiles`) |
 | `DCK_HOST_CODEX` | empty | the mounted host Codex home (`$DCK_HOME/.dck/host/codex`); `~/.codex` links to it. Ignored outside `$DCK_HOME/.dck/host/` |
 | `DCK_SSH_COPY_KEYS` | `0` | `1` copies the host's `~/.ssh/id_*` keys from `~/.ssh_host` (`[ssh] copy_keys`, set with that read-only bind by `dck up`'s runtime overlay); see `dck_ssh_copy_keys` |
@@ -64,6 +65,16 @@ given, for the one user meant to have them:
 - shell-managed names (`PATH`, `HOME`, `SHELL`, `USER`, …) and
   `DCK_AUTHORIZED_KEYS` are left out;
 - values are never printed: only the number of variables is logged.
+
+### `dck_container_only`
+
+`DCK_CONTAINER_ONLY` (set by the rendered compose when `[compose] container_only`
+lists paths, [config.md](config.md)) holds workspace subpaths that are mounted as
+named volumes over the workspace bind. Docker creates each mount point root-owned,
+so at every start it is given to the user: the mount point only, never recursively
+(what the volume already holds keeps its owner) and never the workspace bind itself.
+A path outside `DCK_WORKSPACE`, or one with no directory there, is skipped with a
+note in the log.
 
 ### `dck_layer_persist`
 
@@ -237,7 +248,8 @@ The standard sequence:
 1. persist `~/.ssh`, `~/.config/gh`, `~/.config/dailybot`, `~/.config/herdr`, Herdr's saved
    machines (`~/.local/state/herdr/client`) and `~/.bash_history` on
    the service's state volume (mounted at `~/.dck/volumes/state` whatever its compose
-   name, `[compose] state_volume`), then `dck_layer_persist` (the agents layer's homes
+   name, `[compose] state_volume`), then `dck_container_only` (the container-only
+   volume mount points, `[compose] container_only`), then `dck_layer_persist` (the agents layer's homes
    and `dck_host_volume_profiles`, see [layers.md](layers.md));
 2. `dck_git_identity`, `dck_ssh_agent_access`, `dck_ssh_copy_keys`, `dck_skills_link`,
    `dck_agent_trust` and `dck_codex_config`;

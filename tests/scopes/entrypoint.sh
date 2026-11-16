@@ -94,6 +94,75 @@ test_persist_refusals() {
   assert_absent "$V/state" "a refused call creates nothing"
 }
 
+# A PATH where id reports root and chown logs its arguments, so the root-only
+# branch of dck_container_only runs unprivileged (like the other fake bins).
+fakeroot_path() {
+  local d="$SANDBOX/fakeroot"
+  mkdir -p "$d"
+  cat > "$d/id" <<'STUB'
+#!/bin/sh
+case "$1" in -gn*) echo dev ;; *) echo 0 ;; esac
+STUB
+  cat > "$d/chown" <<'STUB'
+#!/bin/sh
+printf 'chown %s\n' "$*" >> "$DCK_FAKE_LOG"
+STUB
+  chmod +x "$d/id" "$d/chown"
+  printf '%s:/usr/bin:/bin' "$d"
+}
+
+# DCK_CONTAINER_ONLY ([compose] container_only): only normalised subpaths of the
+# workspace are taken, hostile values are skipped without a chown, and both the
+# not-root case and a failed chown are named in the log.
+test_container_only_mount_points() {
+  local p="$DCK_WORKSPACE/node_modules" q="$DCK_WORKSPACE/.cache" fr
+  mkdir -p "$p" "$q"
+  fr="$(fakeroot_path)"
+  # Hostile values: unnormalised paths and a glob. The variable is split with
+  # globbing off, so nothing at the workspace's top level is ever touched.
+  export DCK_CONTAINER_ONLY="$DCK_WORKSPACE// $DCK_WORKSPACE/.. $DCK_WORKSPACE/./x $DCK_WORKSPACE/*"
+  ep dck_container_only
+  assert_rc 0 "hostile paths are skipped"
+  assert_contains "$RUN_ERR" "not a normalised path" "each one named in the log"
+  assert_eq "$(fake_calls chown)" "" "no chown for a hostile value"
+  export DCK_CONTAINER_ONLY="$DCK_WORKSPACE $DCK_WORKSPACE/"
+  ep dck_container_only
+  assert_rc 0 "the workspace itself is refused"
+  assert_contains "$RUN_ERR" "refusing '$DCK_WORKSPACE' (the workspace itself is never taken over)" "and says so"
+  assert_eq "$(fake_calls chown)" "" "the workspace bind is never chowned"
+  export DCK_CONTAINER_ONLY="$DCK_ROOT/etc"
+  ep dck_container_only
+  assert_rc 0 "a path outside the workspace is skipped"
+  assert_contains "$RUN_ERR" "not a subpath of" "with a note in the log"
+  export DCK_CONTAINER_ONLY="$DCK_WORKSPACE/missing"
+  ep dck_container_only
+  assert_rc 0 "a path with no directory there is skipped"
+  assert_not_contains "$RUN_ERR" "missing" "silently: the compose file mounts no volume at it"
+  # A real subpath, as root (id/chown stubbed): chowned, one log line.
+  export DCK_CONTAINER_ONLY="$DCK_WORKSPACE/missing $p $q"
+  run_cmd env PATH="$fr" bash -c '. "$1"; dck_container_only' _ "$LIB"
+  assert_rc 0 "the ownership step succeeds as root"
+  assert_contains "$(fake_calls chown)" "chown dev:dev $p" "the mount point is chowned"
+  assert_contains "$(fake_calls chown)" "chown dev:dev $q" "every listed path is"
+  assert_contains "$RUN_ERR" "2 mount point(s) given to dev" "and the summary counts only the taken ones"
+  # A chown that fails as root is named in the log, never silent.
+  mkdir -p "$SANDBOX/failchown"
+  cp "$SANDBOX/fakeroot/id" "$SANDBOX/failchown/id"
+  printf '#!/bin/sh\nexit 1\n' > "$SANDBOX/failchown/chown"
+  chmod +x "$SANDBOX/failchown/chown"
+  export DCK_CONTAINER_ONLY="$p"
+  run_cmd env PATH="$SANDBOX/failchown:/usr/bin:/bin" bash -c '. "$1"; dck_container_only' _ "$LIB"
+  assert_rc 0 "a failed chown does not abort the start"
+  assert_contains "$RUN_ERR" "could not give '$p' to dev" "and is logged"
+  # As the user (a repository's own entrypoint), it says so and changes nothing.
+  ep dck_container_only
+  assert_rc 0 "an unprivileged run succeeds"
+  assert_contains "$RUN_ERR" "not root" "and says the standard start does the chown"
+  unset DCK_CONTAINER_ONLY
+  ep dck_container_only
+  assert_rc 0 "unset: nothing to do"
+}
+
 test_env_profile_is_private_and_exact() {
   run_cmd env 'DCK_TEST_SECRET_API_KEY=s3cr3t value $HOME "q"'"'"'s' 'MULTI=a
 b' bash -c '. "$1"; dck_env_profile' _ "$LIB"

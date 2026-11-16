@@ -51,6 +51,10 @@ RE_DEFAULT_PROFILE = r"^@?[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
 DEFAULT_PROFILE_CLIS = ("claude", "codex", "pi", "cline", "grok", "opencode")
 # A compose volume key (compose prefixes it with the project name).
 RE_VOLUME = r"^[a-z0-9][a-z0-9_.-]{0,62}$"
+# A container-only volume path ([compose] container_only): an absolute,
+# normalised workspace subpath of safe characters — no trailing slash and no
+# empty, "." or ".." segment. Each becomes a named volume over that path.
+RE_CONTAINER_PATH = r"^/(?:(?!\.+(/|$))[A-Za-z0-9._-]+/)*(?!\.+(/|$))[A-Za-z0-9._-]+$"
 # The agents layer's volume names: a state volume must not take one of them.
 AGENT_VOLUME_NAMES = ("agentkit", "claude", "codex", "cursor", "opencode", "pi", "cline", "grok", "antigravity")
 # An environment variable name (exact: no prefix or wildcard, no implicit secret).
@@ -81,6 +85,12 @@ REPO_RULES = {
     # Extra compose-managed volumes declared with their exact names (other
     # services' data volumes keep reattaching: <project>_<name>).
     "compose.volumes": ("volume_list", [], ("pattern", RE_VOLUME)),
+    # Container-only volumes (opt-in): a named volume mounted over each
+    # workspace subpath, so what the container builds there never reaches the
+    # host's bind mount (the canonical case: /app/node_modules under a macOS
+    # checkout, where an in-container npm/pnpm install would purge the host's
+    # Linux-vs-macOS binaries).
+    "compose.container_only": ("path_list", [], ("pattern", RE_CONTAINER_PATH)),
     "agents.presets": ("preset_list", None, ("enum", AK_PRESETS)),
     # The agents' own Node (/opt/dck/node) first on PATH, for a repository whose
     # own tooling needs that Node too. Off: the image's node stays first.
@@ -237,6 +247,17 @@ def _check(key, value, rule, problems):
             bad("duplicate entries")
         if len(value) > 64:
             bad("at most 64 volumes")
+    elif kind == "path_list":
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            return bad("expected an array of absolute paths, got %s" % _type_name(value))
+        for item in value:
+            if not re.match(carg, item):
+                bad("invalid path %r (an absolute path of letters, digits, dot, underscore and dash; "
+                    "normalised: no trailing slash, no '.', '..' or empty segment)" % item)
+        if len(set(value)) != len(value):
+            bad("duplicate entries")
+        if len(value) > 16:
+            bad("at most 16 paths")
     elif kind == "default_profile_map":
         if not isinstance(value, dict):
             return bad("expected a table of cli = \"@profile\", got %s" % _type_name(value))
@@ -378,6 +399,29 @@ def validate(data, kind="repo", path="dck.toml"):
         if effective["compose.state_volume"] in AGENT_VOLUME_NAMES:
             problems.append("compose.state_volume: %r is an agents-layer volume; choose another name "
                             "(for example \"state-%s\")" % (effective["compose.state_volume"], effective["service"]))
+        co_paths = effective["compose.container_only"]
+        if co_paths:
+            ws = effective["workspace"]
+            prefix = ws if ws.endswith("/") else ws + "/"
+            names = {}
+            for p in co_paths:
+                if p == ws or not p.startswith(prefix):
+                    problems.append("compose.container_only: %s is not a subpath of the workspace %r "
+                                    "(a path equal to the workspace would shadow the repository mount itself)"
+                                    % (p, ws))
+                name = container_volume_name(p)
+                if name in names and names[name] != p:
+                    problems.append("compose.container_only: %s and %s derive the same volume name %r; "
+                                    "rename one of the paths" % (names[name], p, name))
+                names[name] = p
+            if effective["compose.state_volume"] in names:
+                problems.append("compose.container_only: the volume name %r is already compose.state_volume; "
+                                "declare it once (rename the path or the volume)"
+                                % effective["compose.state_volume"])
+            for p, name in ((p, container_volume_name(p)) for p in co_paths):
+                if name in (effective["compose.volumes"] or []):
+                    problems.append("compose.container_only: %s derives the volume name %r, also declared by "
+                                    "[compose] volumes; declare it once (remove it from one of them)" % (p, name))
         if effective["herdr.machine"] and not ssh:
             problems.append("herdr.machine: a Herdr machine needs sshd; set ssh_port to a port in 1024-65535")
         if effective["interface"] == 1:
@@ -665,6 +709,15 @@ def slug(name):
     """A compose-project / ssh-alias safe slug of a repository name."""
     s = re.sub(r"[^a-z0-9_-]+", "-", name.lower()).strip("-_")
     return s[:48] or "repo"
+
+
+def container_volume_name(path):
+    """The project-scoped compose volume of a container-only path ([compose]
+    container_only): "co-" and the path slugified like a repository name;
+    compose prefixes the project, so the name is unique within the repository
+    and deterministic across re-renders ("/app/node_modules" -> co-app-node_modules)."""
+    s = re.sub(r"[^a-z0-9_-]+", "-", path.lower()).strip("-_")
+    return ("co-%s" % s)[:63]
 
 
 def effective(repo, default_tag, profile_name=None, env=None):

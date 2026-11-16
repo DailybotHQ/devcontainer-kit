@@ -27,6 +27,12 @@ services:
       - ../..:{{workspace}}:cached
       # Per-project named volumes (compose prefixes them with the project name).
 {{volume_mounts}}
+{% if has_container_only %}
+      # Container-only volumes (dck.toml [compose] container_only): a named
+      # volume over each path, so what the container builds there stays in the
+      # container and never reaches the host's checkout.
+{{container_only_mounts}}
+{% endif %}
 {% if ssh_agent_on %}
       # The host's SSH agent (git over SSH, signing) — never a key file. Docker
       # Desktop and OrbStack expose it at this path; dck up/rebuild and dev.sh's
@@ -51,6 +57,12 @@ services:
     environment:
       DCK_USER: {{user}}
       DCK_WORKSPACE: {{workspace}}
+{% if has_container_only %}
+      # The container-only mount points ([compose] container_only); the
+      # entrypoint gives each to the user at every start (Docker creates them
+      # root-owned).
+      DCK_CONTAINER_ONLY: "{{container_only_env}}"
+{% endif %}
       DCK_SSH: "{{ssh_enabled}}"
       DCK_EDITOR: "{{editor_enabled}}"
 {% if ssh_agent_on %}
@@ -83,6 +95,9 @@ services:
 # >>> dck:volumes >>>
 volumes:
 {{volume_decls}}
+{% if has_container_only %}
+{{container_only_decls}}
+{% endif %}
 # <<< dck:volumes <<<
 {% if has_network_decls %}
 
