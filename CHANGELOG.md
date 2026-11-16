@@ -7,6 +7,40 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-11-15
+
+Interface stays **2**. Minor: the image bakes new, backwards-compatible upstream
+functionality — herdr-peers 1.3.0's loop and coding-agents-kit 1.3.0's pick-v2 —
+so semver puts it at 1.2.0; nothing in dck's own surface changes.
+
+### Changed
+
+- **Pins:** herdr-peers **v1.3.1** (`HERDR_PEERS_TAG`; peeled tag commit `b6ffe529`,
+  `SHA256SUMS` sha256 `c90bce90…`, verified from the release asset; 36 skill files,
+  two more than v1.3.0 — the `fleet-v1` and `plan-event-v1` schemas now ship inside
+  the skill). Protocol 1 is unchanged. 1.2.4 added background autopilot; 1.3.0 adds
+  `autopilot --loop` — the human-started daemon keeps open plans running to their
+  end across machines, with the read-only `plans` and `fleet` verbs, the fleet
+  map/UI and `--notify` plan events. 1.3.1 documents the reply-route address alias,
+  bounds a pass's notify budget and fixes the installed skill's schema links. dck
+  never starts it. The host fallback hint (`dck agents` / `dck ask` without
+  herdr-peers) pins the tree URL of the new tag.
+- **Pins:** coding-agents-kit **v1.4.0** (`AGENTKIT_TAG`; tag commit `d757d695`,
+  tarball sha256 `ec4cdff9…`, release `SHA256SUMS` sha256 `1ae33b64…`, verified from
+  the release assets). ak interface stays 1: v1.3.0 adds pick-v2 (`ak pick --kinds`
+  with `launch.argv`, `launch.permissions auto|ask` and the `qualifies` form) and
+  `--model` as a head flag mapped to each CLI's own flag; v1.4.0 adds `ak update`,
+  documented human-invoked only.
+- **Vendored pack:** the `deepworkplan` skill is refreshed from v7.9.0 to
+  **v7.12.1** (`skills-lock.json` and `.agents/skills/deepworkplan/`; release
+  `SHA256SUMS` sha256 `a8b737d9…`, all 182 files verified against it). It carries
+  the v7 hardening (#88), the plan registration with the herdr-peers loop and the
+  Dailybot notifier (#91) and the notifier hotfix in 7.12.1 (`notify-dailybot.py`
+  now accepts `herdr-peers/plan-event-v1`, stdin capped at 64 KiB), and pins
+  herdr-peers v1.3.1 and coding-agents-kit v1.4.0 — matching the image. Delegators
+  unchanged (9/9 routes intact); repo conformance re-run: CONFORMANT (17 passed,
+  0 advisory).
+
 ## [1.1.2] — 2026-11-15
 
 Interface stays **2**. Patch: the image bakes the current herdr-peers release;
@@ -989,7 +1023,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.2.0
 [1.1.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.2
 [1.1.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.1
 [1.1.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.0

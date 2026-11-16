@@ -30,7 +30,7 @@ After changing the file, run `dck init` (it shows the diff and asks), then
 ## agents
 
 Installs [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit)
-at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v1.1.0**) into the
+at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v1.4.0**) into the
 dev user's home, following the kit's install contract: the release tarball, verified
 against the pinned `AGENTKIT_SHA256` before it is unpacked, then `install.sh --no-rc`, then `ak install <kind>…` for the
 requested kinds (`DCK_AGENT_CLIS` plus each `INSTALL_<CLI>_CLI=true`; commas or spaces),
@@ -274,10 +274,11 @@ from the image's `/etc/dck/versions.env`. Every download goes through one verifi
 
 ## Status in v1.0
 
-The `agents` layer is verified end to end with coding-agents-kit `v1.1.0`
+The `agents` layer is verified end to end with coding-agents-kit `v1.4.0`
 (installed from its sha256-verified release tarball; `ak` interface 1, permissions
 `auto` by default; the `docker` test scope builds a rendered node fixture on every CI
 run: `--clis codex --supported all`, the host profile's `clis_extra = ["pi"]`, so
 `ak install codex pi`, with the `classic` and `providers` presets turned on). Each
-vendor CLI's own behaviour belongs to the ecosystem field test. The `dailybot`
+vendor CLI's own behaviour belongs to the ecosystem field test. The kit's `ak
+update` (v1.4.0) is documented human-invoked only. The `dailybot`
 and `editor` layers are verified end to end.

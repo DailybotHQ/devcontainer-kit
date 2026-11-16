@@ -1,7 +1,7 @@
 ---
 name: deepworkplan-execute
 description: Execute Lite or Full Deep Work Plans task-by-task — select validation from the actual surface, preserve state and evidence, recover safely, and finish with the Final Review.
-version: "7.9.0"
+version: "7.12.1"
 documentation_url: https://deepworkplan.com
 user-invocable: true
 allowed-tools: Bash, Read, Grep, Glob, Edit, Write
@@ -21,8 +21,7 @@ rule the loop runs on — strict order, gate selection from the actual surface,
 STOP-on-fail, task-local closure, commit format, the state-update command,
 the Final Review — is stated inline in the steps below. A default session
 reads **no** guide, spec or shared companion before Task 1; companions load
-when their moment arrives. (This ordering is deliberate: reading companions
-"to be safe" is the failure mode this tiering removed.)
+when their moment arrives.
 
 - **Essential now (before the first task):**
   [`../shared/context.sh`](../shared/context.sh) — **run** it
@@ -34,9 +33,14 @@ when their moment arrives. (This ordering is deliberate: reading companions
     v6 or v7 plan; it carries the whole task loop.
   - [`delegation.md`](delegation.md) — read only when a v7 plan granting
     `agent_delegation` delegates a task.
+  - [`debate.md`](debate.md) — read only when a listed decision task runs.
   - [`../guide/swarm.md`](../guide/swarm.md) §17 — read only when the
     agentkit addon is enabled (capacity check at each task boundary:
     `../shared/swarm.py capacity`) or a handoff or succession is in play.
+  - [`../addons/herdr/SKILL.md`](../addons/herdr/SKILL.md) — read only when
+    `HERDR_ENV=1` and the herdr addon is enabled: at plan start, claim the
+    plan's lead record, `--succession` when successors are known
+    ("Plan loop").
   - [`../spec/LITE_PLANS.md`](../spec/LITE_PLANS.md) — read only when the
     plan README declares `Plan Format: Lite` or a v2 state line (anchored
     task records, approval axis, promotion recovery).
