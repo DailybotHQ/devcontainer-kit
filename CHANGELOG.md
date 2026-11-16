@@ -7,6 +7,28 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-11-15
+
+Interface stays **2**. Minor: the image bakes new, backwards-compatible upstream
+functionality — herdr-peers 1.3.0's loop and coding-agents-kit 1.3.0's pick-v2 —
+so semver puts it at 1.2.0; nothing in dck's own surface changes.
+
+### Changed
+
+- **Pins:** herdr-peers **v1.3.0** (`HERDR_PEERS_TAG`; peeled tag commit `645d028`,
+  `SHA256SUMS` sha256 `135abb69…`, verified from the release asset; 34 skill files,
+  two more than v1.2.1). Protocol 1 is unchanged. 1.2.4 added background autopilot;
+  1.3.0 adds `autopilot --loop` — the human-started daemon keeps open plans running
+  to their end across machines, with the read-only `plans` and `fleet` verbs, the
+  fleet map/UI and `--notify` plan events. dck never starts it. The host fallback
+  hint (`dck agents` / `dck ask` without herdr-peers) pins the tree URL of the new tag.
+- **Pins:** coding-agents-kit **v1.3.0** (`AGENTKIT_TAG`; tag commit `b4d3ba4`,
+  tarball sha256 `3c0cac0b…`, release `SHA256SUMS` sha256 `5d9b215f…`, verified from
+  the release assets). ak interface stays 1: pick-v2 (`ak pick --kinds` with
+  `launch.argv`, `launch.permissions auto|ask` and the `qualifies` form) and
+  `--model` as a head flag mapped to each CLI's own flag. `ak update` ships later
+  as 1.4.0.
+
 ## [1.1.2] — 2026-11-15
 
 Interface stays **2**. Patch: the image bakes the current herdr-peers release;
@@ -989,7 +1011,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.2.0
 [1.1.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.2
 [1.1.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.1
 [1.1.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.0
