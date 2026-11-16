@@ -25,12 +25,12 @@ so semver puts it at 1.2.0; nothing in dck's own surface changes.
   bounds a pass's notify budget and fixes the installed skill's schema links. dck
   never starts it. The host fallback hint (`dck agents` / `dck ask` without
   herdr-peers) pins the tree URL of the new tag.
-- **Pins:** coding-agents-kit **v1.3.0** (`AGENTKIT_TAG`; tag commit `b4d3ba4`,
-  tarball sha256 `3c0cac0b…`, release `SHA256SUMS` sha256 `5d9b215f…`, verified from
-  the release assets). ak interface stays 1: pick-v2 (`ak pick --kinds` with
-  `launch.argv`, `launch.permissions auto|ask` and the `qualifies` form) and
-  `--model` as a head flag mapped to each CLI's own flag. `ak update` ships later
-  as 1.4.0.
+- **Pins:** coding-agents-kit **v1.4.0** (`AGENTKIT_TAG`; tag commit `d757d695`,
+  tarball sha256 `ec4cdff9…`, release `SHA256SUMS` sha256 `1ae33b64…`, verified from
+  the release assets). ak interface stays 1: v1.3.0 adds pick-v2 (`ak pick --kinds`
+  with `launch.argv`, `launch.permissions auto|ask` and the `qualifies` form) and
+  `--model` as a head flag mapped to each CLI's own flag; v1.4.0 adds `ak update`,
+  documented human-invoked only.
 - **Vendored pack:** the `deepworkplan` skill is refreshed from v7.9.0 to
   **v7.12.0** (`skills-lock.json` and `.agents/skills/deepworkplan/`; release
   `SHA256SUMS` sha256 `388cf53a…`, all 182 files verified against it). It ships
