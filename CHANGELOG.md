@@ -7,6 +7,25 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-11-17
+
+Interface stays **2**. Patch: the image bakes herdr-peers v2.2.0 and the repository
+dogfoods DeepWorkPlan 8.0.2; coding-agents-kit v1.5.0, DeepWorkPlan Vim v1.1.0 and
+dck's own surface are unchanged.
+
+### Changed
+
+- **Pins:** herdr-peers **v2.2.0** (`HERDR_PEERS_TAG`; peeled tag commit `fc19e77`,
+  `SHA256SUMS` sha256 `694766b8…`, verified from the release asset; 50 entries, the
+  same 37 skill files). Protocol stays 2. 2.2.0 adds the opt-in `autopilot --loop
+  --revive` (one fresh agent for a plan whose lead and successors are gone, under a
+  one-time ticket and launch caps) and keeps a sanitized copy of unknown screens as
+  new fixtures. dck never starts the daemon. The host fallback hint pins the tree
+  URL of the new tag.
+- **Vendored pack:** DeepWorkPlan **8.0.2** (tag commit `4d3e2f6`, `SHA256SUMS`
+  sha256 `332e8f9a…`, all 188 files byte-identical); its descriptors pin
+  herdr-peers v2.2.0. The DWP standard stays 8.0.0.
+
 ## [1.4.0] — 2026-11-16
 
 Interface stays **2**. Minor: the image bakes herdr-peers v2.1.0 (protocol 2),
@@ -1087,7 +1106,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.1
 [1.4.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.0
 [1.3.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.3.0
 [1.2.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.2.0
