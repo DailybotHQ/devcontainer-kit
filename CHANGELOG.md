@@ -7,6 +7,30 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+## [1.4.2] — 2026-11-17
+
+Interface stays **2**. Patch: Node moves to the 24.22.3 security release, and
+herdr-peers' state survives rebuilds. herdr-peers v2.2.0, coding-agents-kit v1.5.0 and
+DeepWorkPlan Vim v1.1.0 are unchanged.
+
+### Fixed
+
+- **Node 24.22.3** (`BASE_NODE`, `NODE_VERSION`): 1.4.1 pinned 24.21.0, older than the
+  24.22.x security line, so `dck init` downgraded repositories that had pinned 24.22.1 or
+  24.22.3. The node-24 base is `node:24.22.3-trixie-slim` (index digest `af02d57b…`,
+  read from Docker Hub; its config sets `NODE_VERSION=24.22.3`), and the agents layer's
+  Node tarballs are checked against nodejs.org's `SHASUMS256.txt` for 24.22.3. A test
+  keeps both on the same release, at or above 24.22.3.
+- **herdr-peers' state survives rebuilds:** `dck_start` keeps `~/.local/state/herdr-peers`
+  (the delegation log, lead records, replies, autopilot state) on the state volume
+  through the new `dck_persist_private_dir`. The volume copy is 0700 and the files
+  keep their modes. A non-empty directory already in the container moves onto an empty
+  volume; when the volume already has data, the container's copy is moved beside it as
+  `<key>.container-<UTC stamp>`, never deleted or shadowed. Repositories that persisted
+  it from `docker/local/dev-setup-hook.sh` (`dck_persist state
+  "$HOME/.local/state/herdr-peers" dir`) can drop that line: it uses the same volume
+  copy ([herdr.md](docs/herdr.md)).
+
 ## [1.4.1] — 2026-11-17
 
 Interface stays **2**. Patch: the image bakes herdr-peers v2.2.0 and the repository
@@ -1106,7 +1130,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.4.2...HEAD
+[1.4.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.2
 [1.4.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.1
 [1.4.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.0
 [1.3.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.3.0

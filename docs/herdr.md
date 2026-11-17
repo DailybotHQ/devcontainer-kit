@@ -196,6 +196,13 @@ dck ask dck-other:w1:p2 "Which test covers the parser?"   # herdr-peers ask, wit
   previous file kept once as `endpoints.json.dck-bak`). Every id then means the
   same machine on the host and in every container. Herdr's saved machines live
   on the `state` volume, so they survive `rebuild`.
+- **herdr-peers' state survives rebuilds (since 1.4.2).** The entrypoint keeps
+  `~/.local/state/herdr-peers` (the delegation log, lead records, replies,
+  autopilot state) on the `state` volume, 0700, so asks and a plan's lead records
+  outlive `dck rebuild` ([entrypoint.md](entrypoint.md#dck_persist_private_dir-name-target)).
+  Repositories that added `dck_persist state "$HOME/.local/state/herdr-peers" dir` to
+  `docker/local/dev-setup-hook.sh` can drop that line after `dck init` with 1.4.2: both
+  use the same volume copy, so nothing moves and nothing is lost.
 - **The host's own entry.** The host peer is the host's catalog entry whose
   alias resolves (`ssh -G`) to the listener (`127.0.0.1:<[host] port>`). When
   there is none, `dck host listener enable` and `dck herdr mesh` register one

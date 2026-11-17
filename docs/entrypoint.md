@@ -52,6 +52,18 @@ the target's path relative to the home, without the leading dot, `/` → `_`
 - Refused: targets outside the home, the home itself, non-normalised paths
   (`..`), targets inside the volume root, invalid volume names.
 
+
+### `dck_persist_private_dir <name> <target>`
+
+`dck_persist` for a private directory; `dck_start` uses it for herdr-peers' state
+(`~/.local/state/herdr-peers` → `<volume>/local_state_herdr-peers`: the delegation log,
+lead records, replies and autopilot state). The volume copy is 0700, and the files
+inside keep their own modes. Nothing the container holds is lost. A real, non-empty
+directory at the target is moved onto the volume when the volume copy is empty. When
+the volume copy already has data, the volume copy wins and the container's directory
+is moved beside it as `<key>.container-<UTC stamp>` (0700, logged), so it is neither
+deleted nor shadowed. A target already linked to the volume copy, as the
+`dev-setup-hook.sh` workaround below links it, is left alone.
 ### `dck_env_profile`
 
 sshd starts every session with a clean environment, so nothing compose passed
@@ -246,7 +258,8 @@ A malformed id is refused; a value already set in the environment wins.
 The standard sequence:
 
 1. persist `~/.ssh`, `~/.config/gh`, `~/.config/dailybot`, `~/.config/herdr`, Herdr's saved
-   machines (`~/.local/state/herdr/client`) and `~/.bash_history` on
+   machines (`~/.local/state/herdr/client`), herdr-peers' state
+   (`~/.local/state/herdr-peers`, through `dck_persist_private_dir`) and `~/.bash_history` on
    the service's state volume (mounted at `~/.dck/volumes/state` whatever its compose
    name, `[compose] state_volume`), then `dck_container_only` (the container-only
    volume mount points, `[compose] container_only`), then `dck_layer_persist` (the agents layer's homes

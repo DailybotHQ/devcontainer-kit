@@ -598,3 +598,59 @@ test_profile_node_first() {
   run_cmd env HOME="$DCK_HOME" PATH="/usr/bin:/bin" sh -c '. "$1"; printf "%s" "$PATH"' _ "$DCK_REPO/images/common/profile.sh"
   assert_not_contains "$RUN_OUT" "/opt/dck/node" "off by default"
 }
+
+test_herdr_peers_state_survives_recreate() {
+  run_cmd bash -c '. "$1"; dck_start' _ "$LIB"
+  assert_rc 0 "dck_start completes"
+  assert_eq "$(readlink "$DCK_HOME/.local/state/herdr-peers")" "$V/state/local_state_herdr-peers" "herdr-peers' state lives on the state volume"
+  assert_eq "$(stat -c %a "$V/state/local_state_herdr-peers" 2>/dev/null || stat -f %Lp "$V/state/local_state_herdr-peers")" "700" "the volume copy is 0700"
+  ( umask 077; mkdir -p "$DCK_HOME/.local/state/herdr-peers/srv/leads"
+    echo '{"plan":"P1","epoch":3}' > "$DCK_HOME/.local/state/herdr-peers/srv/leads/P1.json"
+    echo '{"id":"a1"}' > "$DCK_HOME/.local/state/herdr-peers/srv/log.ndjson" )
+  # A recreate: the image's home is fresh, the volume is not.
+  rm -rf "$DCK_HOME/.local" "$DCK_HOME/.config" "$DCK_HOME/.ssh"
+  run_cmd bash -c '. "$1"; dck_start' _ "$LIB"
+  assert_rc 0 "dck_start completes after a recreate"
+  assert_contains "$(cat "$DCK_HOME/.local/state/herdr-peers/srv/leads/P1.json")" '"epoch":3' "a lead record survives"
+  assert_contains "$(cat "$DCK_HOME/.local/state/herdr-peers/srv/log.ndjson")" '"a1"' "the delegation log survives"
+  assert_eq "$(stat -c %a "$V/state/local_state_herdr-peers/srv/log.ndjson" 2>/dev/null || stat -f %Lp "$V/state/local_state_herdr-peers/srv/log.ndjson")" "600" "the files keep their modes"
+  assert_eq "$(stat -c %a "$V/state/local_state_herdr-peers/srv/leads" 2>/dev/null || stat -f %Lp "$V/state/local_state_herdr-peers/srv/leads")" "700" "and so do the directories"
+}
+
+test_herdr_peers_state_migrates_into_the_volume() {
+  # A container that kept herdr-peers' state in its own layer, and an empty volume.
+  ( umask 077; mkdir -p "$DCK_HOME/.local/state/herdr-peers/srv"
+    echo '{"id":"old"}' > "$DCK_HOME/.local/state/herdr-peers/srv/log.ndjson" )
+  ep dck_persist_private_dir state "$DCK_HOME/.local/state/herdr-peers"
+  assert_rc 0 "persist succeeds"
+  assert_symlink "$DCK_HOME/.local/state/herdr-peers" "the directory becomes a link"
+  assert_contains "$(cat "$V/state/local_state_herdr-peers/srv/log.ndjson")" '"old"' "the container's records move into the volume"
+  assert_eq "$(stat -c %a "$V/state/local_state_herdr-peers/srv/log.ndjson" 2>/dev/null || stat -f %Lp "$V/state/local_state_herdr-peers/srv/log.ndjson")" "600" "with their modes"
+  assert_eq "$(stat -c %a "$V/state/local_state_herdr-peers" 2>/dev/null || stat -f %Lp "$V/state/local_state_herdr-peers")" "700" "the volume copy is 0700"
+}
+
+test_herdr_peers_state_both_sides_kept() {
+  ( umask 077; mkdir -p "$V/state/local_state_herdr-peers/srv" "$DCK_HOME/.local/state/herdr-peers/srv"
+    echo '{"id":"vol"}' > "$V/state/local_state_herdr-peers/srv/log.ndjson"
+    echo '{"id":"ctr"}' > "$DCK_HOME/.local/state/herdr-peers/srv/log.ndjson" )
+  ep dck_persist_private_dir state "$DCK_HOME/.local/state/herdr-peers"
+  assert_rc 0 "persist succeeds"
+  assert_contains "$(cat "$DCK_HOME/.local/state/herdr-peers/srv/log.ndjson")" '"vol"' "the volume copy wins"
+  local aside
+  aside="$(ls -d "$V/state/local_state_herdr-peers.container-"* 2>/dev/null | head -1)"
+  assert_contains "$(cat "$aside/srv/log.ndjson" 2>/dev/null)" '"ctr"' "the container's copy is moved beside it, not deleted"
+  assert_eq "$(stat -c %a "$aside" 2>/dev/null || stat -f %Lp "$aside")" "700" "the moved copy is 0700"
+  assert_contains "$RUN_ERR" "the container's copy moved to state/local_state_herdr-peers.container-" "the move is logged"
+}
+
+test_herdr_peers_state_hook_workaround_is_a_no_op() {
+  # Repositories that persisted it from dev-setup-hook.sh used the same store.
+  ep dck_persist state "$DCK_HOME/.local/state/herdr-peers" dir
+  echo '{"id":"hook"}' > "$V/state/local_state_herdr-peers/log.ndjson"
+  ep dck_persist_private_dir state "$DCK_HOME/.local/state/herdr-peers"
+  assert_rc 0 "persist succeeds over the workaround's link"
+  assert_eq "$(readlink "$DCK_HOME/.local/state/herdr-peers")" "$V/state/local_state_herdr-peers" "the link is the same"
+  assert_contains "$(cat "$DCK_HOME/.local/state/herdr-peers/log.ndjson")" '"hook"' "the records the workaround kept are there"
+  ep dck_persist state "$DCK_HOME/.local/state/herdr-peers" dir
+  assert_rc 0 "and the hook's own call still succeeds afterwards"
+}
