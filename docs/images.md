@@ -31,7 +31,7 @@ identical otherwise.
   keys**: the entrypoint generates them at runtime into the persistent `state`
   volume ([entrypoint.md](entrypoint.md)); openssh-client, with GitHub's published
   host keys in `/etc/ssh/ssh_known_hosts`, so `git` over SSH never asks to trust one;
-- Herdr **0.9.3** at `/usr/local/bin/herdr` (on the PATH of non-login SSH
+- Herdr **0.9.5** at `/usr/local/bin/herdr` (on the PATH of non-login SSH
   sessions, which is how a Herdr client starts the remote server) and a seeded
   `~/.config/herdr/config.toml` (login shell, `new_cwd` = the app path (dck.toml `workspace`, default `/app`),
   `allow_nested = true`);
@@ -80,7 +80,7 @@ identical otherwise.
 The Dockerfile `dck init` renders runs the same `install.sh` and `editor.sh`
 (vendored into `docker/local/<service>/dck/` with a `VERSION` stamp) and adds:
 
-- **herdr-peers v2.2.0** (`images/common/peers.sh`): fetched from its tag's source,
+- **herdr-peers v2.2.1** (`images/common/peers.sh`): fetched from its tag's source,
   every file checked against that release's `SHA256SUMS`, itself pinned by sha256;
   installed at `/usr/local/share/dck/skills/herdr-peers` with `/usr/local/bin/herdr-peers`,
   next to Herdr's own skill (`herdr --skill`, matching the pinned binary). The

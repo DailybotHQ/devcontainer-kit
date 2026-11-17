@@ -121,7 +121,7 @@ sessions keep running) and the include block.
 
 ## Inside the container
 
-Every image ships Herdr (**0.9.3**, pinned, `/usr/local/bin/herdr`, on the PATH of the
+Every image ships Herdr (**0.9.5**, pinned, `/usr/local/bin/herdr`, on the PATH of the
 non-login SSH session the Herdr client uses) and a seeded config with login
 shells, `new_cwd = <workspace>` and `allow_nested = true`, kept current by the
 entrypoint's `dck_herdr_config` ([entrypoint.md](entrypoint.md)).
@@ -130,7 +130,7 @@ entrypoint's `dck_herdr_config` ([entrypoint.md](entrypoint.md)).
 
 An agent in the container can list and ask Herdr agents on the host and in
 other dck containers, and get the reply back, through
-[herdr-peers](https://github.com/DailybotHQ/herdr-peers) (**v2.2.0**: asks, one-way
+[herdr-peers](https://github.com/DailybotHQ/herdr-peers) (**v2.2.1**: asks, one-way
 notices, a plan's lead records and native debates — `herdr-peers debate
 tally|claims|anon|filings|panel` and their templates — on protocol 2, which adds
 lead appointment and keeps asks, notices and replies compatible with 1.x peers;
