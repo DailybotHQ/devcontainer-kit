@@ -32,6 +32,17 @@ test_base_images_pinned_by_digest() {
   assert_no_match "$(grep -h '^FROM' "$IMG"/*/Dockerfile)" '^FROM [^$]' "every FROM goes through a pinned ARG"
 }
 
+test_node_24_pin_is_current() {
+  local base tag
+  base="$(pin BASE_NODE)"
+  tag="${base#node:}"; tag="${tag%%-*}"
+  assert_eq "$tag" "$(pin NODE_VERSION)" "the node-24 base image and the agents layer's Node are the same release"
+  assert_match "$tag" '^24\.' "the node-24 flavour stays on Node 24"
+  # 24.22.3 is the 2026-11-10 security release; a re-render must never pin older.
+  run_cmd python3 -I -c 'import sys; v=tuple(map(int, sys.argv[1].split("."))); sys.exit(0 if v >= (24, 22, 3) else 1)' "$tag"
+  assert_rc 0 "Node is at least 24.22.3 (no downgrade of repositories on the patched line)"
+}
+
 test_tools_pinned_with_checksums() {
   local t
   for t in GH HERDR NVIM NODE; do

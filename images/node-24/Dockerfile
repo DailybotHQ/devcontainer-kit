@@ -6,7 +6,7 @@
 #   docker build -f images/node-24/Dockerfile -t dck-base:node-24 .
 # Pins live in images/versions.env (the FROM defaults below must match it).
 
-ARG BASE_NODE=node:24.21.0-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66
+ARG BASE_NODE=node:24.22.3-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0
 FROM ${BASE_NODE}
 ARG DCK_VERSION=0.0.0-dev
 LABEL org.opencontainers.image.source="https://github.com/DailybotHQ/devcontainer-kit" \

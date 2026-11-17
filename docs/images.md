@@ -13,7 +13,7 @@ identical otherwise.
 | Flavour | FROM (pinned tag + digest) | Project runtime | Extra |
 | --- | --- | --- | --- |
 | `python-3.13` | `python:3.13.16-slim-trixie` | Python 3.13 + `uv` 0.12.24 | Debian's `nodejs`/`npm` for the editor's plugins only (the agents layer adds the pinned Node) |
-| `node-24` | `node:24.21.0-trixie-slim` | Node 24 + corepack (pnpm) | `python3` + `python3-venv` from apt (the tooling needs the stdlib; venv is for the editor's plugins) |
+| `node-24` | `node:24.22.3-trixie-slim` | Node 24 + corepack (pnpm) | `python3` + `python3-venv` from apt (the tooling needs the stdlib; venv is for the editor's plugins) |
 | `debian` | `debian:trixie-20261005-slim` | none | `python3`, `python3-venv`, Debian's `nodejs`/`npm` from apt (the agents layer adds the pinned Node) |
 
 ## Every flavour contains
@@ -107,7 +107,7 @@ One file pins every input: base images (and the `uv` image) by tag **and** diges
 each tool by version **and** SHA-256 per architecture (amd64, arm64),
 deepworkplan-vim by tag, commit **and** installer SHA-256, and the opt-in layers'
 inputs — coding-agents-kit **v1.1.0** (`AGENTKIT_TAG`, tarball `AGENTKIT_SHA256`),
-Node **24.21.0** for the agents layer, the Dailybot CLI **3.27.0** wheel and uv
+Node **24.22.3** for the agents layer, the Dailybot CLI **3.27.0** wheel and uv
 **0.12.24** for the dailybot layer. `images/common/install.sh` and
 `images/common/editor.sh` download through a `fetch()` that refuses a checksum
 mismatch; nothing is piped into a shell.
