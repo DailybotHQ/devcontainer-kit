@@ -7,6 +7,51 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-11-16
+
+Interface stays **2**. Minor: the image bakes herdr-peers v2.1.0 (protocol 2),
+coding-agents-kit v1.5.0 and DeepWorkPlan Vim v1.1.0, and the repository dogfoods
+DeepWorkPlan 8.0.1; dck's own surface is unchanged.
+
+### Changed
+
+- **Pins:** herdr-peers **v2.1.0** (`HERDR_PEERS_TAG`; peeled tag commit `49e6ab2`,
+  `SHA256SUMS` sha256 `02837b81…`, verified from the release asset; 37 skill files,
+  one more than v1.3.1). Protocol 2: 2.0.0 adds lead appointment on the human's
+  explicit word, the opt-in fail-closed autopilot brain and the plan queue; asks,
+  notices and replies stay compatible with 1.x peers. The 2.0.x patches record why
+  a brain was retired, default the brain to Claude only and accept coding-agents-kit
+  1.5.0's trailing `--ask`. 2.1.0 adds the `fleet ui` views (Attention, Active,
+  Waiting, Done, All), denies a permission the daemon cannot accept instead of
+  leaving the agent waiting (an agent's own question still waits for the human),
+  and reads pack 8.0.0's blocker classes. dck never starts the daemon. The host
+  fallback hint (`dck agents` / `dck ask` without herdr-peers) pins the tree URL of
+  the new tag.
+- **Pins:** coding-agents-kit **v1.5.0** (`AGENTKIT_TAG`; tag commit `c2158fc`,
+  tarball sha256 `6a128e70…`, release `SHA256SUMS` sha256 `d8057636…`, verified from
+  the release assets). ak interface stays 1. 1.5.0 forces each CLI's own ask mode under
+  `AGENTKIT_PERMISSIONS=ask` / `--ask` (an account whose settings default to an
+  autonomous mode no longer starts autonomous), ends an ask-mode pick-v2
+  `launch.argv` with `--ask` (herdr-peers 2.0.2 and later accept it, which is why both pins
+  move together), and adds reported token counts to `ak run --json` (`null` when the
+  CLI does not report a field, never imputed). The layer still spells no autonomy
+  flag.
+- **Pins:** DeepWorkPlan Vim **v1.1.0** (`DWP_VIM_TAG`; peeled tag commit `20dcf80`,
+  `install.sh` sha256 `a3303af1…`, release `SHA256SUMS` sha256 `b6942c21…`, all four
+  assets verified against it). Same Neovim (0.12.5). 1.1.0 renders the pack 8.0
+  surfaces read-only: the plan queue, structured-blocker badges (class C1–C7 and
+  resolver) and the v8 contract's autonomy posture; a v7 plan renders as before.
+- **Vendored pack:** the `deepworkplan` skill is refreshed from v7.12.1 to **v8.0.1**
+  (`skills-lock.json` and `.agents/skills/deepworkplan/`; tag commit `82bc1fd`,
+  release `SHA256SUMS` sha256 `0a49c301…`, all 188 files verified against it, no
+  extra or missing file). 8.0 carries DWP standard 8.0.0: new plans write
+  plan-contract/v8 (v7, v6 and v5 plans keep their generation), and the v8 schemas
+  (plan-contract, journal-event, plan-snapshot) are frozen; 8.0.1 moves the pack's
+  vim pin to v1.1.0. Its addon descriptors pin herdr-peers v2.1.0,
+  coding-agents-kit v1.5.0 and DeepWorkPlan Vim v1.1.0, matching the image.
+  `AGENTS.md` now declares `DWP standard: 8.0.0`; delegators unchanged (9/9 routes
+  intact); repo conformance re-run: CONFORMANT (17 passed, 0 advisory).
+
 ## [1.3.0] — 2026-11-15
 
 Interface stays **2**. Minor: the new opt-in `[compose] container_only` key renders
@@ -1042,7 +1087,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.0
 [1.3.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.3.0
 [1.2.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.2.0
 [1.1.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.1.2
