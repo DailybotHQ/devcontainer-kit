@@ -7,6 +7,12 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ## [Unreleased]
 
+### Changed
+
+- **Vendored pack:** DeepWorkPlan **8.0.3** (tag commit `1033558`, `SHA256SUMS` sha256
+  `f40ebde7…`, all 188 files byte-identical); its descriptors pin devcontainer-kit
+  v1.4.2. Repository tooling only; no dck release.
+
 ## [1.4.2] — 2026-11-17
 
 Interface stays **2**. Patch: Node moves to the 24.22.3 security release, and
