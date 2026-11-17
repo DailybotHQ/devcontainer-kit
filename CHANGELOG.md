@@ -12,6 +12,14 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 - **Vendored pack:** DeepWorkPlan **8.0.3** (tag commit `1033558`, `SHA256SUMS` sha256
   `f40ebde7…`, all 188 files byte-identical); its descriptors pin devcontainer-kit
   v1.4.2. Repository tooling only; no dck release.
+
+## [1.4.3] — 2026-11-17
+
+Interface stays **2**. Patch: the image moves to Herdr 0.9.5 and herdr-peers v2.2.1.
+coding-agents-kit v1.5.0 and DeepWorkPlan Vim v1.1.0 are unchanged.
+
+### Changed
+
 - **Herdr 0.9.5** (`HERDR_VERSION`, from 0.9.3): the binaries now come from
   `herdrdev/herdr`, where the project moved (the old URL only redirected), checked
   against the vendor's release digests. 0.9.4 keeps the server running when the shell
@@ -1145,7 +1153,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.4.2...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.4.3...HEAD
+[1.4.3]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.3
 [1.4.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.2
 [1.4.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.1
 [1.4.0]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.0
