@@ -250,6 +250,8 @@ test_node_fixture_end_to_end() {
 
   # 8. Persistence across rebuild: the state and agent volumes survive.
   dev shell -c 'mkdir -p ~/.config/gh ~/.codex && echo kept > ~/.config/gh/it-marker && echo kept > ~/.codex/it-marker && echo kept > ~/.config/agentkit/it-marker'
+  # herdr-peers' own state: a lead record and the delegation log, private modes.
+  dev shell -c 'umask 077; d=~/.local/state/herdr-peers/it-srv; mkdir -p "$d/leads" && echo "{\"plan\":\"IT\",\"epoch\":2}" > "$d/leads/IT.json" && echo "{\"id\":\"it-ask\"}" > "$d/log.ndjson"'
   with_lock dev rebuild
   assert_rc 0 "dev.sh rebuild recreates the container"
   wait_port "$port" || fail "sshd answers again after a rebuild"
@@ -258,6 +260,12 @@ test_node_fixture_end_to_end() {
 kept
 kept
 Fixture Dev" "gh, a CLI home, agentkit and the git identity survive a rebuild"
+  dev shell -c 'd=~/.local/state/herdr-peers/it-srv; cat "$d/leads/IT.json" "$d/log.ndjson"; stat -c %a ~/.dck/volumes/state/local_state_herdr-peers "$d/log.ndjson" "$d/leads/IT.json"'
+  assert_eq "$RUN_OUT" '{"plan":"IT","epoch":2}
+{"id":"it-ask"}
+700
+600
+600' "herdr-peers' lead record and log survive a rebuild, private modes kept"
   dev shell -c 'cat "$AGENTKIT_PROFILES_DIR/antigravity/it1/token"'
   assert_eq "$RUN_OUT" "it-login" "with host_profiles off, ak finds the same profile on the volume after a rebuild"
   d ssh true
