@@ -12,6 +12,15 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 - **Vendored pack:** DeepWorkPlan **8.0.3** (tag commit `1033558`, `SHA256SUMS` sha256
   `f40ebde7…`, all 188 files byte-identical); its descriptors pin devcontainer-kit
   v1.4.2. Repository tooling only; no dck release.
+- **Herdr 0.9.5** (`HERDR_VERSION`, from 0.9.3): the binaries now come from
+  `herdrdev/herdr`, where the project moved (the old URL only redirected), checked
+  against the vendor's release digests. 0.9.4 keeps the server running when the shell
+  that started it closes and stops polling forwarded SSH agents every second; 0.9.5 is
+  its hotfix.
+- **herdr-peers v2.2.1** (`HERDR_PEERS_TAG`, from v2.2.0; tag commit `6b9f17d`,
+  `SHA256SUMS` sha256 `9855c625…`, 37 skill files): `autopilot --revive` refuses to
+  start without `ak` 1.3.0 or newer instead of spending each plan's retries on launches
+  that fail. Protocol stays 2.
 
 ## [1.4.2] — 2026-11-17
 
