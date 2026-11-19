@@ -30,7 +30,7 @@ After changing the file, run `dck init` (it shows the diff and asks), then
 ## agents
 
 Installs [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit)
-at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v1.5.0**) into the
+at the tag pinned in `images/versions.env` (`AGENTKIT_TAG`, **v1.5.1**) into the
 dev user's home, following the kit's install contract: the release tarball, verified
 against the pinned `AGENTKIT_SHA256` before it is unpacked, then `install.sh --no-rc`, then `ak install <kind>…` for the
 requested kinds (`DCK_AGENT_CLIS` plus each `INSTALL_<CLI>_CLI=true`; commas or spaces),
@@ -277,7 +277,7 @@ from the image's `/etc/dck/versions.env`. Every download goes through one verifi
 
 ## Status in v1.0
 
-The `agents` layer is verified end to end with coding-agents-kit `v1.5.0`
+The `agents` layer is verified end to end with coding-agents-kit `v1.5.1`
 (installed from its sha256-verified release tarball; `ak` interface 1, permissions
 `auto` by default; the `docker` test scope builds a rendered node fixture on every CI
 run: `--clis codex --supported all`, the host profile's `clis_extra = ["pi"]`, so
@@ -285,5 +285,7 @@ run: `--clis codex --supported all`, the host profile's `clis_extra = ["pi"]`, s
 vendor CLI's own behaviour belongs to the ecosystem field test. The kit's `ak
 update` (v1.4.0) is documented human-invoked only; v1.5.0 adds the reported token
 counts of `ak run --json` (a field the CLI does not report stays `null`) and forces
-each CLI's own ask mode under the opt-out. The `dailybot`
+each CLI's own ask mode under the opt-out; v1.5.1 installs npm CLIs with their
+optional packages (Codex's platform binary) and checks that each installed CLI
+starts. The `dailybot`
 and `editor` layers are verified end to end.
