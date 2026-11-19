@@ -9,9 +9,10 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ### Changed
 
-- **Vendored pack:** DeepWorkPlan **8.0.5** (tag commit `edf0896`, `SHA256SUMS` sha256
-  `5d22f6c5…`, all 188 files byte-identical), from 8.0.3; its descriptors pin
-  devcontainer-kit v1.4.3 and coding-agents-kit v1.5.1. Repository tooling only.
+- **Vendored pack:** DeepWorkPlan **8.0.6** (tag commit `8b348b9`, `SHA256SUMS` sha256
+  `1f807e4c…`, all 188 files byte-identical), from 8.0.5; its descriptors pin
+  devcontainer-kit v1.4.4 and coding-agents-kit v1.5.1. Repository tooling only; no
+  dck release.
 
 ## [1.4.4] — 2026-11-19
 
