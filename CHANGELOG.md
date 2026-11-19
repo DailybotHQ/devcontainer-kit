@@ -9,9 +9,28 @@ interface bumps the major version and the interface number (in 0.x it bumped the
 
 ### Changed
 
-- **Vendored pack:** DeepWorkPlan **8.0.3** (tag commit `1033558`, `SHA256SUMS` sha256
-  `f40ebde7…`, all 188 files byte-identical); its descriptors pin devcontainer-kit
-  v1.4.2. Repository tooling only; no dck release.
+- **Vendored pack:** DeepWorkPlan **8.0.5** (tag commit `edf0896`, `SHA256SUMS` sha256
+  `5d22f6c5…`, all 188 files byte-identical), from 8.0.3; its descriptors pin
+  devcontainer-kit v1.4.3 and coding-agents-kit v1.5.1. Repository tooling only.
+
+## [1.4.4] — 2026-11-19
+
+Interface stays **2**. Patch: the agents layer moves to coding-agents-kit v1.5.1 and
+the dailybot layer to the Dailybot CLI 3.29.2. Herdr 0.9.5, herdr-peers v2.2.1 and
+DeepWorkPlan Vim v1.1.0 are unchanged.
+
+### Changed
+
+- **coding-agents-kit v1.5.1** (`AGENTKIT_TAG`, from v1.5.0; tag commit `1f31c11`,
+  `SHA256SUMS` sha256 `fb4c71ed…`, tarball sha256 `8bc7868f…`): `ak install` and `ak
+  update` install npm CLIs with their optional packages, so Codex's platform binary
+  is no longer dropped, and an installed CLI that does not start is reinstalled once
+  and then reported. `ak` interface stays 1.
+
+- **Dailybot CLI 3.29.2** (`DAILYBOT_CLI_VERSION`, from 3.27.0): the wheel's URL and
+  SHA-256 (`58fd3aab…`) are PyPI's for the release, and the downloaded wheel was
+  re-hashed against them. Repositories that patched the vendored `DAILYBOT_CLI_*`
+  lines by hand can drop the patch after `dck init`.
 
 ## [1.4.3] — 2026-11-17
 
@@ -1153,7 +1172,8 @@ First public release. **Interface 1** (`dck doctor --json` → `"interface": 1`)
 - `install.sh` (idempotent, `--no-rc`, `--uninstall`), test suite with unit scopes
   and a real-Docker integration scope, CI on Ubuntu and macOS.
 
-[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.4.3...HEAD
+[Unreleased]: https://github.com/DailybotHQ/devcontainer-kit/compare/v1.4.4...HEAD
+[1.4.4]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.4
 [1.4.3]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.3
 [1.4.2]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.2
 [1.4.1]: https://github.com/DailybotHQ/devcontainer-kit/releases/tag/v1.4.1
